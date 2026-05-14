@@ -1,0 +1,120 @@
+    Checking no-chromium v0.1.0 (C:\Users\andre\OneDrive\Documentos\Navegador Propio Personal\No-Chromium)
+error[E0603]: constant `VERTEX_SHADER_GLSL` is private
+  --> src\vulkan_engine\real_renderer.rs:4:61
+   |
+ 4 | use crate::vulkan_engine::shaders_gen::{ShaderModuleLoader, VERTEX_SHADER_GLSL, FRAGMENT_SHADER_GLSL};
+   |                                                             ^^^^^^^^^^^^^^^^^^ private constant
+   |
+note: the constant `VERTEX_SHADER_GLSL` is defined here
+  --> src\vulkan_engine\shaders_gen.rs:5:1
+   |
+ 5 | / const VERTEX_SHADER_GLSL: &str = r#"
+ 6 | |     #version 450
+ 7 | |     layout(location = 0) in vec2 inPosition;
+ 8 | |     layout(location = 1) in vec2 inTexCoord;
+...  |
+16 | | "#;
+   | |___^
+
+error[E0603]: constant `FRAGMENT_SHADER_GLSL` is private
+  --> src\vulkan_engine\real_renderer.rs:4:81
+   |
+ 4 | use crate::vulkan_engine::shaders_gen::{ShaderModuleLoader, VERTEX_SHADER_GLSL, FRAGMENT_SHADER_GLSL};
+   |                                                                                 ^^^^^^^^^^^^^^^^^^^^ private constant
+   |
+note: the constant `FRAGMENT_SHADER_GLSL` is defined here
+  --> src\vulkan_engine\shaders_gen.rs:18:1
+   |
+18 | / const FRAGMENT_SHADER_GLSL: &str = r#"
+19 | |     #version 450
+20 | |     layout(location = 0) in vec2 fragTexCoord;
+...  |
+33 | | "#;
+   | |___^
+
+warning: type `V8_NODISCARD` should have an upper camel case name
+    --> src\generated_rust\v8_core.rs:1231:12
+     |
+1231 | pub struct V8_NODISCARD {
+     |            ^^^^^^^^^^^^ help: convert the identifier to upper camel case: `V8Nodiscard`
+     |
+     = note: `#[warn(non_camel_case_types)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: unused import: `ash::vk`
+ --> src\generated_rust\vulkan_painter.rs:2:5
+  |
+2 | use ash::vk;
+  |     ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::generated_rust::dom_native`
+ --> src\generated_rust\vulkan_painter.rs:3:5
+  |
+3 | use crate::generated_rust::dom_native;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Instance`
+ --> src\generated_rust\vulkan_hardware.rs:2:23
+  |
+2 | use ash::{vk, Device, Instance};
+  |                       ^^^^^^^^
+
+warning: unused import: `std::ffi::c_void`
+ --> src\vulkan_engine\real_renderer.rs:2:5
+  |
+2 | use std::ffi::c_void;
+  |     ^^^^^^^^^^^^^^^^
+
+error[E0308]: mismatched types
+  --> src\vulkan_engine\real_renderer.rs:39:34
+   |
+39 |   const QUAD_VERTICES: [f32; 16] = [
+   |  ____________________________--____^
+   | |                            |
+   | |                            help: consider specifying the actual array length: `12`
+40 | |     // Triangle 1
+41 | |     -0.5, -0.2, 0.0, 0.0,
+42 | |      0.5, -0.2, 1.0, 0.0,
+...  |
+46 | | ];
+   | |_^ expected an array with a size of 16, found one with a size of 12
+
+error[E0599]: no method named `create_buffer` found for struct `std::sync::MutexGuard<'_, vk_mem::Allocator>` in the current scope
+   --> src\vulkan_engine\real_renderer.rs:139:95
+    |
+139 | ....allocator.lock().unwrap().create_buffer(&v_buffer_info, &v_alloc_info).unwrap();
+    |                               ^^^^^^^^^^^^^ method not found in `std::sync::MutexGuard<'_, vk_mem::Allocator>`
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Alloc` which provides `create_buffer` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use vk_mem::Alloc;
+    |
+
+warning: unused variable: `entry`
+  --> src\generated_rust\vulkan_context.rs:15:13
+   |
+15 |         let entry = unsafe { Entry::load().expect("Failed to load Vulkan") };
+   |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_entry`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `create_info`
+  --> src\generated_rust\vulkan_context.rs:22:13
+   |
+22 |         let create_info = vk::InstanceCreateInfo::builder()
+   |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_create_info`
+
+warning: unnecessary `unsafe` block
+  --> src\generated_rust\vulkan_context.rs:30:9
+   |
+30 |         unsafe {
+   |         ^^^^^^ unnecessary `unsafe` block
+   |
+   = note: `#[warn(unused_unsafe)]` (part of `#[warn(unused)]`) on by default
+
+Some errors have detailed explanations: E0308, E0599, E0603.
+For more information about an error, try `rustc --explain E0308`.
+warning: `no-chromium` (bin "no-chromium") generated 8 warnings
+error: could not compile `no-chromium` (bin "no-chromium") due to 4 previous errors; 8 warnings emitted

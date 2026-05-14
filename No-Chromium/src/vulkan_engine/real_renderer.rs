@@ -1,183 +1,267 @@
 use ash::vk;
+use std::ffi::c_void;
 use crate::vulkan_engine::setup::VulkanContext;
+use crate::vulkan_engine::shaders_gen::{ShaderModuleLoader, VERTEX_SHADER_GLSL, FRAGMENT_SHADER_GLSL};
+use crate::vulkan_engine::memory_gen::MemoryManager;
+use crate::vulkan_engine::pipeline_gen::PipelineManager;
+use crate::text_rasterizer::RasterizedText;
+use vk_mem::Alloc;
 
 pub struct RealRenderer {
+    pub memory_manager: MemoryManager,
+    pub pipeline_manager: PipelineManager,
+    
+    // Command & Sync
     pub command_pool: vk::CommandPool,
     pub command_buffer: vk::CommandBuffer,
     pub image_available_semaphore: vk::Semaphore,
     pub render_finished_semaphore: vk::Semaphore,
     pub in_flight_fence: vk::Fence,
+    
+    // Framebuffers
+    pub framebuffers: Vec<vk::Framebuffer>,
+
+    // Texture
+    pub texture_image: vk::Image,
+    pub texture_allocation: vk_mem::Allocation,
+    pub texture_view: vk::ImageView,
+    pub texture_sampler: vk::Sampler,
+    
+    // Descriptors
+    pub descriptor_pool: vk::DescriptorPool,
+    pub descriptor_set: vk::DescriptorSet,
+
+    // Vertex Buffer
+    pub vertex_buffer: vk::Buffer,
+    pub vertex_allocation: vk_mem::Allocation,
 }
+
+// Simple Quad vertices (x, y, u, v)
+const QUAD_VERTICES: [f32; 12] = [
+    // Triangle 1
+    -0.5, -0.2, 0.0, 0.0,
+     0.5, -0.2, 1.0, 0.0,
+    -0.5,  0.2, 0.0, 1.0,
+    
+    // Triangle 2 (We use TriangleList, so 6 vertices needed, wait. Our pipeline assembly says TriangleList. Let's use 6 vertices)
+];
+
+const QUAD_VERTICES_6: [f32; 24] = [
+    -0.5, -0.2, 0.0, 0.0,
+     0.5, -0.2, 1.0, 0.0,
+    -0.5,  0.2, 0.0, 1.0,
+
+     0.5, -0.2, 1.0, 0.0,
+     0.5,  0.2, 1.0, 1.0,
+    -0.5,  0.2, 0.0, 1.0,
+];
 
 impl RealRenderer {
     pub fn new(ctx: &VulkanContext) -> Self {
         unsafe {
-            println!("[*] Creando Command Pool y Primitivas de Sincronización...");
+            println!("[*] Inicializando Renderizador Real de Texturas...");
+
+            // 1. Shaders
+            let vert_spv = ShaderModuleLoader::compile_glsl_to_spirv(VERTEX_SHADER_GLSL, shaderc::ShaderKind::Vertex, "vertex.glsl");
+            let frag_spv = ShaderModuleLoader::compile_glsl_to_spirv(FRAGMENT_SHADER_GLSL, shaderc::ShaderKind::Fragment, "fragment.glsl");
+            
+            let vert_module = ShaderModuleLoader::create_shader_module(&ctx.device, &vert_spv);
+            let frag_module = ShaderModuleLoader::create_shader_module(&ctx.device, &frag_spv);
+
+            // 2. Memory & Pipeline
+            let memory_manager = MemoryManager::new(&ctx.instance, ctx.physical_device, &ctx.device);
+            let pipeline_manager = PipelineManager::new(&ctx.device, ctx.surface_format, ctx.extent, vert_module, frag_module);
+
+            // 3. Command Pool & Buffers
             let pool_info = vk::CommandPoolCreateInfo::builder()
                 .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
                 .queue_family_index(ctx.queue_family_index);
-            
             let command_pool = ctx.device.create_command_pool(&pool_info, None).unwrap();
 
             let alloc_info = vk::CommandBufferAllocateInfo::builder()
                 .command_pool(command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
                 .command_buffer_count(1);
-            
             let command_buffer = ctx.device.allocate_command_buffers(&alloc_info).unwrap()[0];
 
+            // 4. Rasterize Text
+            let text_data = RasterizedText::new("No-Chromium", 90.0);
+            let image_size = (text_data.width * text_data.height * 4) as u64;
+
+            // 5. Staging Buffer for Texture
+            let (staging_buffer, mut staging_alloc) = memory_manager.create_staging_buffer(image_size);
+            let mapped_ptr = memory_manager.allocator.lock().unwrap().map_memory(&mut staging_alloc).unwrap();
+            std::ptr::copy_nonoverlapping(text_data.rgba_data.as_ptr(), mapped_ptr, image_size as usize);
+            memory_manager.allocator.lock().unwrap().unmap_memory(&mut staging_alloc);
+
+            // 6. Texture Image
+            let (texture_image, texture_allocation) = memory_manager.create_texture_image(text_data.width, text_data.height);
+
+            // Record upload commands
+            let begin_info = vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+            ctx.device.begin_command_buffer(command_buffer, &begin_info).unwrap();
+
+            let barrier_to_dst = vk::ImageMemoryBarrier::builder()
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .src_access_mask(vk::AccessFlags::empty())
+                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .image(texture_image)
+                .subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 });
+            
+            ctx.device.cmd_pipeline_barrier(command_buffer, vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&barrier_to_dst));
+
+            let copy_region = vk::BufferImageCopy::builder()
+                .image_subresource(vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 })
+                .image_extent(vk::Extent3D { width: text_data.width, height: text_data.height, depth: 1 });
+            
+            ctx.device.cmd_copy_buffer_to_image(command_buffer, staging_buffer, texture_image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, std::slice::from_ref(&copy_region));
+
+            let barrier_to_shader = vk::ImageMemoryBarrier::builder()
+                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                .image(texture_image)
+                .subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 });
+            
+            ctx.device.cmd_pipeline_barrier(command_buffer, vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&barrier_to_shader));
+
+            // Vertex Buffer Upload in same command buffer
+            let vertex_size = std::mem::size_of_val(&QUAD_VERTICES_6) as u64;
+            let (v_staging_buffer, mut v_staging_alloc) = memory_manager.create_staging_buffer(vertex_size);
+            let v_mapped_ptr = memory_manager.allocator.lock().unwrap().map_memory(&mut v_staging_alloc).unwrap();
+            std::ptr::copy_nonoverlapping(QUAD_VERTICES_6.as_ptr() as *const u8, v_mapped_ptr, vertex_size as usize);
+            memory_manager.allocator.lock().unwrap().unmap_memory(&mut v_staging_alloc);
+
+            // Create device local vertex buffer
+            let v_buffer_info = vk::BufferCreateInfo::builder().size(vertex_size).usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER).sharing_mode(vk::SharingMode::EXCLUSIVE);
+            let v_alloc_info = vk_mem::AllocationCreateInfo { usage: vk_mem::MemoryUsage::Auto, flags: vk_mem::AllocationCreateFlags::DEDICATED_MEMORY, ..Default::default() };
+            let (vertex_buffer, vertex_allocation) = memory_manager.allocator.lock().unwrap().create_buffer(&v_buffer_info, &v_alloc_info).unwrap();
+
+            let v_copy_region = vk::BufferCopy::builder().size(vertex_size);
+            ctx.device.cmd_copy_buffer(command_buffer, v_staging_buffer, vertex_buffer, std::slice::from_ref(&v_copy_region));
+
+            ctx.device.end_command_buffer(command_buffer).unwrap();
+
+            // Submit uploads
+            let submit_info = vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&command_buffer));
+            ctx.device.queue_submit(ctx.present_queue, std::slice::from_ref(&submit_info), vk::Fence::null()).unwrap();
+            ctx.device.queue_wait_idle(ctx.present_queue).unwrap();
+
+            // Cleanup staging
+            memory_manager.allocator.lock().unwrap().destroy_buffer(staging_buffer, &mut staging_alloc);
+            memory_manager.allocator.lock().unwrap().destroy_buffer(v_staging_buffer, &mut v_staging_alloc);
+
+            // 7. Texture View & Sampler
+            let view_info = vk::ImageViewCreateInfo::builder()
+                .image(texture_image).view_type(vk::ImageViewType::TYPE_2D).format(vk::Format::R8G8B8A8_UNORM)
+                .subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 });
+            let texture_view = ctx.device.create_image_view(&view_info, None).unwrap();
+
+            let sampler_info = vk::SamplerCreateInfo::builder()
+                .mag_filter(vk::Filter::LINEAR).min_filter(vk::Filter::LINEAR)
+                .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE);
+            let texture_sampler = ctx.device.create_sampler(&sampler_info, None).unwrap();
+
+            // 8. Descriptor Set
+            let pool_sizes = [vk::DescriptorPoolSize::builder().ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(1).build()];
+            let desc_pool_info = vk::DescriptorPoolCreateInfo::builder().pool_sizes(&pool_sizes).max_sets(1);
+            let descriptor_pool = ctx.device.create_descriptor_pool(&desc_pool_info, None).unwrap();
+
+            let alloc_info = vk::DescriptorSetAllocateInfo::builder()
+                .descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&pipeline_manager.descriptor_set_layout));
+            let descriptor_set = ctx.device.allocate_descriptor_sets(&alloc_info).unwrap()[0];
+
+            let image_info = vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).image_view(texture_view).sampler(texture_sampler);
+            let write_desc = vk::WriteDescriptorSet::builder()
+                .dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(std::slice::from_ref(&image_info));
+            ctx.device.update_descriptor_sets(std::slice::from_ref(&write_desc), &[]);
+
+            // 9. Framebuffers
+            let framebuffers: Vec<vk::Framebuffer> = ctx.present_image_views.iter().map(|&view| {
+                let fb_info = vk::FramebufferCreateInfo::builder()
+                    .render_pass(pipeline_manager.render_pass).attachments(std::slice::from_ref(&view))
+                    .width(ctx.extent.width).height(ctx.extent.height).layers(1);
+                ctx.device.create_framebuffer(&fb_info, None).unwrap()
+            }).collect();
+
+            // Sync
             let semaphore_info = vk::SemaphoreCreateInfo::builder();
             let image_available_semaphore = ctx.device.create_semaphore(&semaphore_info, None).unwrap();
             let render_finished_semaphore = ctx.device.create_semaphore(&semaphore_info, None).unwrap();
-            
             let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
             let in_flight_fence = ctx.device.create_fence(&fence_info, None).unwrap();
 
             Self {
-                command_pool,
-                command_buffer,
-                image_available_semaphore,
-                render_finished_semaphore,
-                in_flight_fence,
+                memory_manager, pipeline_manager,
+                command_pool, command_buffer,
+                image_available_semaphore, render_finished_semaphore, in_flight_fence,
+                framebuffers,
+                texture_image, texture_allocation, texture_view, texture_sampler,
+                descriptor_pool, descriptor_set,
+                vertex_buffer, vertex_allocation,
             }
         }
     }
 
     pub fn draw_frame(&self, ctx: &VulkanContext) {
         unsafe {
-            // 1. Wait for previous frame
             ctx.device.wait_for_fences(&[self.in_flight_fence], true, std::u64::MAX).unwrap();
 
-            // 2. Acquire next image
-            let (image_index, _is_suboptimal) = match ctx.swapchain_loader.acquire_next_image(
-                ctx.swapchain,
-                std::u64::MAX,
-                self.image_available_semaphore,
-                vk::Fence::null()
+            let (image_index, _) = match ctx.swapchain_loader.acquire_next_image(
+                ctx.swapchain, std::u64::MAX, self.image_available_semaphore, vk::Fence::null()
             ) {
-                Ok((idx, suboptimal)) => (idx, suboptimal),
-                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                    println!("[Vulkan] Swapchain Out of Date (Resized/Maximized). Skipping frame...");
-                    return;
-                }
-                Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                Ok(idx) => idx,
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => { println!("[Vulkan] Skip frame (Resize)"); return; },
+                Err(e) => panic!("Failed to acquire image: {:?}", e),
             };
 
-            // 3. Reset fence
             ctx.device.reset_fences(&[self.in_flight_fence]).unwrap();
-
-            // 4. Record command buffer
             ctx.device.reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::empty()).unwrap();
             
-            let begin_info = vk::CommandBufferBeginInfo::builder()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-            
+            let begin_info = vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
             ctx.device.begin_command_buffer(self.command_buffer, &begin_info).unwrap();
 
-            let image = ctx.present_images[image_index as usize];
+            let clear_values = [vk::ClearValue { color: vk::ClearColorValue { float32: [0.102, 0.102, 0.180, 1.0] } }];
+            let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+                .render_pass(self.pipeline_manager.render_pass)
+                .framebuffer(self.framebuffers[image_index as usize])
+                .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: ctx.extent })
+                .clear_values(&clear_values);
 
-            // Barrier 1: Undefined -> Transfer Dst
-            let barrier_to_clear = vk::ImageMemoryBarrier::builder()
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .image(image)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE);
+            ctx.device.cmd_begin_render_pass(self.command_buffer, &render_pass_begin_info, vk::SubpassContents::INLINE);
+            ctx.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline_manager.graphics_pipeline);
+            
+            ctx.device.cmd_bind_descriptor_sets(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline_manager.pipeline_layout, 0, &[self.descriptor_set], &[]);
+            ctx.device.cmd_bind_vertex_buffers(self.command_buffer, 0, &[self.vertex_buffer], &[0]);
 
-            ctx.device.cmd_pipeline_barrier(
-                self.command_buffer,
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                std::slice::from_ref(&barrier_to_clear),
-            );
-
-            // Clear Color: #1a1a2e (r: 0.102, g: 0.102, b: 0.180, a: 1.0)
-            let clear_color = vk::ClearColorValue { float32: [0.102, 0.102, 0.180, 1.0] };
-            let clear_range = vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            };
-
-            ctx.device.cmd_clear_color_image(
-                self.command_buffer,
-                image,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &clear_color,
-                std::slice::from_ref(&clear_range),
-            );
-
-            // Barrier 2: Transfer Dst -> Present Src
-            let barrier_to_present = vk::ImageMemoryBarrier::builder()
-                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .image(image)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::MEMORY_READ);
-
-            ctx.device.cmd_pipeline_barrier(
-                self.command_buffer,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                std::slice::from_ref(&barrier_to_present),
-            );
-
+            ctx.device.cmd_draw(self.command_buffer, 6, 1, 0, 0);
+            
+            ctx.device.cmd_end_render_pass(self.command_buffer);
             ctx.device.end_command_buffer(self.command_buffer).unwrap();
 
-            // 5. Submit
             let wait_semaphores = [self.image_available_semaphore];
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             let command_buffers = [self.command_buffer];
             let signal_semaphores = [self.render_finished_semaphore];
 
             let submit_info = vk::SubmitInfo::builder()
-                .wait_semaphores(&wait_semaphores)
-                .wait_dst_stage_mask(&wait_stages)
-                .command_buffers(&command_buffers)
-                .signal_semaphores(&signal_semaphores);
+                .wait_semaphores(&wait_semaphores).wait_dst_stage_mask(&wait_stages)
+                .command_buffers(&command_buffers).signal_semaphores(&signal_semaphores);
 
             ctx.device.queue_submit(ctx.present_queue, std::slice::from_ref(&submit_info), self.in_flight_fence).unwrap();
 
-            // 6. Present
             let swapchains = [ctx.swapchain];
             let image_indices = [image_index];
-
-            let present_info = vk::PresentInfoKHR::builder()
-                .wait_semaphores(&signal_semaphores)
-                .swapchains(&swapchains)
-                .image_indices(&image_indices);
+            let present_info = vk::PresentInfoKHR::builder().wait_semaphores(&signal_semaphores).swapchains(&swapchains).image_indices(&image_indices);
 
             match ctx.swapchain_loader.queue_present(ctx.present_queue, &present_info) {
                 Ok(_) => {}
-                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) | Err(vk::Result::SUBOPTIMAL_KHR) => {
-                    println!("[Vulkan] Swapchain Out of Date during present (Resized/Maximized). Skipping frame...");
-                }
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) | Err(vk::Result::SUBOPTIMAL_KHR) => { println!("[Vulkan] Skip frame (Resize)"); }
                 Err(e) => panic!("Failed to present queue: {:?}", e),
             }
         }

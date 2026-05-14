@@ -1,6 +1,7 @@
 mod generated_rust;
 mod parsers;
 mod vulkan_engine;
+mod text_rasterizer;
 
 use winit::{
     event::{Event, WindowEvent},
