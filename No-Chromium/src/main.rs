@@ -10,14 +10,12 @@ use winit::{
     window::WindowBuilder,
 };
 use generated_rust::vulkan_painter::VulkanPainter;
-use parsers::html_lexer_legacy::HtmlLexer;
 use parsers::css_engine::ComputedStyle;
 
 // THE REAL VULKAN ENGINE
 use vulkan_engine::setup::VulkanContext;
 use vulkan_engine::real_renderer::RealRenderer;
-use parsers::html_elements::{HTMLElement, HtmlTag};
-use layout::text_rasterizer::RasterizedText;
+
 
 fn main() {
     let event_loop = EventLoop::new();
@@ -30,50 +28,84 @@ fn main() {
 
     println!("========================================");
     println!("     NO-CHROMIUM: AWAKENING THE GPU     ");
-fn extract_text_from_dom(nodes: &[crate::parsers::dom_tree::DomNode]) -> String {
+    println!("========================================");
+fn extract_text_from_dom(nodes: &[crate::parsers::dom_tree::DomNode], out: &mut Vec<(String, f32)>, current_size: f32) {
     use crate::parsers::html_elements::HtmlTag;
     for node in nodes {
+        if out.len() >= 4 { break; }
         match node {
             crate::parsers::dom_tree::DomNode::Element { tag, children, .. } => {
-                if matches!(tag, HtmlTag::Script | HtmlTag::Noscript | HtmlTag::Custom(_)) {
+                if matches!(tag, HtmlTag::Script | HtmlTag::Noscript) {
                     continue;
                 }
-                let child_text = extract_text_from_dom(children);
-                if !child_text.is_empty() {
-                    return child_text;
+                let mut new_size = current_size;
+                if let HtmlTag::Custom(name) = tag {
+                    if name == "style" || name == "title" {
+                        continue;
+                    }
+                } else {
+                    match tag {
+                        HtmlTag::H1 => new_size = 32.0,
+                        HtmlTag::H2 => new_size = 24.0,
+                        HtmlTag::H3 => new_size = 20.0,
+                        HtmlTag::P => new_size = 16.0,
+                        HtmlTag::A => new_size = 14.0,
+                        _ => {}
+                    }
                 }
+                extract_text_from_dom(children, out, new_size);
             }
             crate::parsers::dom_tree::DomNode::Text(t) => {
                 let trimmed = t.trim();
                 if trimmed.len() > 2 {
-                    // Limit length to avoid huge textures
                     let limited: String = trimmed.chars().take(40).collect();
-                    return limited;
+                    out.push((limited, current_size));
                 }
             }
         }
     }
-    String::new()
 }
 
     // Phase 2: HTTP Client & html5ever DOM Tree
-    let html = crate::parsers::http_client::fetch_html("https://example.com").unwrap_or_else(|_| "<h1>Network Error</h1>".to_string());
+    let target_url = "https://example.com";
+    let html = crate::parsers::http_client::fetch_html(target_url).unwrap_or_else(|_| "<h1>Network Error</h1>".to_string());
     let dom = crate::parsers::dom_tree::parse_html(&html);
 
-    let extracted_text = extract_text_from_dom(&dom);
-    let final_text = if extracted_text.is_empty() {
-        "Noir Browser DOM".to_string()
-    } else {
-        extracted_text
-    };
-
+    let mut extracted_texts = Vec::new();
+    extract_text_from_dom(&dom, &mut extracted_texts, 24.0); // Default size 24.0
+    
+    use crate::layout::text_rasterizer::{RasterizedAtlas, TextRequest};
+    let mut text_requests = Vec::new();
+    
+    // URL Bar Text (x=20, y=48 inside URL Bar)
+    text_requests.push(TextRequest {
+        text: target_url.to_string(),
+        px_size: 16.0,
+        pos_x: 20.0,
+        pos_y: 48.0,
+        color: [1.0, 1.0, 1.0, 1.0],
+    });
+    
+    // Content Texts (starting y=80)
+    let mut current_y = 80.0;
+    for (text, size) in extracted_texts {
+        text_requests.push(TextRequest {
+            text,
+            px_size: size,
+            pos_x: 40.0,
+            pos_y: current_y,
+            color: [1.0, 1.0, 1.0, 1.0],
+        });
+        current_y += 30.0;
+    }
+    
     let mut extracted_style = ComputedStyle::default();
     extracted_style.background_color = Some("#1a1a1a".to_string());
     extracted_style.width = Some("100%".to_string());
     extracted_style.height = Some("100%".to_string());
     
     // MODULE 3: Rasterized Text (CPU Fontdue -> GPU Texture)
-    let text_data = crate::layout::text_rasterizer::RasterizedText::new(&final_text, 60.0);
+    let text_data = RasterizedAtlas::new(&text_requests);
 
     // Initialize Real Vulkan Hardware
     let mut vk_ctx = VulkanContext::new(&window);

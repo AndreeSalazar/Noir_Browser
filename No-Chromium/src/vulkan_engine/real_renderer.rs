@@ -6,7 +6,7 @@ use crate::vulkan_engine::memory_gen::MemoryManager;
 use crate::vulkan_engine::pipeline_gen::PipelineManager;
 use crate::ui::ui_gen::{generate_chrome_vertices, UIVertex};
 use crate::layout::layout_gen::LayoutEngine;
-use crate::layout::text_rasterizer::RasterizedText;
+use crate::layout::text_rasterizer::{RasterizedAtlas, TextQuad};
 use vk_mem::Alloc;
 
 pub struct RealRenderer {
@@ -39,12 +39,11 @@ pub struct RealRenderer {
     pub vertex_count: u32,
 
     // Layout State
-    pub text_width: u32,
-    pub text_height: u32,
+    pub text_quads: Vec<TextQuad>,
 }
 
 impl RealRenderer {
-    pub fn new(ctx: &VulkanContext, text_data: RasterizedText) -> Self {
+    pub fn new(ctx: &VulkanContext, text_data: RasterizedAtlas) -> Self {
         unsafe {
             println!("[*] Inicializando Renderizador Real de Texturas...");
 
@@ -113,8 +112,14 @@ impl RealRenderer {
             
             ctx.device.cmd_pipeline_barrier(command_buffer, vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&barrier_to_shader));
 
-            let text_width = text_data.width;
-            let text_height = text_data.height;
+            // Execute the texture upload
+            ctx.device.end_command_buffer(command_buffer).unwrap();
+            let submit_info = vk::SubmitInfo::builder()
+                .command_buffers(std::slice::from_ref(&command_buffer));
+            ctx.device.queue_submit(ctx.present_queue, std::slice::from_ref(&submit_info), vk::Fence::null()).unwrap();
+            ctx.device.queue_wait_idle(ctx.present_queue).unwrap();
+
+            let text_quads = text_data.quads;
 
             // Cleanup staging
             memory_manager.allocator.lock().unwrap().destroy_buffer(staging_buffer, &mut staging_alloc);
@@ -170,7 +175,7 @@ impl RealRenderer {
                 texture_image, texture_allocation, texture_view, texture_sampler,
                 descriptor_pool, descriptor_set,
                 vertex_buffer: vk::Buffer::null(), vertex_allocation: std::mem::zeroed(), vertex_count: 0,
-                text_width, text_height,
+                text_quads,
             }
         }
     }
@@ -214,25 +219,28 @@ impl RealRenderer {
                 all_vertices.push(v.u); all_vertices.push(v.v);
             }
             
-            // Text Quad (placed inside the DOM element)
-            let text_w = (self.text_width as f32 / ctx.extent.width as f32) * 2.0;
-            let text_h = (self.text_height as f32 / ctx.extent.height as f32) * 2.0;
-            let text_x = -1.0 + (20.0 / ctx.extent.width as f32) * 2.0;
-            let text_y = -1.0 + (60.0 / ctx.extent.height as f32) * 2.0;
+            // Text Quads (placed from Atlas)
+            for tq in &self.text_quads {
+                let text_w = (tq.w / ctx.extent.width as f32) * 2.0;
+                let text_h = (tq.h / ctx.extent.height as f32) * 2.0;
+                let text_x = -1.0 + (tq.x / ctx.extent.width as f32) * 2.0;
+                let text_y = -1.0 + (tq.y / ctx.extent.height as f32) * 2.0;
 
-            let text_quad = [
-                UIVertex::textured(text_x, text_y, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0),
-                UIVertex::textured(text_x + text_w, text_y, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0),
-                UIVertex::textured(text_x, text_y + text_h, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0),
-                UIVertex::textured(text_x + text_w, text_y, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0),
-                UIVertex::textured(text_x + text_w, text_y + text_h, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
-                UIVertex::textured(text_x, text_y + text_h, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0),
-            ];
+                let c = tq.color;
+                let quad = [
+                    UIVertex::textured(text_x, text_y, c[0], c[1], c[2], c[3], tq.u0, tq.v0),
+                    UIVertex::textured(text_x + text_w, text_y, c[0], c[1], c[2], c[3], tq.u1, tq.v0),
+                    UIVertex::textured(text_x, text_y + text_h, c[0], c[1], c[2], c[3], tq.u0, tq.v1),
+                    UIVertex::textured(text_x + text_w, text_y, c[0], c[1], c[2], c[3], tq.u1, tq.v0),
+                    UIVertex::textured(text_x + text_w, text_y + text_h, c[0], c[1], c[2], c[3], tq.u1, tq.v1),
+                    UIVertex::textured(text_x, text_y + text_h, c[0], c[1], c[2], c[3], tq.u0, tq.v1),
+                ];
 
-            for v in &text_quad {
-                all_vertices.push(v.x); all_vertices.push(v.y);
-                all_vertices.push(v.r); all_vertices.push(v.g); all_vertices.push(v.b); all_vertices.push(v.a);
-                all_vertices.push(v.u); all_vertices.push(v.v);
+                for v in &quad {
+                    all_vertices.push(v.x); all_vertices.push(v.y);
+                    all_vertices.push(v.r); all_vertices.push(v.g); all_vertices.push(v.b); all_vertices.push(v.a);
+                    all_vertices.push(v.u); all_vertices.push(v.v);
+                }
             }
             
             self.vertex_count = (all_vertices.len() / 8) as u32;

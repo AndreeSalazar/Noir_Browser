@@ -94,7 +94,34 @@ pub fn generate_chrome_vertices(width: f32, height: f32) -> Vec<f32> {
         UIVertex::solid(min_left_x, bottom_y, m_color.0, m_color.1, m_color.2, m_color.3),
     ];
     
-    for v in bg_quad.iter().chain(close_quad.iter()).chain(max_quad.iter()).chain(min_quad.iter()) {
+    // 5. Separator (y=40 to y=41) - 10% white alpha
+    let sep_top_y = bottom_y;
+    let sep_bottom_y = -1.0 + (41.0 / height) * 2.0;
+    let sep_color = (1.0, 1.0, 1.0, 0.1);
+    let sep_quad = [
+        UIVertex::solid(left_x, sep_top_y, sep_color.0, sep_color.1, sep_color.2, sep_color.3),
+        UIVertex::solid(right_x, sep_top_y, sep_color.0, sep_color.1, sep_color.2, sep_color.3),
+        UIVertex::solid(left_x, sep_bottom_y, sep_color.0, sep_color.1, sep_color.2, sep_color.3),
+        UIVertex::solid(right_x, sep_top_y, sep_color.0, sep_color.1, sep_color.2, sep_color.3),
+        UIVertex::solid(right_x, sep_bottom_y, sep_color.0, sep_color.1, sep_color.2, sep_color.3),
+        UIVertex::solid(left_x, sep_bottom_y, sep_color.0, sep_color.1, sep_color.2, sep_color.3),
+    ];
+
+    // 6. URL Bar Background (#0d0d1a) (y=41 to y=71)
+    let url_top_y = sep_bottom_y;
+    let url_bottom_y = -1.0 + (71.0 / height) * 2.0;
+    let url_color = (0.051, 0.051, 0.102, 1.0); // #0d0d1a approx
+    let url_quad = [
+        UIVertex::solid(left_x, url_top_y, url_color.0, url_color.1, url_color.2, url_color.3),
+        UIVertex::solid(right_x, url_top_y, url_color.0, url_color.1, url_color.2, url_color.3),
+        UIVertex::solid(left_x, url_bottom_y, url_color.0, url_color.1, url_color.2, url_color.3),
+        UIVertex::solid(right_x, url_top_y, url_color.0, url_color.1, url_color.2, url_color.3),
+        UIVertex::solid(right_x, url_bottom_y, url_color.0, url_color.1, url_color.2, url_color.3),
+        UIVertex::solid(left_x, url_bottom_y, url_color.0, url_color.1, url_color.2, url_color.3),
+    ];
+    
+    for v in bg_quad.iter().chain(close_quad.iter()).chain(max_quad.iter()).chain(min_quad.iter())
+        .chain(sep_quad.iter()).chain(url_quad.iter()) {
         raw_data.push(v.x); raw_data.push(v.y);
         raw_data.push(v.r); raw_data.push(v.g); raw_data.push(v.b); raw_data.push(v.a);
         raw_data.push(v.u); raw_data.push(v.v);
