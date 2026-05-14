@@ -5,30 +5,35 @@ use shaderc;
 pub const VERTEX_SHADER_GLSL: &str = r#"
     #version 450
     layout(location = 0) in vec2 inPosition;
-    layout(location = 1) in vec2 inTexCoord;
+    layout(location = 1) in vec4 inColor;
+    layout(location = 2) in vec2 inTexCoord;
     
-    layout(location = 0) out vec2 fragTexCoord;
+    layout(location = 0) out vec4 fragColor;
+    layout(location = 1) out vec2 fragTexCoord;
     
     void main() {
         gl_Position = vec4(inPosition, 0.0, 1.0);
+        fragColor = inColor;
         fragTexCoord = inTexCoord;
     }
 "#;
 
 pub const FRAGMENT_SHADER_GLSL: &str = r#"
     #version 450
-    layout(location = 0) in vec2 fragTexCoord;
+    layout(location = 0) in vec4 fragColor;
+    layout(location = 1) in vec2 fragTexCoord;
     
     layout(binding = 0) uniform sampler2D texSampler;
     
     layout(location = 0) out vec4 outColor;
     
     void main() {
-        // Fontdue bitmap is often single channel (grayscale) or RGBA.
-        // Assuming RGBA uploaded to texture.
-        vec4 texColor = texture(texSampler, fragTexCoord);
-        // Premium White text color applied over the bitmap alpha
-        outColor = vec4(1.0, 1.0, 1.0, texColor.a);
+        if (fragTexCoord.x < 0.0) {
+            outColor = fragColor;
+        } else {
+            vec4 texColor = texture(texSampler, fragTexCoord);
+            outColor = fragColor * vec4(1.0, 1.0, 1.0, texColor.a);
+        }
     }
 "#;
 

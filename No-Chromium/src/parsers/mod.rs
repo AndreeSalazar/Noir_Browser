@@ -1,6 +1,11 @@
-pub mod html_lexer;
+pub mod html_lexer_legacy;
 pub mod css_lexer;
 pub mod js_lexer;
 pub mod webidl_bridge;
-pub mod shaders;
 pub mod events;
+pub mod shaders;
+pub mod css_engine;
+pub mod dom_native;
+pub mod html_elements;
+pub mod http_client;
+pub mod dom_tree;

@@ -171,4 +171,74 @@ impl VulkanContext {
             }
         }
     }
+
+    pub fn recreate_swapchain(&mut self, new_width: u32, new_height: u32) {
+        unsafe {
+            self.device.device_wait_idle().unwrap();
+
+            for view in &self.present_image_views {
+                self.device.destroy_image_view(*view, None);
+            }
+            self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+
+            let surface_capabilities = self.surface_loader.get_physical_device_surface_capabilities(self.physical_device, self.surface).unwrap();
+            let mut surface_resolution = match surface_capabilities.current_extent.width {
+                std::u32::MAX => vk::Extent2D {
+                    width: new_width,
+                    height: new_height,
+                },
+                _ => surface_capabilities.current_extent,
+            };
+            if surface_resolution.width == 0 || surface_resolution.height == 0 {
+                return; // Minimized, nothing to do
+            }
+
+            let pre_transform = if surface_capabilities.supported_transforms.contains(vk::SurfaceTransformFlagsKHR::IDENTITY) {
+                vk::SurfaceTransformFlagsKHR::IDENTITY
+            } else {
+                surface_capabilities.current_transform
+            };
+
+            let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+                .surface(self.surface)
+                .min_image_count(self.present_images.len() as u32)
+                .image_color_space(self.surface_format.color_space)
+                .image_format(self.surface_format.format)
+                .image_extent(surface_resolution)
+                .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST)
+                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+                .pre_transform(pre_transform)
+                .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+                .present_mode(vk::PresentModeKHR::FIFO)
+                .clipped(true)
+                .image_array_layers(1);
+
+            self.swapchain = self.swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
+            self.present_images = self.swapchain_loader.get_swapchain_images(self.swapchain).unwrap();
+            self.present_image_views = self.present_images.iter().map(|&image| {
+                let create_view_info = vk::ImageViewCreateInfo::builder()
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(self.surface_format.format)
+                    .components(vk::ComponentMapping { r: vk::ComponentSwizzle::R, g: vk::ComponentSwizzle::G, b: vk::ComponentSwizzle::B, a: vk::ComponentSwizzle::A })
+                    .subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 })
+                    .image(image);
+                self.device.create_image_view(&create_view_info, None).unwrap()
+            }).collect();
+
+            self.extent = surface_resolution;
+        }
+    }
+
+    pub fn cleanup(&mut self) {
+        unsafe {
+            println!("[*] Limpiando Vulkan Context...");
+            for view in &self.present_image_views {
+                self.device.destroy_image_view(*view, None);
+            }
+            self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+            self.surface_loader.destroy_surface(self.surface, None);
+            self.device.destroy_device(None);
+            self.instance.destroy_instance(None);
+        }
+    }
 }

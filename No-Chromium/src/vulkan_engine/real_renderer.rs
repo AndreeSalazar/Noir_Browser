@@ -4,7 +4,9 @@ use crate::vulkan_engine::setup::VulkanContext;
 use crate::vulkan_engine::shaders_gen::{ShaderModuleLoader, VERTEX_SHADER_GLSL, FRAGMENT_SHADER_GLSL};
 use crate::vulkan_engine::memory_gen::MemoryManager;
 use crate::vulkan_engine::pipeline_gen::PipelineManager;
-use crate::text_rasterizer::RasterizedText;
+use crate::ui::ui_gen::{generate_chrome_vertices, UIVertex};
+use crate::layout::layout_gen::LayoutEngine;
+use crate::layout::text_rasterizer::RasterizedText;
 use vk_mem::Alloc;
 
 pub struct RealRenderer {
@@ -34,30 +36,15 @@ pub struct RealRenderer {
     // Vertex Buffer
     pub vertex_buffer: vk::Buffer,
     pub vertex_allocation: vk_mem::Allocation,
+    pub vertex_count: u32,
+
+    // Layout State
+    pub text_width: u32,
+    pub text_height: u32,
 }
 
-// Simple Quad vertices (x, y, u, v)
-const QUAD_VERTICES: [f32; 12] = [
-    // Triangle 1
-    -0.5, -0.2, 0.0, 0.0,
-     0.5, -0.2, 1.0, 0.0,
-    -0.5,  0.2, 0.0, 1.0,
-    
-    // Triangle 2 (We use TriangleList, so 6 vertices needed, wait. Our pipeline assembly says TriangleList. Let's use 6 vertices)
-];
-
-const QUAD_VERTICES_6: [f32; 24] = [
-    -0.5, -0.2, 0.0, 0.0,
-     0.5, -0.2, 1.0, 0.0,
-    -0.5,  0.2, 0.0, 1.0,
-
-     0.5, -0.2, 1.0, 0.0,
-     0.5,  0.2, 1.0, 1.0,
-    -0.5,  0.2, 0.0, 1.0,
-];
-
 impl RealRenderer {
-    pub fn new(ctx: &VulkanContext) -> Self {
+    pub fn new(ctx: &VulkanContext, text_data: RasterizedText) -> Self {
         unsafe {
             println!("[*] Inicializando Renderizador Real de Texturas...");
 
@@ -84,8 +71,7 @@ impl RealRenderer {
                 .command_buffer_count(1);
             let command_buffer = ctx.device.allocate_command_buffers(&alloc_info).unwrap()[0];
 
-            // 4. Rasterize Text
-            let text_data = RasterizedText::new("No-Chromium", 90.0);
+            // 4. Staging Buffer for Texture
             let image_size = (text_data.width * text_data.height * 4) as u64;
 
             // 5. Staging Buffer for Texture
@@ -127,31 +113,11 @@ impl RealRenderer {
             
             ctx.device.cmd_pipeline_barrier(command_buffer, vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&barrier_to_shader));
 
-            // Vertex Buffer Upload in same command buffer
-            let vertex_size = std::mem::size_of_val(&QUAD_VERTICES_6) as u64;
-            let (v_staging_buffer, mut v_staging_alloc) = memory_manager.create_staging_buffer(vertex_size);
-            let v_mapped_ptr = memory_manager.allocator.lock().unwrap().map_memory(&mut v_staging_alloc).unwrap();
-            std::ptr::copy_nonoverlapping(QUAD_VERTICES_6.as_ptr() as *const u8, v_mapped_ptr, vertex_size as usize);
-            memory_manager.allocator.lock().unwrap().unmap_memory(&mut v_staging_alloc);
-
-            // Create device local vertex buffer
-            let v_buffer_info = vk::BufferCreateInfo::builder().size(vertex_size).usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER).sharing_mode(vk::SharingMode::EXCLUSIVE);
-            let v_alloc_info = vk_mem::AllocationCreateInfo { usage: vk_mem::MemoryUsage::Auto, flags: vk_mem::AllocationCreateFlags::DEDICATED_MEMORY, ..Default::default() };
-            let (vertex_buffer, vertex_allocation) = memory_manager.allocator.lock().unwrap().create_buffer(&v_buffer_info, &v_alloc_info).unwrap();
-
-            let v_copy_region = vk::BufferCopy::builder().size(vertex_size);
-            ctx.device.cmd_copy_buffer(command_buffer, v_staging_buffer, vertex_buffer, std::slice::from_ref(&v_copy_region));
-
-            ctx.device.end_command_buffer(command_buffer).unwrap();
-
-            // Submit uploads
-            let submit_info = vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&command_buffer));
-            ctx.device.queue_submit(ctx.present_queue, std::slice::from_ref(&submit_info), vk::Fence::null()).unwrap();
-            ctx.device.queue_wait_idle(ctx.present_queue).unwrap();
+            let text_width = text_data.width;
+            let text_height = text_data.height;
 
             // Cleanup staging
             memory_manager.allocator.lock().unwrap().destroy_buffer(staging_buffer, &mut staging_alloc);
-            memory_manager.allocator.lock().unwrap().destroy_buffer(v_staging_buffer, &mut v_staging_alloc);
 
             // 7. Texture View & Sampler
             let view_info = vk::ImageViewCreateInfo::builder()
@@ -203,12 +169,27 @@ impl RealRenderer {
                 framebuffers,
                 texture_image, texture_allocation, texture_view, texture_sampler,
                 descriptor_pool, descriptor_set,
-                vertex_buffer, vertex_allocation,
+                vertex_buffer: vk::Buffer::null(), vertex_allocation: std::mem::zeroed(), vertex_count: 0,
+                text_width, text_height,
             }
         }
     }
 
-    pub fn draw_frame(&self, ctx: &VulkanContext) {
+    pub fn recreate_swapchain(&mut self, ctx: &VulkanContext) {
+        unsafe {
+            for fb in &self.framebuffers {
+                ctx.device.destroy_framebuffer(*fb, None);
+            }
+            self.framebuffers = ctx.present_image_views.iter().map(|&view| {
+                let fb_info = vk::FramebufferCreateInfo::builder()
+                    .render_pass(self.pipeline_manager.render_pass).attachments(std::slice::from_ref(&view))
+                    .width(ctx.extent.width).height(ctx.extent.height).layers(1);
+                ctx.device.create_framebuffer(&fb_info, None).unwrap()
+            }).collect();
+        }
+    }
+
+    pub fn draw_frame(&mut self, ctx: &VulkanContext, style: &crate::parsers::css_engine::ComputedStyle) {
         unsafe {
             ctx.device.wait_for_fences(&[self.in_flight_fence], true, std::u64::MAX).unwrap();
 
@@ -221,10 +202,76 @@ impl RealRenderer {
             };
 
             ctx.device.reset_fences(&[self.in_flight_fence]).unwrap();
+            
+            // ==========================================
+            // DYNAMIC LAYOUT ENGINE (DOM -> GPU VERTICES)
+            // ==========================================
+            let mut all_vertices = generate_chrome_vertices(ctx.extent.width as f32, ctx.extent.height as f32);
+            let dom_vertices = LayoutEngine::build_dom_vertices(style, ctx.extent.width as f32, ctx.extent.height as f32);
+            for v in &dom_vertices {
+                all_vertices.push(v.x); all_vertices.push(v.y);
+                all_vertices.push(v.r); all_vertices.push(v.g); all_vertices.push(v.b); all_vertices.push(v.a);
+                all_vertices.push(v.u); all_vertices.push(v.v);
+            }
+            
+            // Text Quad (placed inside the DOM element)
+            let text_w = (self.text_width as f32 / ctx.extent.width as f32) * 2.0;
+            let text_h = (self.text_height as f32 / ctx.extent.height as f32) * 2.0;
+            let text_x = -1.0 + (20.0 / ctx.extent.width as f32) * 2.0;
+            let text_y = -1.0 + (60.0 / ctx.extent.height as f32) * 2.0;
+
+            let text_quad = [
+                UIVertex::textured(text_x, text_y, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0),
+                UIVertex::textured(text_x + text_w, text_y, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0),
+                UIVertex::textured(text_x, text_y + text_h, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0),
+                UIVertex::textured(text_x + text_w, text_y, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0),
+                UIVertex::textured(text_x + text_w, text_y + text_h, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+                UIVertex::textured(text_x, text_y + text_h, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0),
+            ];
+
+            for v in &text_quad {
+                all_vertices.push(v.x); all_vertices.push(v.y);
+                all_vertices.push(v.r); all_vertices.push(v.g); all_vertices.push(v.b); all_vertices.push(v.a);
+                all_vertices.push(v.u); all_vertices.push(v.v);
+            }
+            
+            self.vertex_count = (all_vertices.len() / 8) as u32;
+
+            // Destroy previous vertex buffer if it exists
+            if self.vertex_buffer != vk::Buffer::null() {
+                self.memory_manager.allocator.lock().unwrap().destroy_buffer(self.vertex_buffer, &mut self.vertex_allocation);
+            }
+
+            // Create new vertex buffer dynamically
+            let vertex_size = (all_vertices.len() * std::mem::size_of::<f32>()) as u64;
+            let (v_staging_buffer, mut v_staging_alloc) = self.memory_manager.create_staging_buffer(vertex_size);
+            let v_mapped_ptr = self.memory_manager.allocator.lock().unwrap().map_memory(&mut v_staging_alloc).unwrap();
+            std::ptr::copy_nonoverlapping(all_vertices.as_ptr() as *const u8, v_mapped_ptr, vertex_size as usize);
+            self.memory_manager.allocator.lock().unwrap().unmap_memory(&mut v_staging_alloc);
+
+            let v_buffer_info = vk::BufferCreateInfo::builder().size(vertex_size).usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER).sharing_mode(vk::SharingMode::EXCLUSIVE);
+            let v_alloc_info = vk_mem::AllocationCreateInfo { usage: vk_mem::MemoryUsage::Auto, flags: vk_mem::AllocationCreateFlags::DEDICATED_MEMORY, ..Default::default() };
+            let (vertex_buffer, vertex_allocation) = self.memory_manager.allocator.lock().unwrap().create_buffer(&v_buffer_info, &v_alloc_info).unwrap();
+            
+            self.vertex_buffer = vertex_buffer;
+            self.vertex_allocation = vertex_allocation;
+
             ctx.device.reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::empty()).unwrap();
             
             let begin_info = vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
             ctx.device.begin_command_buffer(self.command_buffer, &begin_info).unwrap();
+
+            // Record copy command for dynamic vertices
+            let v_copy_region = vk::BufferCopy::builder().size(vertex_size);
+            ctx.device.cmd_copy_buffer(self.command_buffer, v_staging_buffer, self.vertex_buffer, std::slice::from_ref(&v_copy_region));
+
+            // Setup memory barrier to ensure copy completes before vertex shader reads it
+            let buffer_barrier = vk::BufferMemoryBarrier::builder()
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::VERTEX_ATTRIBUTE_READ)
+                .buffer(self.vertex_buffer)
+                .size(vk::WHOLE_SIZE);
+            ctx.device.cmd_pipeline_barrier(self.command_buffer, vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::VERTEX_INPUT, vk::DependencyFlags::empty(), &[], std::slice::from_ref(&buffer_barrier), &[]);
 
             let clear_values = [vk::ClearValue { color: vk::ClearColorValue { float32: [0.102, 0.102, 0.180, 1.0] } }];
             let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
@@ -236,10 +283,24 @@ impl RealRenderer {
             ctx.device.cmd_begin_render_pass(self.command_buffer, &render_pass_begin_info, vk::SubpassContents::INLINE);
             ctx.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline_manager.graphics_pipeline);
             
+            let viewport = vk::Viewport::builder()
+                .x(0.0)
+                .y(0.0)
+                .width(ctx.extent.width as f32)
+                .height(ctx.extent.height as f32)
+                .min_depth(0.0)
+                .max_depth(1.0);
+            ctx.device.cmd_set_viewport(self.command_buffer, 0, std::slice::from_ref(&viewport));
+
+            let scissor = vk::Rect2D::builder()
+                .offset(vk::Offset2D { x: 0, y: 0 })
+                .extent(ctx.extent);
+            ctx.device.cmd_set_scissor(self.command_buffer, 0, std::slice::from_ref(&scissor));
+
             ctx.device.cmd_bind_descriptor_sets(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline_manager.pipeline_layout, 0, &[self.descriptor_set], &[]);
             ctx.device.cmd_bind_vertex_buffers(self.command_buffer, 0, &[self.vertex_buffer], &[0]);
 
-            ctx.device.cmd_draw(self.command_buffer, 6, 1, 0, 0);
+            ctx.device.cmd_draw(self.command_buffer, self.vertex_count, 1, 0, 0);
             
             ctx.device.cmd_end_render_pass(self.command_buffer);
             ctx.device.end_command_buffer(self.command_buffer).unwrap();
@@ -254,6 +315,9 @@ impl RealRenderer {
                 .command_buffers(&command_buffers).signal_semaphores(&signal_semaphores);
 
             ctx.device.queue_submit(ctx.present_queue, std::slice::from_ref(&submit_info), self.in_flight_fence).unwrap();
+            ctx.device.queue_wait_idle(ctx.present_queue).unwrap(); // Wait to safely destroy staging buffer
+            
+            self.memory_manager.allocator.lock().unwrap().destroy_buffer(v_staging_buffer, &mut v_staging_alloc);
 
             let swapchains = [ctx.swapchain];
             let image_indices = [image_index];
@@ -264,6 +328,42 @@ impl RealRenderer {
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) | Err(vk::Result::SUBOPTIMAL_KHR) => { println!("[Vulkan] Skip frame (Resize)"); }
                 Err(e) => panic!("Failed to present queue: {:?}", e),
             }
+        }
+    }
+
+    pub fn cleanup(&mut self, device: &ash::Device) {
+        unsafe {
+            device.device_wait_idle().unwrap();
+
+            // VMA Cleanup (crucial to prevent Assertion crashes)
+            let mut alloc = self.memory_manager.allocator.lock().unwrap();
+            
+            // Note: v_staging_alloc was already destroyed in new(). We only need to destroy persistent ones.
+            // But texture_allocation and vertex_allocation are not mutable here, we must use std::mem::replace or similar?
+            // Actually, destroy_image takes &mut Allocation.
+            alloc.destroy_buffer(self.vertex_buffer, &mut self.vertex_allocation);
+            alloc.destroy_image(self.texture_image, &mut self.texture_allocation);
+
+            device.destroy_sampler(self.texture_sampler, None);
+            device.destroy_image_view(self.texture_view, None);
+
+            for fb in &self.framebuffers {
+                device.destroy_framebuffer(*fb, None);
+            }
+
+            device.destroy_descriptor_pool(self.descriptor_pool, None);
+            
+            // Destroy Pipeline Manager resources
+            device.destroy_pipeline(self.pipeline_manager.graphics_pipeline, None);
+            device.destroy_pipeline_layout(self.pipeline_manager.pipeline_layout, None);
+            device.destroy_descriptor_set_layout(self.pipeline_manager.descriptor_set_layout, None);
+            device.destroy_render_pass(self.pipeline_manager.render_pass, None);
+
+            device.destroy_semaphore(self.image_available_semaphore, None);
+            device.destroy_semaphore(self.render_finished_semaphore, None);
+            device.destroy_fence(self.in_flight_fence, None);
+            
+            device.destroy_command_pool(self.command_pool, None);
         }
     }
 }

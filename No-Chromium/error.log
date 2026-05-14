@@ -1,36 +1,103 @@
-    Checking no-chromium v0.1.0 (C:\Users\andre\OneDrive\Documentos\Navegador Propio Personal\No-Chromium)
-error[E0603]: constant `VERTEX_SHADER_GLSL` is private
-  --> src\vulkan_engine\real_renderer.rs:4:61
-   |
- 4 | use crate::vulkan_engine::shaders_gen::{ShaderModuleLoader, VERTEX_SHADER_GLSL, FRAGMENT_SHADER_GLSL};
-   |                                                             ^^^^^^^^^^^^^^^^^^ private constant
-   |
-note: the constant `VERTEX_SHADER_GLSL` is defined here
-  --> src\vulkan_engine\shaders_gen.rs:5:1
-   |
- 5 | / const VERTEX_SHADER_GLSL: &str = r#"
- 6 | |     #version 450
- 7 | |     layout(location = 0) in vec2 inPosition;
- 8 | |     layout(location = 1) in vec2 inTexCoord;
-...  |
-16 | | "#;
-   | |___^
+    Checking noir-browser v0.1.0 (C:\Users\andre\OneDrive\Documentos\Navegador Propio Personal\No-Chromium)
+error[E0433]: failed to resolve: could not find `css_engine` in `generated_rust`
+   --> src\vulkan_engine\real_renderer.rs:192:86
+    |
+192 |     pub fn draw_frame(&mut self, ctx: &VulkanContext, style: &crate::generated_rust::css_engine::ComputedStyle) {
+    |                                                                                      ^^^^^^^^^^ could not find `css_engine` in `generated_rust`
+    |
+help: consider importing this module
+    |
+  1 + use crate::parsers::css_engine;
+    |
+help: if you import `css_engine`, refer to it directly
+    |
+192 -     pub fn draw_frame(&mut self, ctx: &VulkanContext, style: &crate::generated_rust::css_engine::ComputedStyle) {
+192 +     pub fn draw_frame(&mut self, ctx: &VulkanContext, style: &css_engine::ComputedStyle) {
+    |
 
-error[E0603]: constant `FRAGMENT_SHADER_GLSL` is private
-  --> src\vulkan_engine\real_renderer.rs:4:81
+error[E0433]: failed to resolve: unresolved import
+  --> src\main.rs:63:28
    |
- 4 | use crate::vulkan_engine::shaders_gen::{ShaderModuleLoader, VERTEX_SHADER_GLSL, FRAGMENT_SHADER_GLSL};
-   |                                                                                 ^^^^^^^^^^^^^^^^^^^^ private constant
+63 |     let text_data = crate::text_rasterizer::RasterizedText::new(&extracted_text, 90.0);
+   |                            ^^^^^^^^^^^^^^^ unresolved import
    |
-note: the constant `FRAGMENT_SHADER_GLSL` is defined here
-  --> src\vulkan_engine\shaders_gen.rs:18:1
+help: a similar path exists
    |
-18 | / const FRAGMENT_SHADER_GLSL: &str = r#"
-19 | |     #version 450
-20 | |     layout(location = 0) in vec2 fragTexCoord;
-...  |
-33 | | "#;
-   | |___^
+63 |     let text_data = crate::layout::text_rasterizer::RasterizedText::new(&extracted_text, 90.0);
+   |                            ++++++++
+help: consider importing this struct through its public re-export
+   |
+ 7 + use crate::RasterizedText;
+   |
+help: if you import `RasterizedText`, refer to it directly
+   |
+63 -     let text_data = crate::text_rasterizer::RasterizedText::new(&extracted_text, 90.0);
+63 +     let text_data = RasterizedText::new(&extracted_text, 90.0);
+   |
+
+error[E0433]: failed to resolve: could not find `ui_gen` in `vulkan_engine`
+   --> src\main.rs:107:54
+    |
+107 |                 let hitboxes = crate::vulkan_engine::ui_gen::get_ui_hitboxes(win_size.width as f32, win_size.height as f32);
+    |                                                      ^^^^^^ could not find `ui_gen` in `vulkan_engine`
+    |
+help: consider importing this module
+    |
+  7 + use crate::ui::ui_gen;
+    |
+help: if you import `ui_gen`, refer to it directly
+    |
+107 -                 let hitboxes = crate::vulkan_engine::ui_gen::get_ui_hitboxes(win_size.width as f32, win_size.height as f32);
+107 +                 let hitboxes = ui_gen::get_ui_hitboxes(win_size.width as f32, win_size.height as f32);
+    |
+
+error[E0433]: failed to resolve: could not find `ui_gen` in `vulkan_engine`
+   --> src\main.rs:115:54
+    |
+115 | ...                   crate::vulkan_engine::ui_gen::UIButton::Close => {
+    |                                             ^^^^^^ could not find `ui_gen` in `vulkan_engine`
+    |
+help: consider importing this enum
+    |
+  7 + use crate::ui::ui_gen::UIButton;
+    |
+help: if you import `UIButton`, refer to it directly
+    |
+115 -                                crate::vulkan_engine::ui_gen::UIButton::Close => {
+115 +                                UIButton::Close => {
+    |
+
+error[E0433]: failed to resolve: could not find `ui_gen` in `vulkan_engine`
+   --> src\main.rs:120:54
+    |
+120 | ...                   crate::vulkan_engine::ui_gen::UIButton::Minimize => {
+    |                                             ^^^^^^ could not find `ui_gen` in `vulkan_engine`
+    |
+help: consider importing this enum
+    |
+  7 + use crate::ui::ui_gen::UIButton;
+    |
+help: if you import `UIButton`, refer to it directly
+    |
+120 -                                crate::vulkan_engine::ui_gen::UIButton::Minimize => {
+120 +                                UIButton::Minimize => {
+    |
+
+error[E0433]: failed to resolve: could not find `ui_gen` in `vulkan_engine`
+   --> src\main.rs:123:54
+    |
+123 | ...                   crate::vulkan_engine::ui_gen::UIButton::Maximize => {
+    |                                             ^^^^^^ could not find `ui_gen` in `vulkan_engine`
+    |
+help: consider importing this enum
+    |
+  7 + use crate::ui::ui_gen::UIButton;
+    |
+help: if you import `UIButton`, refer to it directly
+    |
+123 -                                crate::vulkan_engine::ui_gen::UIButton::Maximize => {
+123 +                                UIButton::Maximize => {
+    |
 
 warning: type `V8_NODISCARD` should have an upper camel case name
     --> src\generated_rust\v8_core.rs:1231:12
@@ -48,11 +115,11 @@ warning: unused import: `ash::vk`
   |
   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
-warning: unused import: `crate::generated_rust::dom_native`
+warning: unused import: `crate::parsers::dom_native`
  --> src\generated_rust\vulkan_painter.rs:3:5
   |
-3 | use crate::generated_rust::dom_native;
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 | use crate::parsers::dom_native;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: unused import: `Instance`
  --> src\generated_rust\vulkan_hardware.rs:2:23
@@ -66,31 +133,17 @@ warning: unused import: `std::ffi::c_void`
 2 | use std::ffi::c_void;
   |     ^^^^^^^^^^^^^^^^
 
-error[E0308]: mismatched types
-  --> src\vulkan_engine\real_renderer.rs:39:34
+warning: unused imports: `HTMLElement` and `HtmlTag`
+  --> src\main.rs:19:30
    |
-39 |   const QUAD_VERTICES: [f32; 16] = [
-   |  ____________________________--____^
-   | |                            |
-   | |                            help: consider specifying the actual array length: `12`
-40 | |     // Triangle 1
-41 | |     -0.5, -0.2, 0.0, 0.0,
-42 | |      0.5, -0.2, 1.0, 0.0,
-...  |
-46 | | ];
-   | |_^ expected an array with a size of 16, found one with a size of 12
+19 | use parsers::html_elements::{HTMLElement, HtmlTag};
+   |                              ^^^^^^^^^^^  ^^^^^^^
 
-error[E0599]: no method named `create_buffer` found for struct `std::sync::MutexGuard<'_, vk_mem::Allocator>` in the current scope
-   --> src\vulkan_engine\real_renderer.rs:139:95
-    |
-139 | ....allocator.lock().unwrap().create_buffer(&v_buffer_info, &v_alloc_info).unwrap();
-    |                               ^^^^^^^^^^^^^ method not found in `std::sync::MutexGuard<'_, vk_mem::Allocator>`
-    |
-    = help: items from traits can only be used if the trait is in scope
-help: trait `Alloc` which provides `create_buffer` is implemented but not in scope; perhaps you want to import it
-    |
-  1 + use vk_mem::Alloc;
-    |
+warning: unused import: `layout::text_rasterizer::RasterizedText`
+  --> src\main.rs:20:5
+   |
+20 | use layout::text_rasterizer::RasterizedText;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: unused variable: `entry`
   --> src\generated_rust\vulkan_context.rs:15:13
@@ -114,7 +167,38 @@ warning: unnecessary `unsafe` block
    |
    = note: `#[warn(unused_unsafe)]` (part of `#[warn(unused)]`) on by default
 
-Some errors have detailed explanations: E0308, E0599, E0603.
-For more information about an error, try `rustc --explain E0308`.
-warning: `no-chromium` (bin "no-chromium") generated 8 warnings
-error: could not compile `no-chromium` (bin "no-chromium") due to 4 previous errors; 8 warnings emitted
+warning: variable does not need to be mutable
+   --> src\vulkan_engine\setup.rs:185:17
+    |
+185 |             let mut surface_resolution = match surface_capabilities.current_extent.width {
+    |                 ----^^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> src\vulkan_engine\real_renderer.rs:339:17
+    |
+339 |             let mut alloc = self.memory_manager.allocator.lock().unwrap();
+    |                 ----^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: unused variable: `extent`
+  --> src\vulkan_engine\pipeline_gen.rs:16:9
+   |
+16 |         extent: vk::Extent2D,
+   |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_extent`
+
+warning: variable does not need to be mutable
+   --> src\parsers\html_lexer.rs:153:13
+    |
+153 |         let mut ch = *self.input.peek().unwrap();
+    |             ----^^
+    |             |
+    |             help: remove this `mut`
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `noir-browser` (bin "noir-browser") generated 14 warnings
+error: could not compile `noir-browser` (bin "noir-browser") due to 6 previous errors; 14 warnings emitted

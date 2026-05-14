@@ -129,9 +129,9 @@ pub enum HtmlTag {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum HtmlToken {
-    StartTag(HtmlTag),
+    OpenTag(HtmlTag, std::collections::HashMap<String, String>),
     EndTag(HtmlTag),
-    Character(String),
+    Text(String),
     Comment(String),
     EOF,
 }
@@ -145,16 +145,47 @@ impl<'a> HtmlLexer<'a> {
         Self { input: input.chars().peekable() }
     }
     
-    // High-speed native parsing loop stub
     pub fn consume_next(&mut self) -> HtmlToken {
         if self.input.peek().is_none() {
             return HtmlToken::EOF;
         }
-        let ch = self.input.next().unwrap();
+        
+        let mut ch = *self.input.peek().unwrap();
         if ch == '<' {
-            HtmlToken::StartTag(HtmlTag::Video) // Simulated for now
+            self.input.next(); // consume '<'
+            let is_closing = if let Some(&'/') = self.input.peek() {
+                self.input.next(); // consume '/'
+                true
+            } else { false };
+            
+            let mut tag_content = String::new();
+            while let Some(c) = self.input.next() {
+                if c == '>' { break; }
+                tag_content.push(c);
+            }
+            
+            // Extremely naive parsing for this specific Module
+            if is_closing {
+                return HtmlToken::EndTag(HtmlTag::Div); // Mock Div
+            } else {
+                let mut attrs = std::collections::HashMap::new();
+                if tag_content.contains("style=") {
+                    // Extract style string roughly
+                    if let Some(start) = tag_content.find("style=\"") {
+                        if let Some(end) = tag_content[start+7..].find('"') {
+                            attrs.insert("style".to_string(), tag_content[start+7..start+7+end].to_string());
+                        }
+                    }
+                }
+                return HtmlToken::OpenTag(HtmlTag::Div, attrs);
+            }
         } else {
-            HtmlToken::Character(ch.to_string())
+            let mut text = String::new();
+            while let Some(&c) = self.input.peek() {
+                if c == '<' { break; }
+                text.push(self.input.next().unwrap());
+            }
+            return HtmlToken::Text(text);
         }
     }
 }

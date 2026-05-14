@@ -79,10 +79,10 @@ impl PipelineManager {
             
         let shader_stages = [vert_shader_stage_info.build(), frag_shader_stage_info.build()];
 
-        // Binding description (vec2 pos, vec2 uv)
+        // Binding description (vec2 pos, vec4 color, vec2 uv)
         let vertex_binding_description = vk::VertexInputBindingDescription::builder()
             .binding(0)
-            .stride(16) // 4 floats * 4 bytes
+            .stride(32) // 8 floats * 4 bytes
             .input_rate(vk::VertexInputRate::VERTEX)
             .build();
             
@@ -96,8 +96,14 @@ impl PipelineManager {
             vk::VertexInputAttributeDescription::builder()
                 .binding(0)
                 .location(1)
-                .format(vk::Format::R32G32_SFLOAT)
+                .format(vk::Format::R32G32B32A32_SFLOAT)
                 .offset(8)
+                .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(2)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(24)
                 .build(),
         ];
 
@@ -109,21 +115,13 @@ impl PipelineManager {
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false);
 
-        let viewport = vk::Viewport::builder()
-            .x(0.0)
-            .y(0.0)
-            .width(extent.width as f32)
-            .height(extent.height as f32)
-            .min_depth(0.0)
-            .max_depth(1.0);
-            
-        let scissor = vk::Rect2D::builder()
-            .offset(vk::Offset2D { x: 0, y: 0 })
-            .extent(extent);
-            
+        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::builder()
+            .dynamic_states(&dynamic_states);
+
         let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
-            .viewports(std::slice::from_ref(&viewport))
-            .scissors(std::slice::from_ref(&scissor));
+            .viewport_count(1)
+            .scissor_count(1);
 
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::builder()
             .depth_clamp_enable(false)
@@ -171,6 +169,7 @@ impl PipelineManager {
             .rasterization_state(&rasterizer)
             .multisample_state(&multisampling)
             .color_blend_state(&color_blending)
+            .dynamic_state(&dynamic_state_info)
             .layout(pipeline_layout)
             .render_pass(render_pass)
             .subpass(0);

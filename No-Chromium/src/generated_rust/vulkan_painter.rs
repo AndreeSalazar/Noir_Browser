@@ -1,6 +1,6 @@
 // AUTO-GENERATED VULKAN PAINTER (ASH)
 use ash::vk;
-use crate::generated_rust::dom_native;
+use crate::parsers::dom_native;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -18,9 +18,9 @@ impl VulkanPainter {
         Self { vertex_buffer: Vec::new() }
     }
 
-    pub fn add_element(&mut self, element: &crate::generated_rust::html_elements::HTMLElement, _style: &crate::generated_rust::css_engine::ComputedStyle) {
+    pub fn add_element(&mut self, element: &crate::parsers::html_elements::HTMLElement, _style: &crate::parsers::css_engine::ComputedStyle) {
         let color = match element.tag {
-            crate::generated_rust::html_elements::HtmlTag::Video => [0.8, 0.1, 0.1], // YouTube Red
+            crate::parsers::html_elements::HtmlTag::Video => [0.8, 0.1, 0.1], // YouTube Red
             _ => [0.1, 0.6, 0.9], // No-Chromium Blue
         };
 
