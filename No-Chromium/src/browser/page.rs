@@ -1,4 +1,5 @@
 use crate::browser::LinkHitbox;
+use crate::media::discovery::{discover_media, MediaReport};
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
@@ -26,6 +27,13 @@ struct TextFragment {
 
 pub struct PageDocument {
     fragments: Vec<TextFragment>,
+    media: MediaReport,
+}
+
+impl PageDocument {
+    pub fn media_summary(&self) -> Option<String> {
+        self.media.summary()
+    }
 }
 
 pub struct PageRender {
@@ -51,9 +59,11 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
         base_url.as_ref(),
     );
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
+    let media = discover_media(&dom, target_url);
+    append_media_summary(&mut fragments, &media);
     normalize_fragments(&mut fragments);
 
-    PageDocument { fragments }
+    PageDocument { fragments, media }
 }
 
 pub fn render_page(
@@ -474,4 +484,22 @@ fn apply_runtime_scripts(
             href: None,
         });
     }
+}
+
+fn append_media_summary(fragments: &mut Vec<TextFragment>, media: &MediaReport) {
+    let Some(summary) = media.summary() else {
+        return;
+    };
+
+    fragments.insert(
+        0,
+        TextFragment {
+            text: summary,
+            px_size: 14.0,
+            is_bold: true,
+            line_height: 20.0,
+            margin_after: 8.0,
+            href: None,
+        },
+    );
 }

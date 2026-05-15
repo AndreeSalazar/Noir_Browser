@@ -1,3 +1,4 @@
+use crate::browser::history::HistoryStore;
 use crate::browser::page::{render_page, PageDocument};
 use crate::parsers::css_engine::ComputedStyle;
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions};
@@ -13,6 +14,7 @@ pub struct BrowserState {
     current_url: String,
     history: Vec<String>,
     history_index: usize,
+    history_store: HistoryStore,
     link_hitboxes: Vec<LinkHitbox>,
     style: ComputedStyle,
     document: Option<PageDocument>,
@@ -27,10 +29,14 @@ impl BrowserState {
         style.width = Some("100%".to_string());
         style.height = Some("100%".to_string());
 
+        let mut history_store = HistoryStore::load();
+        history_store.record_visit(initial_url);
+
         Self {
             current_url: initial_url.to_string(),
             history: vec![initial_url.to_string()],
             history_index: 0,
+            history_store,
             link_hitboxes: Vec::new(),
             style,
             document: None,
@@ -101,6 +107,10 @@ impl BrowserState {
         }
 
         self.document = Some(document);
+        if let Some(summary) = self.document.as_ref().and_then(PageDocument::media_summary) {
+            println!("[Media] {}", summary);
+        }
+        self.history_store.record_visit(&self.current_url);
         self.scroll_offset = 0.0;
         Some(self.render_current_page(text_options, viewport_width, viewport_height))
     }

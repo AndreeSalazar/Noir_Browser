@@ -1,6 +1,7 @@
 mod app;
 mod browser;
 mod layout;
+mod media;
 mod parsers;
 mod render;
 mod runtime;
