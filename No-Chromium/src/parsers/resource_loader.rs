@@ -17,6 +17,7 @@ static CLIENT: OnceLock<Client> = OnceLock::new();
 pub struct ResourceResponse {
     pub requested_url: String,
     pub final_url: String,
+    pub resource_type: ResourceType,
     pub status: u16,
     pub content_type: Option<String>,
     pub body: String,
@@ -29,6 +30,58 @@ pub enum CacheStatus {
     Network,
     Revalidated,
     Fallback,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ResourceType {
+    Document,
+    Style,
+    Script,
+    Media,
+    Image,
+    Other,
+}
+
+impl ResourceType {
+    fn accept_header(self) -> &'static str {
+        match self {
+            ResourceType::Document => {
+                "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5"
+            }
+            ResourceType::Style => "text/css,*/*;q=0.5",
+            ResourceType::Script => {
+                "application/javascript,text/javascript,application/ecmascript,*/*;q=0.5"
+            }
+            ResourceType::Media => {
+                "video/*,audio/*,application/dash+xml,application/vnd.apple.mpegurl,*/*;q=0.5"
+            }
+            ResourceType::Image => {
+                "image/avif,image/webp,image/png,image/jpeg,image/svg+xml,*/*;q=0.5"
+            }
+            ResourceType::Other => "*/*",
+        }
+    }
+
+    fn cache_bucket(self) -> &'static str {
+        match self {
+            ResourceType::Document => "document",
+            ResourceType::Style => "style",
+            ResourceType::Script => "script",
+            ResourceType::Media => "media",
+            ResourceType::Image => "image",
+            ResourceType::Other => "other",
+        }
+    }
+
+    fn is_textual(self) -> bool {
+        matches!(
+            self,
+            ResourceType::Document
+                | ResourceType::Style
+                | ResourceType::Script
+                | ResourceType::Other
+        )
+    }
 }
 
 impl ResourceResponse {
@@ -51,15 +104,29 @@ impl ResourceResponse {
 }
 
 pub fn fetch_document(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
-    let cache_key = cache_key(url);
-    let cached = CachedResource::load(&cache_key);
+    fetch_resource(url, ResourceType::Document)
+}
+
+#[allow(dead_code)]
+pub fn fetch_style(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
+    fetch_resource(url, ResourceType::Style)
+}
+
+#[allow(dead_code)]
+pub fn fetch_script(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
+    fetch_resource(url, ResourceType::Script)
+}
+
+pub fn fetch_resource(
+    url: &str,
+    resource_type: ResourceType,
+) -> Result<ResourceResponse, Box<dyn Error>> {
+    let cache_key = cache_key(url, resource_type);
+    let cached = CachedResource::load(&cache_key, resource_type);
     let mut request = client()
         .get(url)
         .header(USER_AGENT, "No-Chromium/0.1 Sovereign Rust Vulkan Browser")
-        .header(
-            ACCEPT,
-            "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
-        );
+        .header(ACCEPT, resource_type.accept_header());
 
     if let Some(cached) = &cached {
         if let Some(etag) = &cached.etag {
@@ -111,6 +178,7 @@ pub fn fetch_document(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
     let resource = ResourceResponse {
         requested_url: url.to_string(),
         final_url,
+        resource_type,
         status,
         content_type,
         body,
@@ -118,7 +186,7 @@ pub fn fetch_document(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
         cache_status: CacheStatus::Network,
     };
 
-    if resource.is_success() && resource.is_html_like() {
+    if resource.is_success() && resource.resource_type.is_textual() {
         CachedResource::from_response(&resource, etag, last_modified)
             .save(&cache_key, &resource.body);
     }
@@ -130,6 +198,7 @@ pub fn fetch_document(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
 struct CachedResource {
     requested_url: String,
     final_url: String,
+    resource_type: ResourceType,
     status: u16,
     content_type: Option<String>,
     etag: Option<String>,
@@ -148,11 +217,15 @@ impl CachedResource {
         Self {
             requested_url: response.requested_url.clone(),
             final_url: response.final_url.clone(),
+            resource_type: response.resource_type,
             status: response.status,
             content_type: response.content_type.clone(),
             etag,
             last_modified,
-            body_file: format!("{}.body", cache_key(&response.requested_url)),
+            body_file: format!(
+                "{}.body",
+                cache_key(&response.requested_url, response.resource_type)
+            ),
             body_bytes: response.body_bytes,
             stored_unix: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -161,14 +234,14 @@ impl CachedResource {
         }
     }
 
-    fn load(cache_key: &str) -> Option<Self> {
-        let meta_path = cache_dir().join(format!("{cache_key}.json"));
+    fn load(cache_key: &str, resource_type: ResourceType) -> Option<Self> {
+        let meta_path = cache_dir(resource_type).join(format!("{cache_key}.json"));
         let contents = fs::read_to_string(meta_path).ok()?;
         serde_json::from_str(&contents).ok()
     }
 
     fn save(&self, cache_key: &str, body: &str) {
-        let dir = cache_dir();
+        let dir = cache_dir(self.resource_type);
         let _ = fs::create_dir_all(&dir);
 
         let body_path = dir.join(&self.body_file);
@@ -182,10 +255,11 @@ impl CachedResource {
     }
 
     fn to_response(&self, cache_status: CacheStatus) -> Result<ResourceResponse, Box<dyn Error>> {
-        let body = fs::read_to_string(cache_dir().join(&self.body_file))?;
+        let body = fs::read_to_string(cache_dir(self.resource_type).join(&self.body_file))?;
         Ok(ResourceResponse {
             requested_url: self.requested_url.clone(),
             final_url: self.final_url.clone(),
+            resource_type: self.resource_type,
             status: self.status,
             content_type: self.content_type.clone(),
             body_bytes: body.len(),
@@ -195,14 +269,18 @@ impl CachedResource {
     }
 }
 
-fn cache_key(url: &str) -> String {
+fn cache_key(url: &str, resource_type: ResourceType) -> String {
     let mut hasher = DefaultHasher::new();
+    resource_type.hash(&mut hasher);
     url.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
-fn cache_dir() -> PathBuf {
-    PathBuf::from("profile").join("cache").join("resources")
+fn cache_dir(resource_type: ResourceType) -> PathBuf {
+    PathBuf::from("profile")
+        .join("cache")
+        .join("resources")
+        .join(resource_type.cache_bucket())
 }
 
 fn client() -> &'static Client {

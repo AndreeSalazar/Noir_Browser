@@ -2,7 +2,10 @@ use crate::browser::LinkHitbox;
 use crate::media::discovery::{discover_media, MediaReport};
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
-use crate::parsers::resource_loader::{fetch_document, CacheStatus, ResourceResponse};
+use crate::parsers::resource_loader::{
+    fetch_document, CacheStatus, ResourceResponse, ResourceType,
+};
+use crate::parsers::style_collector::collect_stylesheets;
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
 use crate::runtime::{collect_scripts, BrowserRuntime};
 use std::collections::HashMap;
@@ -49,6 +52,7 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
             requested_url: target_url.to_string(),
             final_url: target_url.to_string(),
             status: 0,
+            resource_type: ResourceType::Document,
             content_type: Some("text/html; charset=utf-8".to_string()),
             body_bytes: body.len(),
             body,
@@ -71,6 +75,7 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
         None,
         base_url.as_ref(),
     );
+    append_stylesheet_summary(&dom, &mut fragments, base_url.as_ref());
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
     append_response_summary(&mut fragments, &response);
     let media = discover_media(&dom, &response.final_url);
@@ -94,8 +99,8 @@ fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &Resourc
         .as_deref()
         .unwrap_or("content-type desconocido");
     let mut summary = format!(
-        "HTTP {} / {} bytes / {}",
-        response.status, response.body_bytes, content_type
+        "HTTP {} / {:?} / {} bytes / {}",
+        response.status, response.resource_type, response.body_bytes, content_type
     );
     if response.requested_url != response.final_url {
         summary.push_str(&format!(" / redirigido a {}", response.final_url));
@@ -113,6 +118,40 @@ fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &Resourc
         0,
         TextFragment {
             text: summary,
+            px_size: 13.0,
+            is_bold: true,
+            line_height: 19.0,
+            margin_after: 6.0,
+            href: None,
+        },
+    );
+}
+
+fn append_stylesheet_summary(
+    dom: &[DomNode],
+    fragments: &mut Vec<TextFragment>,
+    base_url: Option<&Url>,
+) {
+    let stylesheets = collect_stylesheets(dom, base_url);
+    if stylesheets.is_empty() {
+        return;
+    }
+
+    let mut loaded = 0usize;
+    for stylesheet in stylesheets.iter().take(16) {
+        if crate::parsers::resource_loader::fetch_style(&stylesheet.url).is_ok() {
+            loaded += 1;
+        }
+    }
+
+    fragments.insert(
+        0,
+        TextFragment {
+            text: format!(
+                "CSS externo detectado: {} hojas / {} precargadas",
+                stylesheets.len(),
+                loaded
+            ),
             px_size: 13.0,
             is_bold: true,
             line_height: 19.0,

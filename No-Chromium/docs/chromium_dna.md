@@ -24,9 +24,13 @@ Fuentes primarias revisadas:
 5. El loader debe poder revalidar.
    Si hay `ETag` o `Last-Modified`, se usan `If-None-Match` y `If-Modified-Since`; si llega `304`, el cuerpo sale del cache local.
 
+6. Los recursos tienen tipo desde el borde de red.
+   `Document`, `Style`, `Script`, `Media`, `Image` y `Other` usan accept headers y buckets de cache separados.
+
 ## Siguiente fase
 
-- ResourceLoader por tipo: Document, Media, Script, Style.
 - Cache con expiracion y control de tamano.
+- Aplicar CSS externo precargado al estilo computado.
+- Scripts externos usando `ResourceType::Script`.
 - Audio backend Rust con `cpal` o `rodio`.
 - Resolver MSE/HLS/DASH para streams modernos.
