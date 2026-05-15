@@ -2,6 +2,7 @@ use crate::browser::LinkHitbox;
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
+use crate::runtime::{collect_scripts, BrowserRuntime};
 use url::Url;
 
 const MAX_VISIBLE_TEXTS: usize = 48;
@@ -27,6 +28,7 @@ pub fn load_page(
 
     let mut fragments = Vec::new();
     extract_text_from_dom(&dom, &mut fragments, 24.0, false, 30.0, 4.0, None, base_url.as_ref());
+    apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
 
     let mut text_requests = Vec::new();
     link_hitboxes.clear();
@@ -179,4 +181,51 @@ fn resolve_url(base_url: Option<&Url>, href: &str) -> Option<String> {
 
 fn normalize_text(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn apply_runtime_scripts(dom: &[DomNode], fragments: &mut Vec<TextFragment>, base_url: Option<&Url>) {
+    let scripts = collect_scripts(dom, base_url);
+    if scripts.is_empty() {
+        return;
+    }
+
+    let report = BrowserRuntime::new().execute_scripts(&scripts);
+    if report.inline_scripts_executed > 0 || !report.external_scripts_seen.is_empty() {
+        println!(
+            "[Runtime] inline={} external={} console={} unsupported={}",
+            report.inline_scripts_executed,
+            report.external_scripts_seen.len(),
+            report.console_messages.len(),
+            report.unsupported_statements.len()
+        );
+    }
+
+    if let Some(title) = report.dom.title {
+        fragments.insert(
+            0,
+            TextFragment {
+                text: normalize_text(&title),
+                px_size: 24.0,
+                is_bold: true,
+                line_height: 32.0,
+                margin_after: 4.0,
+                href: None,
+            },
+        );
+    }
+
+    for text in report.dom.appended_text {
+        if fragments.len() >= MAX_VISIBLE_TEXTS {
+            break;
+        }
+
+        fragments.push(TextFragment {
+            text: normalize_text(&text).chars().take(96).collect(),
+            px_size: 16.0,
+            is_bold: false,
+            line_height: 22.0,
+            margin_after: 6.0,
+            href: None,
+        });
+    }
 }
