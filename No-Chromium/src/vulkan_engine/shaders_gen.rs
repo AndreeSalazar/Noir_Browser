@@ -33,13 +33,15 @@ pub const FRAGMENT_SHADER_GLSL: &str = r#"
     
     void main() {
         if (fragTexCoord.x < 0.0) {
-            outColor = fragColor;
+            outColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
         } else {
-            float coverage = texture(texSampler, fragTexCoord).a;
+            vec4 mask = texture(texSampler, fragTexCoord);
+            float coverage = max(max(mask.r, mask.g), max(mask.b, mask.a));
             if (coverage <= 0.001) {
                 discard;
             }
-            outColor = vec4(fragColor.rgb, fragColor.a * coverage);
+            vec3 rgb = fragColor.rgb * fragColor.a * mask.rgb;
+            outColor = vec4(rgb, fragColor.a * coverage);
         }
     }
 "#;

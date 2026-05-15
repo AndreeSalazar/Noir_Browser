@@ -1,3 +1,3 @@
 pub use crate::layout::text_rasterizer::{
-    RasterizedAtlas, TextQuad, TextRasterizationOptions, TextRequest,
+    RasterizedAtlas, TextBitmapMode, TextQuad, TextRasterizationOptions, TextRequest,
 };

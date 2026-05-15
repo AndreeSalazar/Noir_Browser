@@ -32,8 +32,14 @@ impl QualityProfile {
     }
 
     pub fn text_rasterization_options(self) -> crate::render::text::TextRasterizationOptions {
+        use crate::render::text::TextBitmapMode;
+
         let mut options = crate::render::text::TextRasterizationOptions::sharp_lcd();
         options.oversample = (self.device_pixel_ratio * 3.0).clamp(3.0, 6.0);
+        options.bitmap_mode = match self.text_filtering {
+            TextFiltering::Linear => TextBitmapMode::AlphaMask,
+            TextFiltering::SubpixelLinear => TextBitmapMode::SubpixelMask,
+        };
         options
     }
 }

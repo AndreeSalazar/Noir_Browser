@@ -2,6 +2,7 @@ use fontdue::{
     layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle},
     Font, FontSettings,
 };
+use std::collections::HashMap;
 use std::fs;
 
 const DEFAULT_OVERSAMPLE: f32 = 3.0;
@@ -12,6 +13,13 @@ pub struct TextRasterizationOptions {
     pub oversample: f32,
     pub atlas_padding: u32,
     pub gamma: f32,
+    pub bitmap_mode: TextBitmapMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TextBitmapMode {
+    AlphaMask,
+    SubpixelMask,
 }
 
 impl TextRasterizationOptions {
@@ -20,6 +28,7 @@ impl TextRasterizationOptions {
             oversample: DEFAULT_OVERSAMPLE,
             atlas_padding: DEFAULT_ATLAS_PADDING,
             gamma: 1.15,
+            bitmap_mode: TextBitmapMode::SubpixelMask,
         }
     }
 }
@@ -54,6 +63,13 @@ pub struct RasterizedAtlas {
     pub quads: Vec<TextQuad>,
 }
 
+#[derive(Clone)]
+struct CachedGlyph {
+    width: usize,
+    height: usize,
+    rgba: Vec<u8>,
+}
+
 impl RasterizedAtlas {
     #[allow(dead_code)]
     pub fn new(requests: &[TextRequest]) -> Self {
@@ -82,10 +98,20 @@ impl RasterizedAtlas {
         struct PreRaster {
             width: u32,
             height: u32,
-            buffer: Vec<u8>, // alpha
+            rgba: Vec<u8>,
             screen_x: f32,
             screen_y: f32,
             color: [f32; 4],
+        }
+
+        #[derive(Hash, PartialEq, Eq)]
+        struct GlyphCacheKey {
+            font_slot: u8,
+            glyph_index: u16,
+            px_milli: u32,
+            oversample: u32,
+            gamma_milli: u32,
+            bitmap_mode: TextBitmapMode,
         }
 
         struct PositionedGlyph {
@@ -93,16 +119,17 @@ impl RasterizedAtlas {
             y: f32,
             width: usize,
             height: usize,
-            bitmap: Vec<u8>,
+            rgba: Vec<u8>,
         }
 
+        let mut glyph_cache: HashMap<GlyphCacheKey, CachedGlyph> = HashMap::new();
         let mut pre_rasters = Vec::new();
         let mut max_atlas_w: u32 = 0;
         let mut total_atlas_h: u32 = 2; // 2px padding top
 
         for req in requests {
             let scale = options.oversample.max(1.0).round() as usize;
-            let scale_f = scale as f32;
+            let font_slot = if req.is_bold { 1 } else { 0 };
             let active_font = if req.is_bold { &font_bold } else { &font_reg };
 
             let fonts = [active_font];
@@ -121,37 +148,40 @@ impl RasterizedAtlas {
             let mut max_y = f32::MIN;
 
             for glyph in layout.glyphs() {
-                let (metrics_hi, bitmap_hi) =
-                    active_font.rasterize_indexed(glyph.key.glyph_index, req.px_size * scale_f);
-                if metrics_hi.width == 0 || metrics_hi.height == 0 {
+                let cache_key = GlyphCacheKey {
+                    font_slot,
+                    glyph_index: glyph.key.glyph_index,
+                    px_milli: (req.px_size * 1000.0).round() as u32,
+                    oversample: scale as u32,
+                    gamma_milli: (options.gamma * 1000.0).round() as u32,
+                    bitmap_mode: options.bitmap_mode,
+                };
+
+                let cached = if let Some(cached) = glyph_cache.get(&cache_key) {
+                    cached.clone()
+                } else {
+                    let cached = rasterize_glyph(active_font, glyph.key.glyph_index, req.px_size, scale, options);
+                    glyph_cache.insert(cache_key, cached.clone());
+                    cached
+                };
+
+                if cached.width == 0 || cached.height == 0 {
                     continue;
                 }
-
-                let width = (metrics_hi.width as f32 / scale_f).ceil() as usize;
-                let height = (metrics_hi.height as f32 / scale_f).ceil() as usize;
-                let bitmap = downsample_coverage(
-                    &bitmap_hi,
-                    metrics_hi.width,
-                    metrics_hi.height,
-                    width,
-                    height,
-                    scale,
-                    options.gamma,
-                );
 
                 let x = glyph.x;
                 let y = glyph.y;
                 min_x = min_x.min(x);
                 min_y = min_y.min(y);
-                max_x = max_x.max(x + width as f32);
-                max_y = max_y.max(y + height as f32);
+                max_x = max_x.max(x + cached.width as f32);
+                max_y = max_y.max(y + cached.height as f32);
 
                 positioned_glyphs.push(PositionedGlyph {
                     x,
                     y,
-                    width,
-                    height,
-                    bitmap,
+                    width: cached.width,
+                    height: cached.height,
+                    rgba: cached.rgba,
                 });
             }
 
@@ -165,7 +195,7 @@ impl RasterizedAtlas {
             let padded_w = content_w + padding * 2;
             let padded_h = content_h + padding * 2;
 
-            let mut line_buffer = vec![0u8; (padded_w * padded_h) as usize];
+            let mut line_rgba = vec![0u8; (padded_w * padded_h * 4) as usize];
             for glyph in positioned_glyphs {
                 let glyph_x = (padding as f32 + glyph.x - min_x).round().max(0.0) as u32;
                 let glyph_y = (padding as f32 + glyph.y - min_y).round().max(0.0) as u32;
@@ -177,9 +207,12 @@ impl RasterizedAtlas {
                         if global_x >= padded_w || global_y >= padded_h {
                             continue;
                         }
-                        let idx = (global_y * padded_w + global_x) as usize;
-                        let alpha = glyph.bitmap[y * glyph.width + x];
-                        line_buffer[idx] = std::cmp::max(line_buffer[idx], alpha);
+                        let dst_idx = ((global_y * padded_w + global_x) as usize) * 4;
+                        let src_idx = (y * glyph.width + x) * 4;
+                        line_rgba[dst_idx] = line_rgba[dst_idx].max(glyph.rgba[src_idx]);
+                        line_rgba[dst_idx + 1] = line_rgba[dst_idx + 1].max(glyph.rgba[src_idx + 1]);
+                        line_rgba[dst_idx + 2] = line_rgba[dst_idx + 2].max(glyph.rgba[src_idx + 2]);
+                        line_rgba[dst_idx + 3] = line_rgba[dst_idx + 3].max(glyph.rgba[src_idx + 3]);
                     }
                 }
             }
@@ -191,7 +224,7 @@ impl RasterizedAtlas {
             pre_rasters.push(PreRaster {
                 width: padded_w,
                 height: padded_h,
-                buffer: line_buffer,
+                rgba: line_rgba,
                 screen_x: req.pos_x - padding as f32,
                 screen_y: req.pos_y - padding as f32,
                 color: req.color,
@@ -218,12 +251,13 @@ impl RasterizedAtlas {
 
             for y in 0..pr.height {
                 for x in 0..pr.width {
-                    let a = pr.buffer[(y * pr.width + x) as usize];
+                    let src_idx = ((y * pr.width + x) as usize) * 4;
+                    let a = pr.rgba[src_idx + 3];
                     if a > 0 {
                         let idx = ((py + y) * max_atlas_w + (px + x)) as usize * 4;
-                        rgba_data[idx] = 255;
-                        rgba_data[idx + 1] = 255;
-                        rgba_data[idx + 2] = 255;
+                        rgba_data[idx] = pr.rgba[src_idx];
+                        rgba_data[idx + 1] = pr.rgba[src_idx + 1];
+                        rgba_data[idx + 2] = pr.rgba[src_idx + 2];
                         rgba_data[idx + 3] = a;
                     }
                 }
@@ -253,6 +287,67 @@ impl RasterizedAtlas {
             quads,
         }
     }
+}
+
+fn rasterize_glyph(
+    font: &Font,
+    glyph_index: u16,
+    px_size: f32,
+    scale: usize,
+    options: TextRasterizationOptions,
+) -> CachedGlyph {
+    let scale_f = scale as f32;
+    match options.bitmap_mode {
+        TextBitmapMode::AlphaMask => {
+            let (metrics_hi, bitmap_hi) = font.rasterize_indexed(glyph_index, px_size * scale_f);
+            let width = (metrics_hi.width as f32 / scale_f).ceil() as usize;
+            let height = (metrics_hi.height as f32 / scale_f).ceil() as usize;
+            let alpha = downsample_coverage(
+                &bitmap_hi,
+                metrics_hi.width,
+                metrics_hi.height,
+                width,
+                height,
+                scale,
+                options.gamma,
+            );
+            CachedGlyph {
+                width,
+                height,
+                rgba: alpha_to_rgba(&alpha),
+            }
+        }
+        TextBitmapMode::SubpixelMask => {
+            let (metrics_hi, bitmap_hi) = font.rasterize_indexed_subpixel(glyph_index, px_size * scale_f);
+            let width = (metrics_hi.width as f32 / scale_f).ceil() as usize;
+            let height = (metrics_hi.height as f32 / scale_f).ceil() as usize;
+            CachedGlyph {
+                width,
+                height,
+                rgba: downsample_lcd_coverage(
+                    &bitmap_hi,
+                    metrics_hi.width,
+                    metrics_hi.height,
+                    width,
+                    height,
+                    scale,
+                    options.gamma,
+                ),
+            }
+        }
+    }
+}
+
+fn alpha_to_rgba(alpha: &[u8]) -> Vec<u8> {
+    let mut rgba = vec![0u8; alpha.len() * 4];
+    for (i, a) in alpha.iter().copied().enumerate() {
+        let idx = i * 4;
+        rgba[idx] = a;
+        rgba[idx + 1] = a;
+        rgba[idx + 2] = a;
+        rgba[idx + 3] = a;
+    }
+    rgba
 }
 
 fn downsample_coverage(
@@ -285,6 +380,52 @@ fn downsample_coverage(
             dst[dy * dst_w + dx] = (coverage.powf(1.0 / gamma) * 255.0).round() as u8;
         }
     }
+    dst
+}
+
+fn downsample_lcd_coverage(
+    src: &[u8],
+    src_w: usize,
+    src_h: usize,
+    dst_w: usize,
+    dst_h: usize,
+    scale: usize,
+    gamma: f32,
+) -> Vec<u8> {
+    let mut dst = vec![0u8; dst_w * dst_h * 4];
+    let src_stride = src_w * 3;
+
+    for dy in 0..dst_h {
+        for dx in 0..dst_w {
+            let mut rgb = [0u32; 3];
+            let mut count = 0u32;
+
+            for sy in 0..scale {
+                for sx in 0..scale {
+                    let src_x = dx * scale + sx;
+                    let src_y = dy * scale + sy;
+                    if src_x < src_w && src_y < src_h {
+                        let src_idx = src_y * src_stride + src_x * 3;
+                        rgb[0] += src[src_idx] as u32;
+                        rgb[1] += src[src_idx + 1] as u32;
+                        rgb[2] += src[src_idx + 2] as u32;
+                        count += 1;
+                    }
+                }
+            }
+
+            let idx = (dy * dst_w + dx) * 4;
+            let mut max_channel = 0u8;
+            for channel in 0..3 {
+                let coverage = (rgb[channel] as f32 / count.max(1) as f32) / 255.0;
+                let value = (coverage.powf(1.0 / gamma) * 255.0).round() as u8;
+                dst[idx + channel] = value;
+                max_channel = max_channel.max(value);
+            }
+            dst[idx + 3] = max_channel;
+        }
+    }
+
     dst
 }
 

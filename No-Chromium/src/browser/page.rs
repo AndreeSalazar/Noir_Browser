@@ -2,6 +2,9 @@ use crate::browser::LinkHitbox;
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
+use url::Url;
+
+const MAX_VISIBLE_TEXTS: usize = 48;
 
 struct TextFragment {
     text: String,
@@ -20,9 +23,10 @@ pub fn load_page(
     let html = crate::parsers::http_client::fetch_html(target_url)
         .unwrap_or_else(|_| "<h1>Network Error</h1>".to_string());
     let dom = crate::parsers::dom_tree::parse_html(&html);
+    let base_url = Url::parse(target_url).ok();
 
     let mut fragments = Vec::new();
-    extract_text_from_dom(&dom, &mut fragments, 24.0, false, 30.0, 4.0, None);
+    extract_text_from_dom(&dom, &mut fragments, 24.0, false, 30.0, 4.0, None, base_url.as_ref());
 
     let mut text_requests = Vec::new();
     link_hitboxes.clear();
@@ -74,9 +78,10 @@ fn extract_text_from_dom(
     current_line_height: f32,
     current_margin_after: f32,
     current_href: Option<String>,
+    base_url: Option<&Url>,
 ) {
     for node in nodes {
-        if out.len() >= 4 {
+        if out.len() >= MAX_VISIBLE_TEXTS {
             break;
         }
 
@@ -127,12 +132,7 @@ fn extract_text_from_dom(
                         line_height = 20.0;
                         margin_after = 4.0;
                         if let Some(href) = attributes.get("href") {
-                            let absolute_url = if href.starts_with('/') {
-                                format!("https://example.com{}", href)
-                            } else {
-                                href.clone()
-                            };
-                            new_href = Some(absolute_url);
+                            new_href = resolve_url(base_url, href);
                         }
                     }
                     _ => {}
@@ -146,13 +146,14 @@ fn extract_text_from_dom(
                     line_height,
                     margin_after,
                     new_href,
+                    base_url,
                 );
             }
             DomNode::Text(t) => {
                 let trimmed = t.trim();
                 if trimmed.len() > 2 {
                     out.push(TextFragment {
-                        text: trimmed.chars().take(40).collect(),
+                        text: normalize_text(trimmed).chars().take(96).collect(),
                         px_size: current_size,
                         is_bold: current_bold,
                         line_height: current_line_height,
@@ -163,4 +164,19 @@ fn extract_text_from_dom(
             }
         }
     }
+}
+
+fn resolve_url(base_url: Option<&Url>, href: &str) -> Option<String> {
+    if href.starts_with('#') || href.starts_with("javascript:") || href.starts_with("mailto:") {
+        return None;
+    }
+
+    match base_url {
+        Some(base) => base.join(href).ok().map(|url| url.to_string()),
+        None => Some(href.to_string()),
+    }
+}
+
+fn normalize_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }

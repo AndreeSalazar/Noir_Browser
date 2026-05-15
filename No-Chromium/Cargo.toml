@@ -17,3 +17,4 @@ vk-mem = "0.3.0"
 html5ever = "0.39.0"
 markup5ever_rcdom = "0.39.0"
 reqwest = { version = "0.13.3", features = ["blocking", "rustls"] }
+url = "2.5"
