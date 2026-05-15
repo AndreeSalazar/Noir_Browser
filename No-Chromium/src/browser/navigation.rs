@@ -11,6 +11,8 @@ pub struct LinkHitbox {
 
 pub struct BrowserState {
     current_url: String,
+    history: Vec<String>,
+    history_index: usize,
     link_hitboxes: Vec<LinkHitbox>,
     style: ComputedStyle,
     document: Option<PageDocument>,
@@ -27,6 +29,8 @@ impl BrowserState {
 
         Self {
             current_url: initial_url.to_string(),
+            history: vec![initial_url.to_string()],
+            history_index: 0,
             link_hitboxes: Vec::new(),
             style,
             document: None,
@@ -45,6 +49,43 @@ impl BrowserState {
         self.scroll_offset = 0.0;
         self.content_height = 0.0;
         self.link_hitboxes.clear();
+    }
+
+    pub fn navigate_new(&mut self, url: &str) {
+        if self.history.get(self.history_index).map(String::as_str) != Some(url) {
+            self.history.truncate(self.history_index + 1);
+            self.history.push(url.to_string());
+            self.history_index = self.history.len() - 1;
+        }
+        self.set_pending_url(url);
+    }
+
+    pub fn reload(&mut self) -> String {
+        let url = self.current_url.clone();
+        self.set_pending_url(&url);
+        url
+    }
+
+    pub fn go_back(&mut self) -> Option<String> {
+        if self.history_index == 0 {
+            return None;
+        }
+
+        self.history_index -= 1;
+        let url = self.history[self.history_index].clone();
+        self.set_pending_url(&url);
+        Some(url)
+    }
+
+    pub fn go_forward(&mut self) -> Option<String> {
+        if self.history_index + 1 >= self.history.len() {
+            return None;
+        }
+
+        self.history_index += 1;
+        let url = self.history[self.history_index].clone();
+        self.set_pending_url(&url);
+        Some(url)
     }
 
     pub fn accept_loaded_document(
@@ -92,6 +133,27 @@ impl BrowserState {
         let max_scroll = (self.content_height - viewport_height).max(0.0);
         self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
         Some(self.render_current_page(text_options, viewport_width, viewport_height))
+    }
+
+    pub fn rerender_with_address(
+        &mut self,
+        address_text: &str,
+        text_options: TextRasterizationOptions,
+        viewport_width: f32,
+        viewport_height: f32,
+    ) -> Option<RasterizedAtlas> {
+        let document = self.document.as_ref()?;
+        let rendered = render_page(
+            address_text,
+            document,
+            &mut self.link_hitboxes,
+            text_options,
+            viewport_width,
+            viewport_height,
+            self.scroll_offset,
+        );
+        self.content_height = rendered.content_height;
+        Some(rendered.atlas)
     }
 
     pub fn link_at_y(&self, y: f32) -> Option<String> {

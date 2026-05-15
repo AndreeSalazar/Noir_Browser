@@ -69,7 +69,7 @@ pub fn render_page(
     link_hitboxes.clear();
 
     text_requests.push(TextRequest {
-        text: target_url.to_string(),
+        text: compact_url_text(target_url, viewport_width),
         px_size: 16.0,
         is_bold: false,
         pos_x: URL_TEXT_X,
@@ -127,6 +127,26 @@ pub fn render_page(
         atlas: RasterizedAtlas::with_options(&text_requests, text_options),
         content_height,
     }
+}
+
+fn compact_url_text(url: &str, viewport_width: f32) -> String {
+    let max_chars = ((viewport_width - 250.0).max(160.0) / 8.5) as usize;
+    if url.chars().count() <= max_chars {
+        return url.to_string();
+    }
+
+    let keep_start = (max_chars / 2).saturating_sub(2).max(12);
+    let keep_end = max_chars.saturating_sub(keep_start + 3).max(8);
+    let start: String = url.chars().take(keep_start).collect();
+    let end: String = url
+        .chars()
+        .rev()
+        .take(keep_end)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{start}...{end}")
 }
 
 fn extract_text_from_dom(

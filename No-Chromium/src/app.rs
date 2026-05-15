@@ -1,5 +1,7 @@
 use winit::{
-    event::{Event, MouseScrollDelta, StartCause, WindowEvent},
+    event::{
+        ElementState, Event, MouseButton, MouseScrollDelta, StartCause, VirtualKeyCode, WindowEvent,
+    },
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
     window::{Window, WindowBuilder},
 };
@@ -35,6 +37,8 @@ pub fn run() {
     let mut vk_ctx: Option<VulkanContext> = None;
     let mut renderer: Option<RealRenderer> = None;
     let mut cursor_pos = winit::dpi::PhysicalPosition::new(0.0, 0.0);
+    let mut address_focused = false;
+    let mut address_input = INITIAL_URL.to_string();
     let event_proxy = event_loop.create_proxy();
     spawn_page_load(event_proxy.clone(), INITIAL_URL.to_string());
     window.request_redraw();
@@ -62,11 +66,15 @@ pub fn run() {
                     win_size.width as f32,
                     win_size.height as f32,
                 ) {
-                    if let (Some(ctx), Some(r)) = (vk_ctx.as_ref(), renderer.as_mut()) {
-                        r.update_text_atlas(ctx, new_atlas);
-                    } else {
-                        pending_atlas = Some(new_atlas);
+                    if !address_focused {
+                        address_input = browser.current_url().to_string();
                     }
+                    apply_atlas(
+                        &mut renderer,
+                        &mut pending_atlas,
+                        vk_ctx.as_ref(),
+                        new_atlas,
+                    );
                     window.request_redraw();
                 }
             }
@@ -81,6 +89,74 @@ pub fn run() {
                 ..
             } => {
                 cursor_pos = position;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter(ch),
+                ..
+            } => {
+                if address_focused && !ch.is_control() {
+                    address_input.push(ch);
+                    update_address_preview(
+                        &mut browser,
+                        &mut renderer,
+                        &mut pending_atlas,
+                        vk_ctx.as_ref(),
+                        &window,
+                        quality,
+                        &address_input,
+                    );
+                }
+            }
+            Event::WindowEvent {
+                event: WindowEvent::KeyboardInput { input, .. },
+                ..
+            } => {
+                if address_focused && input.state == ElementState::Pressed {
+                    match input.virtual_keycode {
+                        Some(VirtualKeyCode::Back) => {
+                            address_input.pop();
+                            update_address_preview(
+                                &mut browser,
+                                &mut renderer,
+                                &mut pending_atlas,
+                                vk_ctx.as_ref(),
+                                &window,
+                                quality,
+                                &address_input,
+                            );
+                        }
+                        Some(VirtualKeyCode::Return) => {
+                            if let Some(url) = normalize_address_input(&address_input) {
+                                address_focused = false;
+                                address_input = url.clone();
+                                begin_navigation(
+                                    &mut browser,
+                                    &event_proxy,
+                                    &mut renderer,
+                                    &mut pending_atlas,
+                                    vk_ctx.as_ref(),
+                                    &window,
+                                    quality,
+                                    &url,
+                                );
+                            }
+                        }
+                        Some(VirtualKeyCode::Escape) => {
+                            address_focused = false;
+                            address_input = browser.current_url().to_string();
+                            update_address_preview(
+                                &mut browser,
+                                &mut renderer,
+                                &mut pending_atlas,
+                                vk_ctx.as_ref(),
+                                &window,
+                                quality,
+                                &address_input,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(new_size),
@@ -101,7 +177,11 @@ pub fn run() {
                         new_size.height as f32,
                     )
                     .unwrap_or_else(|| {
-                        loading_atlas(browser.current_url(), quality.text_rasterization_options())
+                        loading_atlas(
+                            browser.current_url(),
+                            quality.text_rasterization_options(),
+                            new_size.width as f32,
+                        )
                     });
                 renderer = Some(RealRenderer::new(ctx, new_atlas, quality));
             }
@@ -121,19 +201,20 @@ pub fn run() {
                     win_size.width as f32,
                     win_size.height as f32,
                 ) {
-                    if let (Some(ctx), Some(r)) = (vk_ctx.as_ref(), renderer.as_mut()) {
-                        r.update_text_atlas(ctx, new_atlas);
-                    } else {
-                        pending_atlas = Some(new_atlas);
-                    }
+                    apply_atlas(
+                        &mut renderer,
+                        &mut pending_atlas,
+                        vk_ctx.as_ref(),
+                        new_atlas,
+                    );
                     window.request_redraw();
                 }
             }
             Event::WindowEvent {
                 event:
                     WindowEvent::MouseInput {
-                        state: winit::event::ElementState::Pressed,
-                        button: winit::event::MouseButton::Left,
+                        state: ElementState::Pressed,
+                        button: MouseButton::Left,
                         ..
                     },
                 ..
@@ -153,6 +234,77 @@ pub fn run() {
                     {
                         hit_button = true;
                         match hb.button {
+                            crate::ui::ui_gen::UIButton::Back => {
+                                address_focused = false;
+                                if let Some(url) = browser.go_back() {
+                                    address_input = url.clone();
+                                    begin_pending_load(
+                                        &event_proxy,
+                                        &mut renderer,
+                                        &mut pending_atlas,
+                                        vk_ctx.as_ref(),
+                                        &window,
+                                        quality,
+                                        &url,
+                                    );
+                                }
+                            }
+                            crate::ui::ui_gen::UIButton::Forward => {
+                                address_focused = false;
+                                if let Some(url) = browser.go_forward() {
+                                    address_input = url.clone();
+                                    begin_pending_load(
+                                        &event_proxy,
+                                        &mut renderer,
+                                        &mut pending_atlas,
+                                        vk_ctx.as_ref(),
+                                        &window,
+                                        quality,
+                                        &url,
+                                    );
+                                }
+                            }
+                            crate::ui::ui_gen::UIButton::Reload => {
+                                address_focused = false;
+                                let url = browser.reload();
+                                address_input = url.clone();
+                                begin_pending_load(
+                                    &event_proxy,
+                                    &mut renderer,
+                                    &mut pending_atlas,
+                                    vk_ctx.as_ref(),
+                                    &window,
+                                    quality,
+                                    &url,
+                                );
+                            }
+                            crate::ui::ui_gen::UIButton::Home => {
+                                address_focused = false;
+                                address_input = INITIAL_URL.to_string();
+                                begin_navigation(
+                                    &mut browser,
+                                    &event_proxy,
+                                    &mut renderer,
+                                    &mut pending_atlas,
+                                    vk_ctx.as_ref(),
+                                    &window,
+                                    quality,
+                                    INITIAL_URL,
+                                );
+                            }
+                            crate::ui::ui_gen::UIButton::AddressBar => {
+                                address_focused = true;
+                                address_input = browser.current_url().to_string();
+                                update_address_preview(
+                                    &mut browser,
+                                    &mut renderer,
+                                    &mut pending_atlas,
+                                    vk_ctx.as_ref(),
+                                    &window,
+                                    quality,
+                                    &address_input,
+                                );
+                            }
                             crate::ui::ui_gen::UIButton::Close => {
                                 shutdown(&mut renderer, &mut vk_ctx, control_flow);
                             }
@@ -169,19 +321,20 @@ pub fn run() {
                 }
 
                 if !hit_button {
+                    address_focused = false;
                     if let Some(url) = browser.link_at_y(cursor_pos.y as f32) {
                         println!("[Browser] Navigating to {}", url);
-                        browser.set_pending_url(&url);
-                        let loading = loading_atlas(&url, quality.text_rasterization_options());
-
-                        if let (Some(ctx), Some(r)) = (vk_ctx.as_ref(), renderer.as_mut()) {
-                            r.update_text_atlas(ctx, loading);
-                        } else {
-                            pending_atlas = Some(loading);
-                        }
-
-                        spawn_page_load(event_proxy.clone(), url);
-                        window.request_redraw();
+                        address_input = url.clone();
+                        begin_navigation(
+                            &mut browser,
+                            &event_proxy,
+                            &mut renderer,
+                            &mut pending_atlas,
+                            vk_ctx.as_ref(),
+                            &window,
+                            quality,
+                            &url,
+                        );
                     } else if cursor_pos.y < 40.0 {
                         let _ = window.drag_window();
                     }
@@ -215,9 +368,13 @@ fn ensure_gpu_ready(
         return;
     }
 
-    let atlas = pending_atlas
-        .take()
-        .unwrap_or_else(|| loading_atlas(current_url, quality.text_rasterization_options()));
+    let atlas = pending_atlas.take().unwrap_or_else(|| {
+        loading_atlas(
+            current_url,
+            quality.text_rasterization_options(),
+            window.inner_size().width as f32,
+        )
+    });
     let ctx = VulkanContext::new(window);
     let r = RealRenderer::new(&ctx, atlas, quality);
     *vk_ctx = Some(ctx);
@@ -232,14 +389,90 @@ fn spawn_page_load(proxy: EventLoopProxy<BrowserEvent>, url: String) {
     });
 }
 
+fn begin_navigation(
+    browser: &mut BrowserState,
+    proxy: &EventLoopProxy<BrowserEvent>,
+    renderer: &mut Option<RealRenderer>,
+    pending_atlas: &mut Option<RasterizedAtlas>,
+    vk_ctx: Option<&VulkanContext>,
+    window: &Window,
+    quality: QualityProfile,
+    url: &str,
+) {
+    browser.navigate_new(url);
+    begin_pending_load(proxy, renderer, pending_atlas, vk_ctx, window, quality, url);
+}
+
+fn begin_pending_load(
+    proxy: &EventLoopProxy<BrowserEvent>,
+    renderer: &mut Option<RealRenderer>,
+    pending_atlas: &mut Option<RasterizedAtlas>,
+    vk_ctx: Option<&VulkanContext>,
+    window: &Window,
+    quality: QualityProfile,
+    url: &str,
+) {
+    let win_size = window.inner_size();
+    let loading = loading_atlas(
+        url,
+        quality.text_rasterization_options(),
+        win_size.width as f32,
+    );
+    apply_atlas(renderer, pending_atlas, vk_ctx, loading);
+    spawn_page_load(proxy.clone(), url.to_string());
+    window.request_redraw();
+}
+
+fn update_address_preview(
+    browser: &mut BrowserState,
+    renderer: &mut Option<RealRenderer>,
+    pending_atlas: &mut Option<RasterizedAtlas>,
+    vk_ctx: Option<&VulkanContext>,
+    window: &Window,
+    quality: QualityProfile,
+    address_text: &str,
+) {
+    let win_size = window.inner_size();
+    let atlas = browser
+        .rerender_with_address(
+            address_text,
+            quality.text_rasterization_options(),
+            win_size.width as f32,
+            win_size.height as f32,
+        )
+        .unwrap_or_else(|| {
+            loading_atlas(
+                address_text,
+                quality.text_rasterization_options(),
+                win_size.width as f32,
+            )
+        });
+    apply_atlas(renderer, pending_atlas, vk_ctx, atlas);
+    window.request_redraw();
+}
+
+fn apply_atlas(
+    renderer: &mut Option<RealRenderer>,
+    pending_atlas: &mut Option<RasterizedAtlas>,
+    vk_ctx: Option<&VulkanContext>,
+    atlas: RasterizedAtlas,
+) {
+    if let (Some(ctx), Some(r)) = (vk_ctx, renderer.as_mut()) {
+        r.update_text_atlas(ctx, atlas);
+    } else {
+        *pending_atlas = Some(atlas);
+    }
+}
+
 fn loading_atlas(
     url: &str,
     text_options: crate::render::text::TextRasterizationOptions,
+    viewport_width: f32,
 ) -> RasterizedAtlas {
     RasterizedAtlas::with_options(
         &[
             TextRequest {
-                text: url.to_string(),
+                text: compact_url_text(url, viewport_width),
                 px_size: 16.0,
                 is_bold: false,
                 pos_x: 202.0,
@@ -257,6 +490,66 @@ fn loading_atlas(
         ],
         text_options,
     )
+}
+
+fn normalize_address_input(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Some(trimmed.to_string());
+    }
+
+    if trimmed.contains('.') && !trimmed.contains(' ') {
+        return Some(format!("https://{trimmed}"));
+    }
+
+    Some(format!(
+        "https://duckduckgo.com/?q={}",
+        encode_search_query(trimmed)
+    ))
+}
+
+fn encode_search_query(input: &str) -> String {
+    input
+        .bytes()
+        .flat_map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                vec![byte as char]
+            }
+            b' ' => vec!['+'],
+            _ => {
+                let hex = b"0123456789ABCDEF";
+                vec![
+                    '%',
+                    hex[(byte >> 4) as usize] as char,
+                    hex[(byte & 0x0F) as usize] as char,
+                ]
+            }
+        })
+        .collect()
+}
+
+fn compact_url_text(url: &str, viewport_width: f32) -> String {
+    let max_chars = ((viewport_width - 250.0).max(160.0) / 8.5) as usize;
+    if url.chars().count() <= max_chars {
+        return url.to_string();
+    }
+
+    let keep_start = (max_chars / 2).saturating_sub(2).max(12);
+    let keep_end = max_chars.saturating_sub(keep_start + 3).max(8);
+    let start: String = url.chars().take(keep_start).collect();
+    let end: String = url
+        .chars()
+        .rev()
+        .take(keep_end)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{start}...{end}")
 }
 
 fn shutdown(

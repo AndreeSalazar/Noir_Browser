@@ -39,6 +39,11 @@ impl UIVertex {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UIButton {
+    Back,
+    Forward,
+    Reload,
+    Home,
+    AddressBar,
     Close,
     Minimize,
     Maximize,
@@ -55,6 +60,41 @@ pub struct UIBoundingBox {
 
 pub fn get_ui_hitboxes(width: f32, _height: f32) -> Vec<UIBoundingBox> {
     vec![
+        UIBoundingBox {
+            button: UIButton::Back,
+            x_min: 12.0,
+            x_max: 42.0,
+            y_min: 43.0,
+            y_max: 65.0,
+        },
+        UIBoundingBox {
+            button: UIButton::Forward,
+            x_min: 48.0,
+            x_max: 78.0,
+            y_min: 43.0,
+            y_max: 65.0,
+        },
+        UIBoundingBox {
+            button: UIButton::Reload,
+            x_min: 84.0,
+            x_max: 114.0,
+            y_min: 43.0,
+            y_max: 65.0,
+        },
+        UIBoundingBox {
+            button: UIButton::Home,
+            x_min: 120.0,
+            x_max: 150.0,
+            y_min: 43.0,
+            y_max: 65.0,
+        },
+        UIBoundingBox {
+            button: UIButton::AddressBar,
+            x_min: 168.0,
+            x_max: (width - 150.0).max(288.0),
+            y_min: 43.0,
+            y_max: 65.0,
+        },
         UIBoundingBox {
             button: UIButton::Close,
             x_min: width - 46.0,
@@ -236,6 +276,7 @@ fn push_window_button(raw: &mut Vec<f32>, width: f32, height: f32, x: f32, butto
         UIButton::Close => ((0.930, 0.220, 0.250, 1.0), (1.0, 1.0, 1.0, 1.0)),
         UIButton::Maximize => ((0.155, 0.164, 0.225, 1.0), (0.760, 0.800, 0.900, 1.0)),
         UIButton::Minimize => ((0.130, 0.138, 0.190, 1.0), (0.760, 0.800, 0.900, 1.0)),
+        _ => ((0.130, 0.138, 0.190, 1.0), (0.760, 0.800, 0.900, 1.0)),
     };
     push_quad_px(raw, width, height, x, 0.0, 46.0, 36.0, bg);
     match button {
@@ -252,6 +293,7 @@ fn push_window_button(raw: &mut Vec<f32>, width: f32, height: f32, x: f32, butto
         UIButton::Minimize => {
             push_line_px(raw, width, height, x + 16.0, 21.0, x + 30.0, 21.0, 2.0, fg);
         }
+        _ => {}
     }
 }
 
