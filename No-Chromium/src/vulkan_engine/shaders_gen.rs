@@ -12,7 +12,11 @@ pub const VERTEX_SHADER_GLSL: &str = r#"
     layout(location = 1) out vec2 fragTexCoord;
     
     void main() {
-        gl_Position = vec4(inPosition, 0.0, 1.0);
+        if (inPosition.x < -1.0 || inPosition.x > 1.0 || inPosition.y < -1.0 || inPosition.y > 1.0) {
+            gl_Position = vec4(-10.0, -10.0, -10.0, 1.0);
+        } else {
+            gl_Position = vec4(inPosition, 0.0, 1.0);
+        }
         fragColor = inColor;
         fragTexCoord = inTexCoord;
     }
@@ -33,7 +37,7 @@ pub const FRAGMENT_SHADER_GLSL: &str = r#"
         } else {
             float dist = texture(texSampler, fragTexCoord).a;
             float smoothing = fwidth(dist);
-            float alpha = smoothstep(0.5 - smoothing, 0.5 + smoothing, dist);
+            float alpha = smoothstep(0.48 - smoothing, 0.52 + smoothing, dist);
             outColor = vec4(fragColor.rgb, fragColor.a * alpha);
         }
     }

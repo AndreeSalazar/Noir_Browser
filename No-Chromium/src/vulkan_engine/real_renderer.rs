@@ -194,7 +194,7 @@ impl RealRenderer {
         }
     }
 
-    pub fn draw_frame(&mut self, ctx: &VulkanContext, style: &crate::parsers::css_engine::ComputedStyle) {
+    pub fn draw_frame(&mut self, ctx: &VulkanContext, style: &crate::parsers::css_engine::ComputedStyle, win_width: f32, win_height: f32) {
         unsafe {
             ctx.device.wait_for_fences(&[self.in_flight_fence], true, std::u64::MAX).unwrap();
 
@@ -211,8 +211,8 @@ impl RealRenderer {
             // ==========================================
             // DYNAMIC LAYOUT ENGINE (DOM -> GPU VERTICES)
             // ==========================================
-            let mut all_vertices = generate_chrome_vertices(ctx.extent.width as f32, ctx.extent.height as f32);
-            let dom_vertices = LayoutEngine::build_dom_vertices(style, ctx.extent.width as f32, ctx.extent.height as f32);
+            let mut all_vertices = crate::ui::ui_gen::generate_chrome_vertices(win_width, win_height);
+            let dom_vertices = crate::layout::layout_gen::LayoutEngine::build_dom_vertices(style, win_width, win_height);
             for v in &dom_vertices {
                 all_vertices.push(v.x); all_vertices.push(v.y);
                 all_vertices.push(v.r); all_vertices.push(v.g); all_vertices.push(v.b); all_vertices.push(v.a);
@@ -221,10 +221,10 @@ impl RealRenderer {
             
             // Text Quads (placed from Atlas)
             for tq in &self.text_quads {
-                let text_w = (tq.w / ctx.extent.width as f32) * 2.0;
-                let text_h = (tq.h / ctx.extent.height as f32) * 2.0;
-                let text_x = -1.0 + (tq.x / ctx.extent.width as f32) * 2.0;
-                let text_y = -1.0 + (tq.y / ctx.extent.height as f32) * 2.0;
+                let text_w = (tq.w / win_width) * 2.0;
+                let text_h = (tq.h / win_height) * 2.0;
+                let text_x = -1.0 + (tq.x / win_width) * 2.0;
+                let text_y = -1.0 + (tq.y / win_height) * 2.0;
 
                 let c = tq.color;
                 let quad = [

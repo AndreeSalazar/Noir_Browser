@@ -5,6 +5,7 @@ use std::fs;
 pub struct TextRequest {
     pub text: String,
     pub px_size: f32,
+    pub is_bold: bool,
     pub pos_x: f32,
     pub pos_y: f32,
     pub color: [f32; 4], // r, g, b, a
@@ -34,11 +35,15 @@ impl RasterizedAtlas {
     pub fn new(requests: &[TextRequest]) -> Self {
         println!("[*] Rasterizando Atlas de Texto en CPU con {} peticiones", requests.len());
         
-        let font_bytes = fs::read("C:\\Windows\\Fonts\\arial.ttf")
-            .expect("Fallo al leer la fuente Arial de Windows");
+        let font_bytes_reg = fs::read("C:\\Windows\\Fonts\\arial.ttf")
+            .expect("Fallo al leer la fuente Arial Regular de Windows");
+        let font_reg = Font::from_bytes(font_bytes_reg, FontSettings::default())
+            .expect("Fallo al parsear la fuente Arial Regular");
             
-        let font = Font::from_bytes(font_bytes, FontSettings::default())
-            .expect("Fallo al parsear la fuente Arial");
+        let font_bytes_bold = fs::read("C:\\Windows\\Fonts\\arialbd.ttf")
+            .expect("Fallo al leer la fuente Arial Bold de Windows");
+        let font_bold = Font::from_bytes(font_bytes_bold, FontSettings::default())
+            .expect("Fallo al parsear la fuente Arial Bold");
 
         struct PreRaster {
             width: u32,
@@ -57,17 +62,53 @@ impl RasterizedAtlas {
             let mut line_glyphs = Vec::new();
             let mut w: u32 = 0;
             let mut h: u32 = 0;
+            let scale = 3.0;
+            let active_font = if req.is_bold { &font_bold } else { &font_reg };
+            
             for c in req.text.chars() {
                 if c == ' ' {
-                    w += (req.px_size * 0.25) as u32;
+                    w += (req.px_size * 0.25).round() as u32;
                     line_glyphs.push(None);
                     continue;
                 }
-                let (metrics, bitmap) = font.rasterize(c, req.px_size);
-                line_glyphs.push(Some((metrics, bitmap)));
-                w += metrics.width as u32 + 1; // 1px intra-letter padding
-                if metrics.height as u32 > h {
-                    h = metrics.height as u32;
+                let (metrics_3x, bitmap_3x) = active_font.rasterize(c, req.px_size * scale);
+                
+                // Downscale 3x to 1x
+                let dw = (metrics_3x.width as f32 / scale).ceil() as usize;
+                let dh = (metrics_3x.height as f32 / scale).ceil() as usize;
+                let mut bitmap_1x = vec![0u8; dw * dh];
+                
+                for dy in 0..dh {
+                    for dx in 0..dw {
+                        let mut sum = 0u32;
+                        let mut count = 0u32;
+                        for sy in 0..3 {
+                            for sx in 0..3 {
+                                let src_x = dx * 3 + sx;
+                                let src_y = dy * 3 + sy;
+                                if src_x < metrics_3x.width && src_y < metrics_3x.height {
+                                    sum += bitmap_3x[src_y * metrics_3x.width + src_x] as u32;
+                                    count += 1;
+                                }
+                            }
+                        }
+                        bitmap_1x[dy * dw + dx] = (sum / count) as u8;
+                    }
+                }
+                
+                let mut metrics_1x = metrics_3x;
+                metrics_1x.width = dw;
+                metrics_1x.height = dh;
+                metrics_1x.advance_width = metrics_3x.advance_width / scale;
+                metrics_1x.advance_height = metrics_3x.advance_height / scale;
+                
+                line_glyphs.push(Some((metrics_1x, bitmap_1x)));
+                
+                let advance = metrics_1x.advance_width.round() as u32;
+                w += advance + 1; // 1px intra-letter padding
+                
+                if metrics_1x.height as u32 > h {
+                    h = metrics_1x.height as u32;
                 }
             }
 
@@ -93,10 +134,10 @@ impl RasterizedAtlas {
                                 line_buffer[idx] = std::cmp::max(line_buffer[idx], alpha);
                             }
                         }
-                        cursor_x += metrics.width as u32 + 1;
+                        cursor_x += metrics.advance_width.round() as u32 + 1;
                     }
                     None => {
-                        cursor_x += (req.px_size * 0.25) as u32;
+                        cursor_x += (req.px_size * 0.25).round() as u32;
                     }
                 }
             }
@@ -138,39 +179,7 @@ impl RasterizedAtlas {
             for y in 0..pr.height {
                 for x in 0..pr.width {
                     let idx = (y * pr.width + x) as usize;
-                    let val = pr.buffer[idx];
-                    let is_inside = val > 127;
-                    
-                    let mut min_dist = (radius * radius) as f32;
-                    let y_min = y.saturating_sub(radius as u32);
-                    let y_max = (y + radius as u32).min(pr.height - 1);
-                    let x_min = x.saturating_sub(radius as u32);
-                    let x_max = (x + radius as u32).min(pr.width - 1);
-                    
-                    for sy in y_min..=y_max {
-                        for sx in x_min..=x_max {
-                            let s_idx = (sy * pr.width + sx) as usize;
-                            let s_val = pr.buffer[s_idx];
-                            let s_inside = s_val > 127;
-                            if is_inside != s_inside {
-                                let dx = sx as f32 - x as f32;
-                                let dy = sy as f32 - y as f32;
-                                let dist_sq = dx*dx + dy*dy;
-                                if dist_sq < min_dist {
-                                    min_dist = dist_sq;
-                                }
-                            }
-                        }
-                    }
-                    
-                    let dist = min_dist.sqrt();
-                    let mut normalized = if is_inside {
-                        0.5 + (dist / (radius as f32)) * 0.5
-                    } else {
-                        0.5 - (dist / (radius as f32)) * 0.5
-                    };
-                    normalized = normalized.clamp(0.0, 1.0);
-                    sdf_buffer[idx] = (normalized * 255.0) as u8;
+                    sdf_buffer[idx] = pr.buffer[idx];
                 }
             }
             pr.buffer = sdf_buffer;

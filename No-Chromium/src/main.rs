@@ -29,83 +29,132 @@ fn main() {
     println!("========================================");
     println!("     NO-CHROMIUM: AWAKENING THE GPU     ");
     println!("========================================");
-fn extract_text_from_dom(nodes: &[crate::parsers::dom_tree::DomNode], out: &mut Vec<(String, f32)>, current_size: f32) {
+struct LinkHitbox {
+    url: String,
+    y_min: f32,
+    y_max: f32,
+}
+
+fn extract_text_from_dom(
+    nodes: &[crate::parsers::dom_tree::DomNode],
+    out: &mut Vec<(String, f32, bool, Option<String>)>,
+    current_size: f32,
+    current_bold: bool,
+    current_href: Option<String>
+) {
     use crate::parsers::html_elements::HtmlTag;
     for node in nodes {
         if out.len() >= 4 { break; }
         match node {
-            crate::parsers::dom_tree::DomNode::Element { tag, children, .. } => {
+            crate::parsers::dom_tree::DomNode::Element { tag, attributes, children } => {
                 if matches!(tag, HtmlTag::Script | HtmlTag::Noscript) {
                     continue;
                 }
                 let mut new_size = current_size;
+                let mut new_bold = current_bold;
+                let mut new_href = current_href.clone();
                 if let HtmlTag::Custom(name) = tag {
                     if name == "style" || name == "title" {
                         continue;
                     }
                 } else {
                     match tag {
-                        HtmlTag::H1 => new_size = 32.0,
-                        HtmlTag::H2 => new_size = 24.0,
-                        HtmlTag::H3 => new_size = 20.0,
-                        HtmlTag::P => new_size = 16.0,
-                        HtmlTag::A => new_size = 14.0,
+                        HtmlTag::H1 => { new_size = 32.0; new_bold = true; },
+                        HtmlTag::H2 => { new_size = 24.0; new_bold = true; },
+                        HtmlTag::H3 => { new_size = 20.0; new_bold = true; },
+                        HtmlTag::P => { new_size = 16.0; new_bold = false; },
+                        HtmlTag::A => {
+                            new_size = 14.0;
+                            if let Some(href) = attributes.get("href") {
+                                let absolute_url = if href.starts_with('/') {
+                                    format!("https://example.com{}", href)
+                                } else {
+                                    href.clone()
+                                };
+                                new_href = Some(absolute_url);
+                            }
+                        }
                         _ => {}
                     }
                 }
-                extract_text_from_dom(children, out, new_size);
+                extract_text_from_dom(children, out, new_size, new_bold, new_href);
             }
             crate::parsers::dom_tree::DomNode::Text(t) => {
                 let trimmed = t.trim();
                 if trimmed.len() > 2 {
                     let limited: String = trimmed.chars().take(40).collect();
-                    out.push((limited, current_size));
+                    out.push((limited, current_size, current_bold, current_href.clone()));
                 }
             }
         }
     }
 }
 
-    // Phase 2: HTTP Client & html5ever DOM Tree
-    let target_url = "https://example.com";
-    let html = crate::parsers::http_client::fetch_html(target_url).unwrap_or_else(|_| "<h1>Network Error</h1>".to_string());
+fn load_page(
+    target_url: &str,
+    link_hitboxes: &mut Vec<LinkHitbox>,
+) -> crate::layout::text_rasterizer::RasterizedAtlas {
+    let html = crate::parsers::http_client::fetch_html(target_url)
+        .unwrap_or_else(|_| "<h1>Network Error</h1>".to_string());
     let dom = crate::parsers::dom_tree::parse_html(&html);
 
     let mut extracted_texts = Vec::new();
-    extract_text_from_dom(&dom, &mut extracted_texts, 24.0); // Default size 24.0
-    
+    extract_text_from_dom(&dom, &mut extracted_texts, 24.0, false, None);
+
     use crate::layout::text_rasterizer::{RasterizedAtlas, TextRequest};
     let mut text_requests = Vec::new();
-    
+    link_hitboxes.clear();
+
     // URL Bar Text (x=20, y=48 inside URL Bar)
     text_requests.push(TextRequest {
         text: target_url.to_string(),
         px_size: 16.0,
+        is_bold: false,
         pos_x: 20.0,
         pos_y: 48.0,
         color: [1.0, 1.0, 1.0, 1.0],
     });
-    
+
     // Content Texts (starting y=80)
     let mut current_y = 80.0;
-    for (text, size) in extracted_texts {
+    for (text, size, is_bold, href_opt) in extracted_texts {
+        let color = if href_opt.is_some() {
+            [0.478, 0.635, 0.968, 1.0] // #7aa2f7
+        } else {
+            [1.0, 1.0, 1.0, 1.0]
+        };
+
+        if let Some(href) = href_opt {
+            link_hitboxes.push(LinkHitbox {
+                url: href,
+                y_min: current_y - size * 0.5,
+                y_max: current_y + size * 1.5,
+            });
+        }
+
         text_requests.push(TextRequest {
             text,
             px_size: size,
+            is_bold,
             pos_x: 40.0,
             pos_y: current_y,
-            color: [1.0, 1.0, 1.0, 1.0],
+            color,
         });
         current_y += 30.0;
     }
+
+    RasterizedAtlas::new(&text_requests)
+}
+
+    let mut link_hitboxes = Vec::new();
+    let target_url = "https://example.com";
+    let text_data = load_page(target_url, &mut link_hitboxes);
     
+    use crate::parsers::css_engine::ComputedStyle;
     let mut extracted_style = ComputedStyle::default();
     extracted_style.background_color = Some("#1a1a1a".to_string());
     extracted_style.width = Some("100%".to_string());
     extracted_style.height = Some("100%".to_string());
-    
-    // MODULE 3: Rasterized Text (CPU Fontdue -> GPU Texture)
-    let text_data = RasterizedAtlas::new(&text_requests);
 
     // Initialize Real Vulkan Hardware
     let mut vk_ctx = VulkanContext::new(&window);
@@ -174,14 +223,34 @@ fn extract_text_from_dom(nodes: &[crate::parsers::dom_tree::DomNode], out: &mut 
                        }
                 }
 
-                // Barra superior de 40px para arrastrar
-                if !hit_button && cursor_pos.y < 40.0 {
-                    let _ = window.drag_window();
+                if !hit_button {
+                    let mut clicked_url = None;
+                    for link in &link_hitboxes {
+                        if cursor_pos.y >= link.y_min as f64 && cursor_pos.y <= link.y_max as f64 {
+                            clicked_url = Some(link.url.clone());
+                            break;
+                        }
+                    }
+
+                    if let Some(url) = clicked_url {
+                        println!("[Browser] Navigating to {}", url);
+                        let new_atlas = load_page(&url, &mut link_hitboxes);
+                        
+                        if let Some(mut r) = renderer.take() {
+                            r.cleanup(&vk_ctx.device);
+                        }
+                        
+                        renderer = Some(RealRenderer::new(&vk_ctx, new_atlas));
+                        window.request_redraw();
+                    } else if cursor_pos.y < 40.0 {
+                        let _ = window.drag_window();
+                    }
                 }
             },
             Event::RedrawRequested(_) => {
+                let win_size = window.inner_size();
                 if let Some(r) = &mut renderer {
-                    r.draw_frame(&vk_ctx, &extracted_style);
+                    r.draw_frame(&vk_ctx, &extracted_style, win_size.width as f32, win_size.height as f32);
                 }
             },
             Event::MainEventsCleared => {
