@@ -184,6 +184,191 @@ impl RealRenderer {
         }
     }
 
+    pub fn update_text_atlas(&mut self, ctx: &VulkanContext, text_data: RasterizedAtlas) {
+        unsafe {
+            ctx.device.device_wait_idle().unwrap();
+
+            let (texture_image, texture_allocation, texture_view, texture_sampler) =
+                self.upload_text_texture(ctx, &text_data);
+
+            let image_info = vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image_view(texture_view)
+                .sampler(texture_sampler);
+            let write_desc = vk::WriteDescriptorSet::builder()
+                .dst_set(self.descriptor_set)
+                .dst_binding(0)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(std::slice::from_ref(&image_info));
+            ctx.device.update_descriptor_sets(std::slice::from_ref(&write_desc), &[]);
+
+            ctx.device.destroy_sampler(self.texture_sampler, None);
+            ctx.device.destroy_image_view(self.texture_view, None);
+            self.memory_manager
+                .allocator
+                .lock()
+                .unwrap()
+                .destroy_image(self.texture_image, &mut self.texture_allocation);
+
+            self.texture_image = texture_image;
+            self.texture_allocation = texture_allocation;
+            self.texture_view = texture_view;
+            self.texture_sampler = texture_sampler;
+            self.text_quads = text_data.quads;
+        }
+    }
+
+    fn upload_text_texture(
+        &mut self,
+        ctx: &VulkanContext,
+        text_data: &RasterizedAtlas,
+    ) -> (
+        vk::Image,
+        vk_mem::Allocation,
+        vk::ImageView,
+        vk::Sampler,
+    ) {
+        unsafe {
+            let image_size = (text_data.width * text_data.height * 4) as u64;
+            let (staging_buffer, mut staging_alloc) =
+                self.memory_manager.create_staging_buffer(image_size);
+            let mapped_ptr = self
+                .memory_manager
+                .allocator
+                .lock()
+                .unwrap()
+                .map_memory(&mut staging_alloc)
+                .unwrap();
+            std::ptr::copy_nonoverlapping(
+                text_data.rgba_data.as_ptr(),
+                mapped_ptr,
+                image_size as usize,
+            );
+            self.memory_manager
+                .allocator
+                .lock()
+                .unwrap()
+                .unmap_memory(&mut staging_alloc);
+
+            let (texture_image, texture_allocation) = self
+                .memory_manager
+                .create_texture_image(text_data.width, text_data.height);
+
+            ctx.device
+                .reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::empty())
+                .unwrap();
+            let begin_info = vk::CommandBufferBeginInfo::builder()
+                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+            ctx.device.begin_command_buffer(self.command_buffer, &begin_info).unwrap();
+
+            let barrier_to_dst = vk::ImageMemoryBarrier::builder()
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .src_access_mask(vk::AccessFlags::empty())
+                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .image(texture_image)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                });
+            ctx.device.cmd_pipeline_barrier(
+                self.command_buffer,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                std::slice::from_ref(&barrier_to_dst),
+            );
+
+            let copy_region = vk::BufferImageCopy::builder()
+                .image_subresource(vk::ImageSubresourceLayers {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .image_extent(vk::Extent3D {
+                    width: text_data.width,
+                    height: text_data.height,
+                    depth: 1,
+                });
+            ctx.device.cmd_copy_buffer_to_image(
+                self.command_buffer,
+                staging_buffer,
+                texture_image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                std::slice::from_ref(&copy_region),
+            );
+
+            let barrier_to_shader = vk::ImageMemoryBarrier::builder()
+                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                .image(texture_image)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                });
+            ctx.device.cmd_pipeline_barrier(
+                self.command_buffer,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                std::slice::from_ref(&barrier_to_shader),
+            );
+
+            ctx.device.end_command_buffer(self.command_buffer).unwrap();
+            let submit_info =
+                vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&self.command_buffer));
+            ctx.device
+                .queue_submit(ctx.present_queue, std::slice::from_ref(&submit_info), vk::Fence::null())
+                .unwrap();
+            ctx.device.queue_wait_idle(ctx.present_queue).unwrap();
+            self.memory_manager
+                .allocator
+                .lock()
+                .unwrap()
+                .destroy_buffer(staging_buffer, &mut staging_alloc);
+
+            let view_info = vk::ImageViewCreateInfo::builder()
+                .image(texture_image)
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(vk::Format::R8G8B8A8_UNORM)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                });
+            let texture_view = ctx.device.create_image_view(&view_info, None).unwrap();
+
+            let sampler_info = vk::SamplerCreateInfo::builder()
+                .mag_filter(vk::Filter::LINEAR)
+                .min_filter(vk::Filter::LINEAR)
+                .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
+                .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .min_lod(0.0)
+                .max_lod(0.0);
+            let texture_sampler = ctx.device.create_sampler(&sampler_info, None).unwrap();
+
+            (texture_image, texture_allocation, texture_view, texture_sampler)
+        }
+    }
+
     pub fn draw_frame(&mut self, ctx: &VulkanContext, style: &crate::parsers::css_engine::ComputedStyle, win_width: f32, win_height: f32) {
         unsafe {
             ctx.device.wait_for_fences(&[self.in_flight_fence], true, std::u64::MAX).unwrap();

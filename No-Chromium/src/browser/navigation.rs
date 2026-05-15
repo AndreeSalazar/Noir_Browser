@@ -1,4 +1,4 @@
-use crate::browser::page::{load_page_document, render_page, PageDocument};
+use crate::browser::page::{render_page, PageDocument};
 use crate::parsers::css_engine::ComputedStyle;
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions};
 
@@ -35,31 +35,33 @@ impl BrowserState {
         }
     }
 
-    pub fn load_current_page(
-        &mut self,
-        text_options: TextRasterizationOptions,
-        viewport_width: f32,
-        viewport_height: f32,
-    ) -> RasterizedAtlas {
-        if self.document.is_none() {
-            self.document = Some(load_page_document(&self.current_url));
-            self.scroll_offset = 0.0;
-        }
-
-        self.render_current_page(text_options, viewport_width, viewport_height)
+    pub fn current_url(&self) -> &str {
+        &self.current_url
     }
 
-    pub fn navigate_to(
+    pub fn set_pending_url(&mut self, url: &str) {
+        self.current_url = url.to_string();
+        self.document = None;
+        self.scroll_offset = 0.0;
+        self.content_height = 0.0;
+        self.link_hitboxes.clear();
+    }
+
+    pub fn accept_loaded_document(
         &mut self,
-        url: &str,
+        url: String,
+        document: PageDocument,
         text_options: TextRasterizationOptions,
         viewport_width: f32,
         viewport_height: f32,
-    ) -> RasterizedAtlas {
-        self.current_url = url.to_string();
-        self.document = Some(load_page_document(&self.current_url));
+    ) -> Option<RasterizedAtlas> {
+        if url != self.current_url {
+            return None;
+        }
+
+        self.document = Some(document);
         self.scroll_offset = 0.0;
-        self.render_current_page(text_options, viewport_width, viewport_height)
+        Some(self.render_current_page(text_options, viewport_width, viewport_height))
     }
 
     pub fn scroll_by(
@@ -85,10 +87,11 @@ impl BrowserState {
         text_options: TextRasterizationOptions,
         viewport_width: f32,
         viewport_height: f32,
-    ) -> RasterizedAtlas {
+    ) -> Option<RasterizedAtlas> {
+        self.document.as_ref()?;
         let max_scroll = (self.content_height - viewport_height).max(0.0);
         self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
-        self.render_current_page(text_options, viewport_width, viewport_height)
+        Some(self.render_current_page(text_options, viewport_width, viewport_height))
     }
 
     pub fn link_at_y(&self, y: f32) -> Option<String> {

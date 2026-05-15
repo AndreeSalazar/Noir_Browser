@@ -4,6 +4,7 @@ use fontdue::{
 };
 use std::collections::HashMap;
 use std::fs;
+use std::sync::{Mutex, OnceLock};
 
 const DEFAULT_OVERSAMPLE: f32 = 3.0;
 const DEFAULT_ATLAS_PADDING: u32 = 2;
@@ -63,12 +64,30 @@ pub struct RasterizedAtlas {
     pub quads: Vec<TextQuad>,
 }
 
+struct FontPair {
+    regular: Font,
+    bold: Font,
+}
+
+#[derive(Hash, PartialEq, Eq)]
+struct GlyphCacheKey {
+    font_slot: u8,
+    glyph_index: u16,
+    px_milli: u32,
+    oversample: u32,
+    gamma_milli: u32,
+    bitmap_mode: TextBitmapMode,
+}
+
 #[derive(Clone)]
 struct CachedGlyph {
     width: usize,
     height: usize,
     rgba: Vec<u8>,
 }
+
+static FONT_PAIR: OnceLock<FontPair> = OnceLock::new();
+static GLYPH_CACHE: OnceLock<Mutex<HashMap<GlyphCacheKey, CachedGlyph>>> = OnceLock::new();
 
 impl RasterizedAtlas {
     #[allow(dead_code)]
@@ -78,22 +97,9 @@ impl RasterizedAtlas {
 
     pub fn with_options(requests: &[TextRequest], options: TextRasterizationOptions) -> Self {
         println!("[*] Rasterizando Atlas de Texto en CPU con {} peticiones", requests.len());
-        
-        let font_bytes_reg = read_font(&[
-            "C:\\Windows\\Fonts\\segoeui.ttf",
-            "C:\\Windows\\Fonts\\arial.ttf",
-        ])
-        .expect("Fallo al leer una fuente regular de Windows");
-        let font_reg = Font::from_bytes(font_bytes_reg, FontSettings::default())
-            .expect("Fallo al parsear la fuente regular");
-            
-        let font_bytes_bold = read_font(&[
-            "C:\\Windows\\Fonts\\segoeuib.ttf",
-            "C:\\Windows\\Fonts\\arialbd.ttf",
-        ])
-        .expect("Fallo al leer una fuente bold de Windows");
-        let font_bold = Font::from_bytes(font_bytes_bold, FontSettings::default())
-            .expect("Fallo al parsear la fuente bold");
+        let font_pair = load_font_pair();
+        let font_reg = &font_pair.regular;
+        let font_bold = &font_pair.bold;
 
         struct PreRaster {
             width: u32,
@@ -104,16 +110,6 @@ impl RasterizedAtlas {
             color: [f32; 4],
         }
 
-        #[derive(Hash, PartialEq, Eq)]
-        struct GlyphCacheKey {
-            font_slot: u8,
-            glyph_index: u16,
-            px_milli: u32,
-            oversample: u32,
-            gamma_milli: u32,
-            bitmap_mode: TextBitmapMode,
-        }
-
         struct PositionedGlyph {
             x: f32,
             y: f32,
@@ -122,7 +118,6 @@ impl RasterizedAtlas {
             rgba: Vec<u8>,
         }
 
-        let mut glyph_cache: HashMap<GlyphCacheKey, CachedGlyph> = HashMap::new();
         let mut pre_rasters = Vec::new();
         let mut max_atlas_w: u32 = 0;
         let mut total_atlas_h: u32 = 2; // 2px padding top
@@ -130,7 +125,7 @@ impl RasterizedAtlas {
         for req in requests {
             let scale = options.oversample.max(1.0).round() as usize;
             let font_slot = if req.is_bold { 1 } else { 0 };
-            let active_font = if req.is_bold { &font_bold } else { &font_reg };
+            let active_font = if req.is_bold { font_bold } else { font_reg };
 
             let fonts = [active_font];
             let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
@@ -157,12 +152,22 @@ impl RasterizedAtlas {
                     bitmap_mode: options.bitmap_mode,
                 };
 
-                let cached = if let Some(cached) = glyph_cache.get(&cache_key) {
-                    cached.clone()
-                } else {
-                    let cached = rasterize_glyph(active_font, glyph.key.glyph_index, req.px_size, scale, options);
-                    glyph_cache.insert(cache_key, cached.clone());
-                    cached
+                let cached = match cached_glyph(&cache_key) {
+                    Some(cached) => cached,
+                    None => {
+                        let cached = rasterize_glyph(
+                            active_font,
+                            glyph.key.glyph_index,
+                            req.px_size,
+                            scale,
+                            options,
+                        );
+                        glyph_cache()
+                            .lock()
+                            .unwrap()
+                            .insert(cache_key, cached.clone());
+                        cached
+                    }
                 };
 
                 if cached.width == 0 || cached.height == 0 {
@@ -287,6 +292,36 @@ impl RasterizedAtlas {
             quads,
         }
     }
+}
+
+fn load_font_pair() -> &'static FontPair {
+    FONT_PAIR.get_or_init(|| {
+        let font_bytes_reg = read_font(&[
+            "C:\\Windows\\Fonts\\segoeui.ttf",
+            "C:\\Windows\\Fonts\\arial.ttf",
+        ])
+        .expect("Fallo al leer una fuente regular de Windows");
+        let regular = Font::from_bytes(font_bytes_reg, FontSettings::default())
+            .expect("Fallo al parsear la fuente regular");
+
+        let font_bytes_bold = read_font(&[
+            "C:\\Windows\\Fonts\\segoeuib.ttf",
+            "C:\\Windows\\Fonts\\arialbd.ttf",
+        ])
+        .expect("Fallo al leer una fuente bold de Windows");
+        let bold = Font::from_bytes(font_bytes_bold, FontSettings::default())
+            .expect("Fallo al parsear la fuente bold");
+
+        FontPair { regular, bold }
+    })
+}
+
+fn glyph_cache() -> &'static Mutex<HashMap<GlyphCacheKey, CachedGlyph>> {
+    GLYPH_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cached_glyph(cache_key: &GlyphCacheKey) -> Option<CachedGlyph> {
+    glyph_cache().lock().unwrap().get(cache_key).cloned()
 }
 
 fn rasterize_glyph(
@@ -431,4 +466,29 @@ fn downsample_lcd_coverage(
 
 fn read_font(candidates: &[&str]) -> Option<Vec<u8>> {
     candidates.iter().find_map(|path| fs::read(path).ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_small_atlas_without_stalling() {
+        let atlas = RasterizedAtlas::with_options(
+            &[TextRequest {
+                text: "Example Domain".to_string(),
+                px_size: 24.0,
+                is_bold: true,
+                pos_x: 40.0,
+                pos_y: 80.0,
+                color: [1.0, 1.0, 1.0, 1.0],
+            }],
+            TextRasterizationOptions::sharp_lcd(),
+        );
+
+        assert!(atlas.width > 0);
+        assert!(atlas.height > 0);
+        assert!(!atlas.rgba_data.is_empty());
+        assert!(!atlas.quads.is_empty());
+    }
 }
