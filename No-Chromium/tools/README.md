@@ -17,7 +17,9 @@ python tools/page_probe.py --json profile/cache/resources/document/page.body
 python tools/page_probe.py --fetch-css https://www.iana.org/domains/example
 python tools/app_shell_probe.py --json profile/cache/resources/document/page.body
 python tools/app_shell_probe.py --yt-dlp https://www.youtube.com/watch?v=VIDEO_ID
+python tools/web_platform_export.py --json-report tools/.cache/web_platform/report.json
 ```
 
 `page_probe.py` es general: DOM, CSSOM inicial, scripts, media y controles.
 `app_shell_probe.py` es especializado para SPAs y YouTube.
+`web_platform_export.py` descarga datos oficiales de MDN y genera tablas Rust en `src/generated_rust/web_platform_data.rs`.
