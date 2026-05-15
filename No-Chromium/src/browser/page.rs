@@ -2,6 +2,7 @@ use crate::browser::LinkHitbox;
 use crate::media::discovery::{discover_media, MediaReport};
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
+use crate::parsers::resource_loader::{fetch_document, CacheStatus, ResourceResponse};
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
 use crate::runtime::{collect_scripts, BrowserRuntime};
 use std::collections::HashMap;
@@ -42,10 +43,22 @@ pub struct PageRender {
 }
 
 pub fn load_page_document(target_url: &str) -> PageDocument {
-    let html = crate::parsers::http_client::fetch_html(target_url)
-        .unwrap_or_else(|_| "<h1>Network Error</h1>".to_string());
-    let dom = crate::parsers::dom_tree::parse_html(&html);
-    let base_url = Url::parse(target_url).ok();
+    let response = fetch_document(target_url).unwrap_or_else(|error| {
+        let body = format!("<h1>Network Error</h1><p>{error}</p>");
+        ResourceResponse {
+            requested_url: target_url.to_string(),
+            final_url: target_url.to_string(),
+            status: 0,
+            content_type: Some("text/html; charset=utf-8".to_string()),
+            body_bytes: body.len(),
+            body,
+            cache_status: CacheStatus::Network,
+        }
+    });
+    let dom = crate::parsers::dom_tree::parse_html(&response.body);
+    let base_url = Url::parse(&response.final_url)
+        .or_else(|_| Url::parse(target_url))
+        .ok();
 
     let mut fragments = Vec::new();
     extract_text_from_dom(
@@ -59,11 +72,54 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
         base_url.as_ref(),
     );
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
-    let media = discover_media(&dom, target_url);
+    append_response_summary(&mut fragments, &response);
+    let media = discover_media(&dom, &response.final_url);
     append_media_summary(&mut fragments, &media);
     normalize_fragments(&mut fragments);
 
     PageDocument { fragments, media }
+}
+
+fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &ResourceResponse) {
+    if response.is_success()
+        && response.requested_url == response.final_url
+        && response.is_html_like()
+        && response.cache_status == CacheStatus::Network
+    {
+        return;
+    }
+
+    let content_type = response
+        .content_type
+        .as_deref()
+        .unwrap_or("content-type desconocido");
+    let mut summary = format!(
+        "HTTP {} / {} bytes / {}",
+        response.status, response.body_bytes, content_type
+    );
+    if response.requested_url != response.final_url {
+        summary.push_str(&format!(" / redirigido a {}", response.final_url));
+    }
+    if !response.is_html_like() {
+        summary.push_str(" / no parece HTML");
+    }
+    match response.cache_status {
+        CacheStatus::Network => {}
+        CacheStatus::Revalidated => summary.push_str(" / cache revalidado"),
+        CacheStatus::Fallback => summary.push_str(" / cache offline"),
+    }
+
+    fragments.insert(
+        0,
+        TextFragment {
+            text: summary,
+            px_size: 13.0,
+            is_bold: true,
+            line_height: 19.0,
+            margin_after: 6.0,
+            href: None,
+        },
+    );
 }
 
 pub fn render_page(

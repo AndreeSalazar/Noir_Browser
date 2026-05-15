@@ -1,0 +1,32 @@
+# Chromium ADN Notes
+
+Estas notas son para inspiracion arquitectonica, no para copiar codigo.
+
+Fuentes primarias revisadas:
+- Chromium Life of a Navigation: `https://chromium.googlesource.com/chromium/src/+/master/docs/navigation.md`
+- Chromium Network Stack: `https://www.chromium.org/developers/design-documents/network-stack/`
+- Chromium Audio / Video Playback: `https://www.chromium.org/developers/design-documents/video/`
+
+## Reglas que adoptamos
+
+1. Una navegacion no es solo un string HTML.
+   Debe producir metadatos: URL solicitada, URL final, estado HTTP, content-type, cuerpo y tamano.
+
+2. El browser state decide cuando una carga se acepta.
+   Si llega una respuesta vieja despues de navegar a otra URL, se descarta.
+
+3. Media se descubre antes de reproducirse.
+   Primero detectamos audio/video/source/embed/MSE; despues vendra resolver streams y decodificar.
+
+4. Historial y documento son capas separadas.
+   El historial registra visitas confirmadas; el documento conserva contenido/render/media.
+
+5. El loader debe poder revalidar.
+   Si hay `ETag` o `Last-Modified`, se usan `If-None-Match` y `If-Modified-Since`; si llega `304`, el cuerpo sale del cache local.
+
+## Siguiente fase
+
+- ResourceLoader por tipo: Document, Media, Script, Style.
+- Cache con expiracion y control de tamano.
+- Audio backend Rust con `cpal` o `rodio`.
+- Resolver MSE/HLS/DASH para streams modernos.
