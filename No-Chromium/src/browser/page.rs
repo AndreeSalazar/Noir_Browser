@@ -981,12 +981,12 @@ fn append_app_shell_fallback(
         added += 1;
     }
 
-    let app_texts = extract_embedded_app_text(raw_html, 18);
+    let app_texts = extract_embedded_app_text(raw_html, 10, &metadata);
     if !app_texts.is_empty() {
         let source = metadata.site_name.as_deref().unwrap_or("aplicacion web");
         push_fallback_fragment(
             fragments,
-            &format!("Contenido inicial detectado en {source}"),
+            &format!("Vista ligera de {source}"),
             18.0,
             true,
             26.0,
@@ -1133,16 +1133,16 @@ fn collect_node_text(nodes: &[DomNode]) -> String {
     out
 }
 
-fn extract_embedded_app_text(raw_html: &str, limit: usize) -> Vec<String> {
+fn extract_embedded_app_text(raw_html: &str, limit: usize, metadata: &PageMetadata) -> Vec<String> {
     let mut out = Vec::new();
     for marker in [
+        "\"label\":\"",
         "\"simpleText\":\"",
         "\"text\":\"",
         "\"title\":\"",
-        "\"label\":\"",
         "\"ariaLabel\":\"",
     ] {
-        collect_json_string_values(raw_html, marker, limit, &mut out);
+        collect_json_string_values(raw_html, marker, limit, metadata, &mut out);
         if out.len() >= limit {
             break;
         }
@@ -1150,7 +1150,13 @@ fn extract_embedded_app_text(raw_html: &str, limit: usize) -> Vec<String> {
     out
 }
 
-fn collect_json_string_values(raw_html: &str, marker: &str, limit: usize, out: &mut Vec<String>) {
+fn collect_json_string_values(
+    raw_html: &str,
+    marker: &str,
+    limit: usize,
+    metadata: &PageMetadata,
+    out: &mut Vec<String>,
+) {
     let mut start = 0;
     while out.len() < limit {
         let Some(pos) = raw_html[start..].find(marker) else {
@@ -1165,6 +1171,7 @@ fn collect_json_string_values(raw_html: &str, marker: &str, limit: usize, out: &
 
         let value = normalize_text(&decode_json_text(&value));
         if is_useful_app_text(&value)
+            && !matches_metadata_text(&value, metadata)
             && !out
                 .iter()
                 .any(|existing| existing.eq_ignore_ascii_case(&value))
@@ -1172,6 +1179,19 @@ fn collect_json_string_values(raw_html: &str, marker: &str, limit: usize, out: &
             out.push(value);
         }
     }
+}
+
+fn matches_metadata_text(text: &str, metadata: &PageMetadata) -> bool {
+    let text = text.trim();
+    [metadata.title.as_deref(), metadata.description.as_deref()]
+        .into_iter()
+        .flatten()
+        .any(|metadata_text| {
+            metadata_text.eq_ignore_ascii_case(text)
+                || metadata_text
+                    .to_ascii_lowercase()
+                    .contains(&text.to_ascii_lowercase())
+        })
 }
 
 fn read_json_string_fragment(text: &str) -> Option<(String, usize)> {
@@ -1227,11 +1247,66 @@ fn is_useful_app_text(text: &str) -> bool {
     if trimmed.len() < 3 || trimmed.len() > 120 {
         return false;
     }
-    if trimmed.starts_with("http") || trimmed.contains(".js") || trimmed.contains(".css") {
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("http")
+        || lower.contains(".js")
+        || lower.contains(".css")
+        || lower.contains("sprite")
+        || lower.contains("endpoint")
+        || is_noisy_app_text(&lower)
+    {
+        return false;
+    }
+    let words = trimmed.split_whitespace().count();
+    if words < 2 && trimmed.chars().count() < 14 {
         return false;
     }
     let letters = trimmed.chars().filter(|ch| ch.is_alphabetic()).count();
     letters >= 2
+}
+
+fn is_noisy_app_text(lower: &str) -> bool {
+    const NOISE_PARTS: &[&str] = &[
+        "acceder",
+        "activar o desactivar",
+        "adelantar",
+        "aria",
+        "atajo",
+        "aumentar velocidad",
+        "avanzar",
+        "borrar busqueda",
+        "borrar búsqueda",
+        "cancelar",
+        "capitulo",
+        "capítulo",
+        "combinaciones de teclas",
+        "configuracion",
+        "configuración",
+        "cuadro anterior",
+        "disminuir velocidad",
+        "pantalla completa",
+        "pausa",
+        "principal",
+        "realiza busquedas con la voz",
+        "realiza búsquedas con la voz",
+        "reproduccion",
+        "reproducción",
+        "retroceder",
+        "saltar al",
+        "siguiente cuadro",
+        "siguiente video",
+        "tecla",
+        "video anterior",
+    ];
+
+    if NOISE_PARTS.iter().any(|part| lower.contains(part)) {
+        return true;
+    }
+
+    matches!(
+        lower.trim(),
+        "buscar" | "coma" | "general" | "menos" | "punto" | "visitar la fuente"
+    )
 }
 
 fn collapse_repeated_text(text: &str) -> String {
