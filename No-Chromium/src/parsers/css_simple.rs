@@ -8,7 +8,7 @@ pub struct CssCascade {
 
 #[derive(Clone, Debug)]
 struct CssRule {
-    selector: SimpleSelector,
+    selector: CssSelector,
     declarations: CssDeclarations,
     specificity: u32,
     order: usize,
@@ -25,9 +25,49 @@ pub struct CssDeclarations {
     pub font_size: Option<String>,
     pub font_weight: Option<String>,
     pub line_height: Option<String>,
+    pub width: Option<String>,
+    pub max_width: Option<String>,
     pub margin_bottom: Option<String>,
     pub margin_top: Option<String>,
+    pub margin_left: Option<String>,
+    pub margin_right: Option<String>,
+    pub padding_top: Option<String>,
+    pub padding_right: Option<String>,
+    pub padding_bottom: Option<String>,
+    pub padding_left: Option<String>,
+    pub text_align: Option<String>,
     pub text_transform: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CssElementContext {
+    pub tag_name: String,
+    pub id: Option<String>,
+    pub classes: Vec<String>,
+}
+
+impl CssElementContext {
+    pub fn from_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> Self {
+        Self {
+            tag_name: tag_name(tag),
+            id: attributes.get("id").map(|value| value.to_ascii_lowercase()),
+            classes: attributes
+                .get("class")
+                .map(|class_attr| {
+                    class_attr
+                        .split_whitespace()
+                        .map(|class| class.to_ascii_lowercase())
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct CssSelector {
+    ancestors: Vec<SimpleSelector>,
+    target: SimpleSelector,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -53,10 +93,19 @@ impl CssCascade {
         tag: &HtmlTag,
         attributes: &HashMap<String, String>,
     ) -> CssDeclarations {
+        self.declarations_for_with_ancestors(tag, attributes, &[])
+    }
+
+    pub fn declarations_for_with_ancestors(
+        &self,
+        tag: &HtmlTag,
+        attributes: &HashMap<String, String>,
+        ancestors: &[CssElementContext],
+    ) -> CssDeclarations {
         let mut matched = self
             .rules
             .iter()
-            .filter(|rule| rule.selector.matches(tag, attributes))
+            .filter(|rule| rule.selector.matches(tag, attributes, ancestors))
             .collect::<Vec<_>>();
 
         matched.sort_by_key(|rule| (rule.specificity, rule.order));
@@ -85,9 +134,53 @@ impl CssDeclarations {
         assign_if_some(&mut self.font_size, &other.font_size);
         assign_if_some(&mut self.font_weight, &other.font_weight);
         assign_if_some(&mut self.line_height, &other.line_height);
+        assign_if_some(&mut self.width, &other.width);
+        assign_if_some(&mut self.max_width, &other.max_width);
         assign_if_some(&mut self.margin_bottom, &other.margin_bottom);
         assign_if_some(&mut self.margin_top, &other.margin_top);
+        assign_if_some(&mut self.margin_left, &other.margin_left);
+        assign_if_some(&mut self.margin_right, &other.margin_right);
+        assign_if_some(&mut self.padding_top, &other.padding_top);
+        assign_if_some(&mut self.padding_right, &other.padding_right);
+        assign_if_some(&mut self.padding_bottom, &other.padding_bottom);
+        assign_if_some(&mut self.padding_left, &other.padding_left);
+        assign_if_some(&mut self.text_align, &other.text_align);
         assign_if_some(&mut self.text_transform, &other.text_transform);
+    }
+}
+
+impl CssSelector {
+    fn matches(
+        &self,
+        tag: &HtmlTag,
+        attributes: &HashMap<String, String>,
+        ancestors: &[CssElementContext],
+    ) -> bool {
+        if !self.target.matches(tag, attributes) {
+            return false;
+        }
+
+        let mut search_until = ancestors.len();
+        for selector in self.ancestors.iter().rev() {
+            let Some(index) = ancestors[..search_until]
+                .iter()
+                .rposition(|ancestor| selector.matches_context(ancestor))
+            else {
+                return false;
+            };
+            search_until = index;
+        }
+
+        true
+    }
+
+    fn specificity(&self) -> u32 {
+        self.target.specificity()
+            + self
+                .ancestors
+                .iter()
+                .map(SimpleSelector::specificity)
+                .sum::<u32>()
     }
 }
 
@@ -119,6 +212,24 @@ impl SimpleSelector {
         }
 
         true
+    }
+
+    fn matches_context(&self, context: &CssElementContext) -> bool {
+        if let Some(expected_tag) = &self.tag {
+            if context.tag_name != *expected_tag {
+                return false;
+            }
+        }
+
+        if let Some(expected_id) = &self.id {
+            if context.id.as_deref() != Some(expected_id.as_str()) {
+                return false;
+            }
+        }
+
+        self.classes
+            .iter()
+            .all(|class| context.classes.contains(class))
     }
 
     fn specificity(&self) -> u32 {
@@ -225,18 +336,37 @@ fn parse_css_block(css: &str, rules: &mut Vec<CssRule>) {
     }
 }
 
-fn parse_selector(selector: &str) -> Option<SimpleSelector> {
+fn parse_selector(selector: &str) -> Option<CssSelector> {
     let selector = selector
-        .split_whitespace()
-        .last()
-        .unwrap_or(selector)
-        .trim()
-        .trim_matches(|ch: char| matches!(ch, '>' | '+' | '~' | '*'));
-    if selector.is_empty() || selector.contains('[') {
+        .replace('>', " ")
+        .replace('+', " ")
+        .replace('~', " ");
+    let mut parts = Vec::new();
+    for part in selector.split_whitespace() {
+        let part = part.trim().trim_matches('*');
+        if part.is_empty() || part.contains('[') {
+            continue;
+        }
+
+        let part = part.split(':').next().unwrap_or(part).trim();
+        if let Some(simple) = parse_simple_selector(part) {
+            parts.push(simple);
+        }
+    }
+
+    let target = parts.pop()?;
+    Some(CssSelector {
+        ancestors: parts,
+        target,
+    })
+}
+
+fn parse_simple_selector(selector: &str) -> Option<SimpleSelector> {
+    if selector.is_empty() {
         return None;
     }
 
-    let selector = selector.split(':').next().unwrap_or(selector).trim();
+    let selector = selector.trim_matches(|ch: char| matches!(ch, '>' | '+' | '~' | '*'));
     if selector.is_empty() {
         return None;
     }
@@ -300,12 +430,29 @@ fn parse_declarations(text: &str) -> CssDeclarations {
             "font-size" => declarations.font_size = Some(value),
             "font-weight" => declarations.font_weight = Some(value),
             "line-height" => declarations.line_height = Some(value),
+            "width" => declarations.width = Some(value),
+            "max-width" => declarations.max_width = Some(value),
             "margin-bottom" => declarations.margin_bottom = Some(value),
             "margin-top" => declarations.margin_top = Some(value),
+            "margin-left" => declarations.margin_left = Some(value),
+            "margin-right" => declarations.margin_right = Some(value),
             "margin" => {
                 declarations.margin_top = box_edge_value(&value, BoxEdge::Top);
                 declarations.margin_bottom = box_edge_value(&value, BoxEdge::Bottom);
+                declarations.margin_left = box_edge_value(&value, BoxEdge::Left);
+                declarations.margin_right = box_edge_value(&value, BoxEdge::Right);
             }
+            "padding-top" => declarations.padding_top = Some(value),
+            "padding-right" => declarations.padding_right = Some(value),
+            "padding-bottom" => declarations.padding_bottom = Some(value),
+            "padding-left" => declarations.padding_left = Some(value),
+            "padding" => {
+                declarations.padding_top = box_edge_value(&value, BoxEdge::Top);
+                declarations.padding_right = box_edge_value(&value, BoxEdge::Right);
+                declarations.padding_bottom = box_edge_value(&value, BoxEdge::Bottom);
+                declarations.padding_left = box_edge_value(&value, BoxEdge::Left);
+            }
+            "text-align" => declarations.text_align = Some(value),
             "text-transform" => declarations.text_transform = Some(value),
             _ => {}
         }
@@ -316,14 +463,13 @@ fn parse_declarations(text: &str) -> CssDeclarations {
 #[derive(Clone, Copy)]
 enum BoxEdge {
     Top,
+    Right,
     Bottom,
+    Left,
 }
 
 fn box_edge_value(value: &str, edge: BoxEdge) -> Option<String> {
-    let parts = value
-        .split_whitespace()
-        .filter(|part| !part.eq_ignore_ascii_case("auto"))
-        .collect::<Vec<_>>();
+    let parts = value.split_whitespace().collect::<Vec<_>>();
     if parts.is_empty() {
         return None;
     }
@@ -331,10 +477,14 @@ fn box_edge_value(value: &str, edge: BoxEdge) -> Option<String> {
     let index = match (parts.len(), edge) {
         (1, _) => 0,
         (2, BoxEdge::Top | BoxEdge::Bottom) => 0,
+        (2, BoxEdge::Right | BoxEdge::Left) => 1,
         (3, BoxEdge::Top) => 0,
+        (3, BoxEdge::Right | BoxEdge::Left) => 1,
         (3, BoxEdge::Bottom) => 2,
         (_, BoxEdge::Top) => 0,
+        (_, BoxEdge::Right) => 1,
         (_, BoxEdge::Bottom) => 2,
+        (_, BoxEdge::Left) => 3,
     };
 
     parts.get(index).map(|value| (*value).to_string())

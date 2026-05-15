@@ -286,7 +286,11 @@ fn cache_dir(resource_type: ResourceType) -> PathBuf {
 fn client() -> &'static Client {
     CLIENT.get_or_init(|| {
         Client::builder()
-            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(6))
+            .timeout(Duration::from_secs(30))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_max_idle_per_host(64)
+            .tcp_nodelay(true)
             .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .expect("No-Chromium HTTP client should initialize")

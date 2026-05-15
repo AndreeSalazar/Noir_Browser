@@ -1,7 +1,7 @@
 use crate::browser::LinkHitbox;
 use crate::media::discovery::{discover_media, MediaReport};
 use crate::parsers::css_engine::ComputedStyle;
-use crate::parsers::css_simple::{parse_color, parse_px, CssCascade};
+use crate::parsers::css_simple::{parse_color, parse_px, CssCascade, CssElementContext};
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
 use crate::parsers::resource_loader::{
@@ -11,7 +11,7 @@ use crate::parsers::style_collector::{
     collect_inline_styles, collect_stylesheets, StylesheetBundle,
 };
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
-use crate::runtime::{collect_scripts, BrowserRuntime};
+use crate::runtime::{collect_scripts, BrowserRuntime, ScriptSource};
 use std::collections::HashMap;
 use url::Url;
 
@@ -31,8 +31,20 @@ struct TextFragment {
     line_height: f32,
     margin_after: f32,
     line_break_after: bool,
+    layout: FragmentLayout,
     color: [f32; 4],
     href: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct FragmentLayout {
+    width: Option<String>,
+    max_width: Option<String>,
+    margin_left: Option<String>,
+    margin_right: Option<String>,
+    padding_left: Option<String>,
+    padding_right: Option<String>,
+    text_align: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -45,6 +57,8 @@ struct TextStyleState {
     hidden: bool,
     display: Option<String>,
     text_transform: Option<String>,
+    layout: FragmentLayout,
+    in_navigation: bool,
 }
 
 impl Default for TextStyleState {
@@ -64,6 +78,8 @@ impl TextStyleState {
             hidden: false,
             display: None,
             text_transform: None,
+            layout: FragmentLayout::default(),
+            in_navigation: false,
         }
     }
 }
@@ -122,6 +138,7 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
     let stylesheet_bundle = load_stylesheet_bundle(&dom, base_url.as_ref());
     let css = CssCascade::from_blocks(&stylesheet_bundle.blocks);
     let page_style = derive_page_style(&css);
+    let mut ancestors = Vec::new();
     extract_text_from_dom(
         &dom,
         &mut fragments,
@@ -129,6 +146,7 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
         TextStyleState::default_with_color(page_style.default_text_color),
         None,
         base_url.as_ref(),
+        &mut ancestors,
     );
     append_stylesheet_summary(&mut fragments, &stylesheet_bundle);
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
@@ -182,6 +200,7 @@ fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &Resourc
             line_height: 19.0,
             margin_after: 6.0,
             line_break_after: true,
+            layout: FragmentLayout::default(),
             color: [0.725, 0.790, 0.980, 1.0],
             href: None,
         },
@@ -195,8 +214,16 @@ fn load_stylesheet_bundle(dom: &[DomNode], base_url: Option<&Url>) -> Stylesheet
     bundle.blocks.extend(collect_inline_styles(dom));
     bundle.inline_count = bundle.blocks.len();
 
-    for stylesheet in stylesheets.iter().take(16) {
-        if let Ok(response) = crate::parsers::resource_loader::fetch_style(&stylesheet.url) {
+    let mut workers = Vec::new();
+    for stylesheet in stylesheets.iter().take(32) {
+        let url = stylesheet.url.clone();
+        workers.push(std::thread::spawn(move || {
+            crate::parsers::resource_loader::fetch_style(&url).ok()
+        }));
+    }
+
+    for worker in workers {
+        if let Ok(Some(response)) = worker.join() {
             bundle.loaded_external += 1;
             bundle.blocks.push(response.body);
         }
@@ -222,6 +249,7 @@ fn append_stylesheet_summary(fragments: &mut Vec<TextFragment>, bundle: &Stylesh
             line_height: 19.0,
             margin_after: 6.0,
             line_break_after: true,
+            layout: FragmentLayout::default(),
             color: [0.725, 0.790, 0.980, 1.0],
             href: None,
         },
@@ -311,15 +339,35 @@ pub fn render_page(
         color: [1.0, 1.0, 1.0, 1.0],
     });
 
-    let content_width = (viewport_width - CONTENT_SIDE_PADDING).clamp(320.0, 1120.0);
+    let default_content_width = (viewport_width - CONTENT_SIDE_PADDING).clamp(320.0, 1120.0);
+    let default_content_x = CONTENT_X;
     let visible_bottom = (viewport_height - VIEWPORT_BOTTOM_PADDING).max(CONTENT_TOP);
     let mut document_y = CONTENT_TOP;
-    let mut cursor_x = CONTENT_X;
+    let mut cursor_x = default_content_x;
     let mut line_height = 0.0_f32;
     let mut line_started = false;
     let mut line_index = 0;
+    let mut active_box = ResolvedLayoutBox {
+        x: default_content_x,
+        width: default_content_width,
+    };
 
     for fragment in &document.fragments {
+        let layout_box = resolve_fragment_layout(
+            &fragment.layout,
+            viewport_width,
+            default_content_x,
+            default_content_width,
+        );
+        if line_started && layout_box != active_box {
+            document_y += line_height.max(fragment.line_height);
+            cursor_x = layout_box.x;
+            line_height = 0.0;
+            line_started = false;
+            line_index += 1;
+        }
+        active_box = layout_box;
+
         let color = if fragment.href.is_some() && fragment.color == TextStyleState::default().color
         {
             [0.478, 0.635, 0.968, 1.0]
@@ -331,9 +379,11 @@ pub fn render_page(
         for word in fragment.text.split_whitespace() {
             let word_width = estimated_text_width(word, fragment.px_size);
             let mut leading_space = if line_started { space_width } else { 0.0 };
-            if line_started && cursor_x + leading_space + word_width > CONTENT_X + content_width {
+            if line_started
+                && cursor_x + leading_space + word_width > layout_box.x + layout_box.width
+            {
                 document_y += line_height.max(fragment.line_height);
-                cursor_x = CONTENT_X;
+                cursor_x = layout_box.x;
                 line_height = 0.0;
                 leading_space = 0.0;
                 line_index += 1;
@@ -373,7 +423,7 @@ pub fn render_page(
 
         if fragment.line_break_after && line_started {
             document_y += line_height.max(fragment.line_height);
-            cursor_x = CONTENT_X;
+            cursor_x = active_box.x;
             line_height = 0.0;
             line_started = false;
             line_index += 1;
@@ -393,6 +443,116 @@ pub fn render_page(
         atlas: RasterizedAtlas::with_options(&text_requests, text_options),
         content_height,
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ResolvedLayoutBox {
+    x: f32,
+    width: f32,
+}
+
+fn resolve_fragment_layout(
+    layout: &FragmentLayout,
+    viewport_width: f32,
+    default_x: f32,
+    default_width: f32,
+) -> ResolvedLayoutBox {
+    let available = (viewport_width - CONTENT_SIDE_PADDING).max(320.0);
+    let mut width = layout
+        .width
+        .as_deref()
+        .and_then(|value| parse_layout_length(value, available))
+        .unwrap_or(default_width);
+    if let Some(max_width) = layout
+        .max_width
+        .as_deref()
+        .and_then(|value| parse_layout_length(value, available))
+    {
+        width = width.min(max_width);
+    }
+    width = width.clamp(260.0, available);
+
+    let padding_left = layout
+        .padding_left
+        .as_deref()
+        .and_then(|value| parse_layout_length(value, width))
+        .unwrap_or(0.0)
+        .clamp(0.0, 96.0);
+    let padding_right = layout
+        .padding_right
+        .as_deref()
+        .and_then(|value| parse_layout_length(value, width))
+        .unwrap_or(0.0)
+        .clamp(0.0, 96.0);
+
+    let auto_left = layout
+        .margin_left
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("auto"));
+    let auto_right = layout
+        .margin_right
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("auto"));
+    let centered = auto_left && auto_right;
+    let x = if centered {
+        ((viewport_width - width) * 0.5).max(CONTENT_X)
+    } else {
+        default_x
+            + layout
+                .margin_left
+                .as_deref()
+                .and_then(|value| parse_layout_length(value, available))
+                .unwrap_or(0.0)
+    };
+
+    ResolvedLayoutBox {
+        x: x + padding_left,
+        width: (width - padding_left - padding_right).max(240.0),
+    }
+}
+
+fn parse_layout_length(value: &str, basis: f32) -> Option<f32> {
+    let value = value.trim().to_ascii_lowercase();
+    if value == "auto" {
+        return None;
+    }
+    if value.starts_with("calc(") && value.ends_with(')') {
+        return parse_calc_length(&value[5..value.len() - 1], basis);
+    }
+    if let Some(px) = value.strip_suffix("px") {
+        return px.trim().parse::<f32>().ok();
+    }
+    if let Some(percent) = value.strip_suffix('%') {
+        return percent
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|value| basis * value / 100.0);
+    }
+    if let Some(rem) = value
+        .strip_suffix("rem")
+        .or_else(|| value.strip_suffix("em"))
+    {
+        return rem.trim().parse::<f32>().ok().map(|value| value * 16.0);
+    }
+    value.parse::<f32>().ok()
+}
+
+fn parse_calc_length(value: &str, basis: f32) -> Option<f32> {
+    let normalized = value.replace('+', " + ").replace('-', " - ");
+    let mut total = 0.0;
+    let mut sign = 1.0;
+    for token in normalized.split_whitespace() {
+        match token {
+            "+" => sign = 1.0,
+            "-" => sign = -1.0,
+            value => {
+                total += sign * parse_layout_length(value, basis)?;
+                sign = 1.0;
+            }
+        }
+    }
+    Some(total)
 }
 
 fn compact_url_text(url: &str, viewport_width: f32) -> String {
@@ -422,6 +582,7 @@ fn extract_text_from_dom(
     current_style: TextStyleState,
     current_href: Option<String>,
     base_url: Option<&Url>,
+    ancestors: &mut Vec<CssElementContext>,
 ) {
     for node in nodes {
         if out.len() >= MAX_TEXT_FRAGMENTS {
@@ -440,9 +601,15 @@ fn extract_text_from_dom(
 
                 let mut next_style = apply_css_declarations(
                     apply_tag_defaults(tag, &current_style),
-                    &css.declarations_for(tag, attributes),
+                    &css.declarations_for_with_ancestors(tag, attributes, ancestors),
                 );
                 let mut new_href = current_href.clone();
+                if is_navigation_context(tag, attributes) {
+                    next_style.in_navigation = true;
+                }
+                if matches!(tag, HtmlTag::Main) && ancestor_has_class(ancestors, "sidenav") {
+                    next_style.layout.max_width = Some("820px".to_string());
+                }
 
                 match tag {
                     HtmlTag::A => {
@@ -454,7 +621,14 @@ fn extract_text_from_dom(
                             new_href = resolve_url(base_url, href);
                         }
                     }
+                    HtmlTag::Li if current_style.in_navigation => {
+                        next_style.display = Some("inline".to_string());
+                        next_style.margin_after = 0.0;
+                    }
                     _ => {}
+                }
+                if !element_breaks_line(tag, &next_style) {
+                    clear_inline_box_layout(&mut next_style.layout);
                 }
 
                 if next_style.hidden {
@@ -464,7 +638,11 @@ fn extract_text_from_dom(
                 let fragments_before = out.len();
                 let should_break = element_breaks_line(tag, &next_style);
                 let element_margin_after = next_style.margin_after.max(block_margin_after(tag));
-                extract_text_from_dom(children, out, css, next_style, new_href, base_url);
+                ancestors.push(CssElementContext::from_element(tag, attributes));
+                extract_text_from_dom(
+                    children, out, css, next_style, new_href, base_url, ancestors,
+                );
+                ancestors.pop();
                 if should_break && out.len() > fragments_before {
                     if let Some(last) = out.last_mut() {
                         last.line_break_after = true;
@@ -483,6 +661,7 @@ fn extract_text_from_dom(
                         line_height: current_style.line_height,
                         margin_after: 0.0,
                         line_break_after: false,
+                        layout: current_style.layout.clone(),
                         color: current_style.color,
                         href: current_href.clone(),
                     });
@@ -601,8 +780,50 @@ fn apply_css_declarations(
     if let Some(display) = &declarations.display {
         style.display = Some(display.to_ascii_lowercase());
     }
+    assign_layout_property(&mut style.layout.width, &declarations.width);
+    assign_layout_property(&mut style.layout.max_width, &declarations.max_width);
+    assign_layout_property(&mut style.layout.margin_left, &declarations.margin_left);
+    assign_layout_property(&mut style.layout.margin_right, &declarations.margin_right);
+    assign_layout_property(&mut style.layout.padding_left, &declarations.padding_left);
+    assign_layout_property(&mut style.layout.padding_right, &declarations.padding_right);
+    assign_layout_property(&mut style.layout.text_align, &declarations.text_align);
 
     style
+}
+
+fn assign_layout_property(target: &mut Option<String>, source: &Option<String>) {
+    if let Some(value) = source {
+        *target = Some(value.clone());
+    }
+}
+
+fn clear_inline_box_layout(layout: &mut FragmentLayout) {
+    layout.width = None;
+    layout.max_width = None;
+    layout.margin_left = None;
+    layout.margin_right = None;
+    layout.padding_left = None;
+    layout.padding_right = None;
+}
+
+fn is_navigation_context(tag: &HtmlTag, attributes: &HashMap<String, String>) -> bool {
+    if matches!(tag, HtmlTag::Nav | HtmlTag::Menu) {
+        return true;
+    }
+
+    attributes
+        .get("id")
+        .or_else(|| attributes.get("class"))
+        .is_some_and(|value| {
+            let value = value.to_ascii_lowercase();
+            value.contains("nav") || value.contains("menu")
+        })
+}
+
+fn ancestor_has_class(ancestors: &[CssElementContext], class_name: &str) -> bool {
+    ancestors
+        .iter()
+        .any(|ancestor| ancestor.classes.iter().any(|class| class == class_name))
 }
 
 fn element_breaks_line(tag: &HtmlTag, style: &TextStyleState) -> bool {
@@ -800,6 +1021,7 @@ fn apply_runtime_scripts(
         return;
     }
 
+    prefetch_external_scripts(&scripts);
     let report = BrowserRuntime::new().execute_scripts(&scripts);
     if report.inline_scripts_executed > 0 || !report.external_scripts_seen.is_empty() {
         println!(
@@ -821,6 +1043,7 @@ fn apply_runtime_scripts(
                 line_height: 32.0,
                 margin_after: 4.0,
                 line_break_after: true,
+                layout: FragmentLayout::default(),
                 color: [1.0, 1.0, 1.0, 1.0],
                 href: None,
             },
@@ -839,10 +1062,40 @@ fn apply_runtime_scripts(
             line_height: 22.0,
             margin_after: 6.0,
             line_break_after: true,
+            layout: FragmentLayout::default(),
             color: [1.0, 1.0, 1.0, 1.0],
             href: None,
         });
     }
+}
+
+fn prefetch_external_scripts(scripts: &[ScriptSource]) {
+    let urls = scripts
+        .iter()
+        .filter_map(|script| match script {
+            ScriptSource::External(url) => Some(url.clone()),
+            ScriptSource::Inline(_) => None,
+        })
+        .take(24)
+        .collect::<Vec<_>>();
+
+    if urls.is_empty() {
+        return;
+    }
+
+    std::thread::spawn(move || {
+        let workers = urls
+            .into_iter()
+            .map(|url| {
+                std::thread::spawn(move || {
+                    let _ = crate::parsers::resource_loader::fetch_script(&url);
+                })
+            })
+            .collect::<Vec<_>>();
+        for worker in workers {
+            let _ = worker.join();
+        }
+    });
 }
 
 fn append_media_summary(fragments: &mut Vec<TextFragment>, media: &MediaReport) {
@@ -859,6 +1112,7 @@ fn append_media_summary(fragments: &mut Vec<TextFragment>, media: &MediaReport) 
             line_height: 20.0,
             margin_after: 8.0,
             line_break_after: true,
+            layout: FragmentLayout::default(),
             color: [0.725, 0.790, 0.980, 1.0],
             href: None,
         },
