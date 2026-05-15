@@ -150,6 +150,7 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
         base_url.as_ref(),
         &mut ancestors,
     );
+    append_direct_resource_notice(&mut fragments, &response, page_style.default_text_color);
     append_stylesheet_summary(&mut fragments, &stylesheet_bundle);
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
     app_shell::append_app_shell_fallback(
@@ -214,6 +215,136 @@ fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &Resourc
             href: None,
         },
     );
+}
+
+fn append_direct_resource_notice(
+    fragments: &mut Vec<TextFragment>,
+    response: &ResourceResponse,
+    text_color: [f32; 4],
+) {
+    let Some(kind) = direct_resource_kind(response) else {
+        return;
+    };
+
+    let visible_fragments = fragments
+        .iter()
+        .filter(|fragment| fragment.px_size >= 15.0 && fragment.text.len() > 3)
+        .count();
+    if visible_fragments >= 3 {
+        return;
+    }
+
+    push_notice_fragment(
+        fragments,
+        &format!("{kind} detectado"),
+        22.0,
+        true,
+        text_color,
+    );
+
+    if response.status == 403 {
+        push_notice_fragment(
+            fragments,
+            "HTTP 403: el enlace directo expiro o requiere firma, cookies o cabeceras del reproductor original.",
+            16.0,
+            false,
+            text_color,
+        );
+        push_notice_fragment(
+            fragments,
+            "Vuelve al enlace /watch de YouTube para reconstruir la vista ligera; el probe Python puede diagnosticar formatos cifrados.",
+            15.0,
+            false,
+            text_color,
+        );
+    } else if response.is_success() {
+        push_notice_fragment(
+            fragments,
+            "Es un recurso directo, no una pagina HTML completa. El navegador lo reconoce y evita mostrar una pagina vacia.",
+            16.0,
+            false,
+            text_color,
+        );
+    } else {
+        push_notice_fragment(
+            fragments,
+            &format!(
+                "La red respondio HTTP {} con {} bytes; no hay HTML visible que renderizar.",
+                response.status, response.body_bytes
+            ),
+            16.0,
+            false,
+            text_color,
+        );
+    }
+
+    push_notice_fragment(
+        fragments,
+        &response.final_url,
+        13.0,
+        false,
+        [0.478, 0.635, 0.968, 1.0],
+    );
+}
+
+fn direct_resource_kind(response: &ResourceResponse) -> Option<&'static str> {
+    let requested = response.requested_url.to_ascii_lowercase();
+    let final_url = response.final_url.to_ascii_lowercase();
+    let content_type = response
+        .content_type
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if requested.contains("googlevideo.com/videoplayback")
+        || final_url.contains("googlevideo.com/videoplayback")
+    {
+        return Some("Stream directo de YouTube/Googlevideo");
+    }
+
+    if content_type.starts_with("video/")
+        || content_type.starts_with("audio/")
+        || content_type.contains("application/dash+xml")
+        || content_type.contains("mpegurl")
+    {
+        return Some("Recurso multimedia directo");
+    }
+
+    if final_url.ends_with(".mp4")
+        || final_url.ends_with(".webm")
+        || final_url.ends_with(".m4a")
+        || final_url.ends_with(".mp3")
+        || final_url.ends_with(".m3u8")
+        || final_url.ends_with(".mpd")
+    {
+        return Some("Recurso multimedia directo");
+    }
+
+    if !response.is_html_like() {
+        return Some("Recurso no HTML");
+    }
+
+    None
+}
+
+fn push_notice_fragment(
+    fragments: &mut Vec<TextFragment>,
+    text: &str,
+    px_size: f32,
+    is_bold: bool,
+    color: [f32; 4],
+) {
+    fragments.push(TextFragment {
+        text: text.to_string(),
+        px_size,
+        is_bold,
+        line_height: (px_size + 7.0).max(20.0),
+        margin_after: 6.0,
+        line_break_after: true,
+        layout: FragmentLayout::default(),
+        color,
+        href: None,
+    });
 }
 
 fn load_stylesheet_bundle(dom: &[DomNode], base_url: Option<&Url>) -> StylesheetBundle {
@@ -644,6 +775,19 @@ fn extract_text_from_dom(
                     continue;
                 }
 
+                if let Some(fragment) = intrinsic_element_fragment(
+                    tag,
+                    attributes,
+                    &next_style,
+                    new_href.as_deref(),
+                    base_url,
+                ) {
+                    out.push(fragment);
+                    if is_void_or_external_element(tag) {
+                        continue;
+                    }
+                }
+
                 let fragments_before = out.len();
                 let should_break = element_breaks_line(tag, &next_style);
                 let element_margin_after = next_style.margin_after.max(block_margin_after(tag));
@@ -678,6 +822,167 @@ fn extract_text_from_dom(
             }
         }
     }
+}
+
+fn intrinsic_element_fragment(
+    tag: &HtmlTag,
+    attributes: &HashMap<String, String>,
+    style: &TextStyleState,
+    inherited_href: Option<&str>,
+    base_url: Option<&Url>,
+) -> Option<TextFragment> {
+    let (text, href, line_break_after) = match tag {
+        HtmlTag::Img => {
+            let label =
+                first_attribute(attributes, &["alt", "title", "aria-label"]).or_else(|| {
+                    source_label(attributes, base_url, &["src", "data-src", "data-original"])
+                });
+            let label = label.unwrap_or_else(|| "imagen".to_string());
+            let href = inherited_href
+                .map(str::to_string)
+                .or_else(|| first_resolved_attribute(attributes, base_url, &["src", "data-src"]));
+            (format!("Imagen: {label}"), href, true)
+        }
+        HtmlTag::Video | HtmlTag::Audio => {
+            let kind = if matches!(tag, HtmlTag::Video) {
+                "Video"
+            } else {
+                "Audio"
+            };
+            let label = first_attribute(attributes, &["title", "aria-label"])
+                .or_else(|| source_label(attributes, base_url, &["src", "poster"]))
+                .unwrap_or_else(|| "medio incrustado".to_string());
+            let href = first_resolved_attribute(attributes, base_url, &["src", "poster"]);
+            (format!("{kind}: {label}"), href, true)
+        }
+        HtmlTag::Iframe | HtmlTag::Embed | HtmlTag::Object => {
+            let label = first_attribute(attributes, &["title", "aria-label", "name"])
+                .or_else(|| source_label(attributes, base_url, &["src", "data"]))
+                .unwrap_or_else(|| "contenido embebido".to_string());
+            let href = first_resolved_attribute(attributes, base_url, &["src", "data"]);
+            (format!("Embebido: {label}"), href, true)
+        }
+        HtmlTag::Input => {
+            let input_type = attributes
+                .get("type")
+                .map(|value| value.to_ascii_lowercase())
+                .unwrap_or_else(|| "text".to_string());
+            if input_type == "hidden" {
+                return None;
+            }
+            let label = first_attribute(
+                attributes,
+                &["aria-label", "placeholder", "value", "name", "id"],
+            )
+            .unwrap_or_else(|| input_type.clone());
+            (
+                format!("Campo {input_type}: {label}"),
+                inherited_href.map(str::to_string),
+                false,
+            )
+        }
+        HtmlTag::Textarea | HtmlTag::Select => {
+            let kind = if matches!(tag, HtmlTag::Textarea) {
+                "Area de texto"
+            } else {
+                "Selector"
+            };
+            let label = first_attribute(attributes, &["aria-label", "placeholder", "name", "id"])
+                .unwrap_or_else(|| "control".to_string());
+            (
+                format!("{kind}: {label}"),
+                inherited_href.map(str::to_string),
+                false,
+            )
+        }
+        HtmlTag::Progress | HtmlTag::Meter => {
+            let value = first_attribute(attributes, &["value", "aria-valuenow"])
+                .unwrap_or_else(|| "sin valor".to_string());
+            (
+                format!("Indicador: {value}"),
+                inherited_href.map(str::to_string),
+                false,
+            )
+        }
+        _ => return None,
+    };
+
+    Some(TextFragment {
+        text,
+        px_size: style.px_size.max(13.0),
+        is_bold: false,
+        line_height: style.line_height.max(18.0),
+        margin_after: 4.0,
+        line_break_after,
+        layout: style.layout.clone(),
+        color: soften_auxiliary_color(style.color),
+        href,
+    })
+}
+
+fn is_void_or_external_element(tag: &HtmlTag) -> bool {
+    matches!(
+        tag,
+        HtmlTag::Img
+            | HtmlTag::Input
+            | HtmlTag::Iframe
+            | HtmlTag::Embed
+            | HtmlTag::Object
+            | HtmlTag::Audio
+            | HtmlTag::Video
+    )
+}
+
+fn first_attribute(attributes: &HashMap<String, String>, names: &[&str]) -> Option<String> {
+    names.iter().find_map(|name| {
+        attributes
+            .get(*name)
+            .map(|value| normalize_text(value))
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn first_resolved_attribute(
+    attributes: &HashMap<String, String>,
+    base_url: Option<&Url>,
+    names: &[&str],
+) -> Option<String> {
+    names.iter().find_map(|name| {
+        attributes
+            .get(*name)
+            .and_then(|value| resolve_url(base_url, value))
+    })
+}
+
+fn source_label(
+    attributes: &HashMap<String, String>,
+    base_url: Option<&Url>,
+    names: &[&str],
+) -> Option<String> {
+    let url = first_resolved_attribute(attributes, base_url, names)?;
+    Some(compact_resource_label(&url))
+}
+
+fn compact_resource_label(url: &str) -> String {
+    Url::parse(url)
+        .ok()
+        .and_then(|parsed| {
+            parsed
+                .path_segments()
+                .and_then(|mut segments| segments.next_back())
+                .filter(|segment| !segment.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| url.chars().take(72).collect())
+}
+
+fn soften_auxiliary_color(color: [f32; 4]) -> [f32; 4] {
+    [
+        (color[0] * 0.82 + 0.18).min(1.0),
+        (color[1] * 0.82 + 0.18).min(1.0),
+        (color[2] * 0.82 + 0.18).min(1.0),
+        color[3],
+    ]
 }
 
 fn resolve_url(base_url: Option<&Url>, href: &str) -> Option<String> {
@@ -1126,4 +1431,51 @@ fn append_media_summary(fragments: &mut Vec<TextFragment>, media: &MediaReport) 
             href: None,
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_googlevideo_direct_resource() {
+        let response = ResourceResponse {
+            requested_url: "https://rr1---sn.googlevideo.com/videoplayback?id=abc".to_string(),
+            final_url: "https://rr1---sn.googlevideo.com/videoplayback?id=abc".to_string(),
+            resource_type: ResourceType::Document,
+            status: 403,
+            content_type: Some("text/plain".to_string()),
+            body: String::new(),
+            body_bytes: 0,
+            cache_status: CacheStatus::Network,
+        };
+
+        assert_eq!(
+            direct_resource_kind(&response),
+            Some("Stream directo de YouTube/Googlevideo")
+        );
+    }
+
+    #[test]
+    fn renders_image_placeholder_from_alt_text() {
+        let mut attributes = HashMap::new();
+        attributes.insert("alt".to_string(), "Miniatura del video".to_string());
+        attributes.insert("src".to_string(), "/thumb.jpg".to_string());
+        let base_url = Url::parse("https://example.com/watch").ok();
+
+        let fragment = intrinsic_element_fragment(
+            &HtmlTag::Img,
+            &attributes,
+            &TextStyleState::default(),
+            None,
+            base_url.as_ref(),
+        )
+        .expect("image should produce a visible fragment");
+
+        assert_eq!(fragment.text, "Imagen: Miniatura del video");
+        assert_eq!(
+            fragment.href.as_deref(),
+            Some("https://example.com/thumb.jpg")
+        );
+    }
 }
