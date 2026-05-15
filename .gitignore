@@ -2,6 +2,11 @@
 target/
 Cargo.lock
 
+# No-Chromium local browser data
+No-Chromium/profile/
+No-Chromium/**/profile/
+No-Chromium/history/
+
 # Python
 __pycache__/
 *.pyc

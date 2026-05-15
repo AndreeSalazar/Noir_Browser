@@ -12,6 +12,7 @@ use crate::parsers::style_collector::{
 };
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
 use crate::runtime::{collect_scripts, BrowserRuntime, ScriptSource};
+use serde_json::Value;
 use std::collections::HashMap;
 use url::Url;
 
@@ -941,6 +942,14 @@ struct PageMetadata {
     canonical_url: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+struct VideoCard {
+    title: String,
+    url: String,
+    subtitle: Option<String>,
+    duration: Option<String>,
+}
+
 fn append_app_shell_fallback(
     dom: &[DomNode],
     raw_html: &str,
@@ -978,6 +987,24 @@ fn append_app_shell_fallback(
             text_color,
             true,
         );
+        added += 1;
+    }
+
+    let video_cards = extract_embedded_video_cards(raw_html, 12);
+    if !video_cards.is_empty() {
+        push_fallback_fragment(
+            fragments,
+            "Videos detectados",
+            20.0,
+            true,
+            28.0,
+            8.0,
+            text_color,
+            true,
+        );
+        for video in video_cards {
+            push_video_card_fragment(fragments, video);
+        }
         added += 1;
     }
 
@@ -1025,6 +1052,36 @@ fn append_app_shell_fallback(
             true,
         );
     }
+}
+
+fn push_video_card_fragment(fragments: &mut Vec<TextFragment>, video: VideoCard) {
+    let mut text = video.title;
+    let mut details = Vec::new();
+    if let Some(duration) = video.duration.filter(|value| !value.is_empty()) {
+        details.push(duration);
+    }
+    if let Some(subtitle) = video.subtitle.filter(|value| !value.is_empty()) {
+        details.push(subtitle);
+    }
+    if !details.is_empty() {
+        text.push_str(" - ");
+        text.push_str(&details.join(" / "));
+    }
+
+    fragments.push(TextFragment {
+        text: normalize_text(&text),
+        px_size: 15.0,
+        is_bold: false,
+        line_height: 22.0,
+        margin_after: 5.0,
+        line_break_after: true,
+        layout: FragmentLayout {
+            max_width: Some("920px".to_string()),
+            ..FragmentLayout::default()
+        },
+        color: [0.478, 0.635, 0.968, 1.0],
+        href: Some(video.url),
+    });
 }
 
 fn push_fallback_fragment(
@@ -1148,6 +1205,155 @@ fn extract_embedded_app_text(raw_html: &str, limit: usize, metadata: &PageMetada
         }
     }
     out
+}
+
+fn extract_embedded_video_cards(raw_html: &str, limit: usize) -> Vec<VideoCard> {
+    let Some(json) = extract_assigned_json(raw_html, "ytInitialData") else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&json) else {
+        return Vec::new();
+    };
+
+    let mut videos = Vec::new();
+    collect_video_cards(&value, limit, &mut videos);
+    videos
+}
+
+fn collect_video_cards(value: &Value, limit: usize, out: &mut Vec<VideoCard>) {
+    if out.len() >= limit {
+        return;
+    }
+
+    match value {
+        Value::Object(map) => {
+            for key in [
+                "videoRenderer",
+                "compactVideoRenderer",
+                "gridVideoRenderer",
+                "playlistVideoRenderer",
+                "reelItemRenderer",
+            ] {
+                if let Some(renderer) = map.get(key) {
+                    if let Some(video) = video_card_from_renderer(renderer) {
+                        if !out.iter().any(|existing| existing.url == video.url) {
+                            out.push(video);
+                            if out.len() >= limit {
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+
+            for child in map.values() {
+                collect_video_cards(child, limit, out);
+                if out.len() >= limit {
+                    return;
+                }
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                collect_video_cards(child, limit, out);
+                if out.len() >= limit {
+                    return;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn video_card_from_renderer(renderer: &Value) -> Option<VideoCard> {
+    let video_id = renderer.get("videoId")?.as_str()?;
+    if video_id.len() < 6 {
+        return None;
+    }
+
+    let title = text_from_json_text(renderer.get("title")?)
+        .or_else(|| renderer.get("headline").and_then(text_from_json_text))
+        .filter(|title| is_useful_video_title(title))?;
+    let subtitle = renderer
+        .get("ownerText")
+        .or_else(|| renderer.get("longBylineText"))
+        .or_else(|| renderer.get("shortBylineText"))
+        .and_then(text_from_json_text);
+    let duration = renderer
+        .get("lengthText")
+        .or_else(|| renderer.get("thumbnailOverlayTimeStatusRenderer"))
+        .and_then(text_from_json_text);
+
+    Some(VideoCard {
+        title,
+        url: format!("https://www.youtube.com/watch?v={video_id}"),
+        subtitle,
+        duration,
+    })
+}
+
+fn text_from_json_text(value: &Value) -> Option<String> {
+    if let Some(text) = value.get("simpleText").and_then(Value::as_str) {
+        return Some(normalize_text(text));
+    }
+
+    let runs = value.get("runs")?.as_array()?;
+    let text = runs
+        .iter()
+        .filter_map(|run| run.get("text").and_then(Value::as_str))
+        .collect::<Vec<_>>()
+        .join("");
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(normalize_text(&text))
+    }
+}
+
+fn is_useful_video_title(title: &str) -> bool {
+    let lower = title.to_ascii_lowercase();
+    title.len() >= 3
+        && !is_noisy_app_text(&lower)
+        && !lower.contains("youtube")
+        && !lower.contains("busca algo")
+}
+
+fn extract_assigned_json(raw_html: &str, variable: &str) -> Option<String> {
+    let marker = format!("{variable} = ");
+    let start = raw_html.find(&marker)? + marker.len();
+    let json_start = raw_html[start..].find('{')? + start;
+    extract_balanced_json_object(&raw_html[json_start..])
+}
+
+fn extract_balanced_json_object(text: &str) -> Option<String> {
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (idx, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(text[..=idx].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn collect_json_string_values(
