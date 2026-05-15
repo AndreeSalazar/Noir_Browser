@@ -154,6 +154,7 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
     append_app_shell_fallback(
         &dom,
         &response.body,
+        &response.final_url,
         &mut fragments,
         page_style.default_text_color,
     );
@@ -953,6 +954,7 @@ struct VideoCard {
 fn append_app_shell_fallback(
     dom: &[DomNode],
     raw_html: &str,
+    page_url: &str,
     fragments: &mut Vec<TextFragment>,
     text_color: [f32; 4],
 ) {
@@ -991,7 +993,8 @@ fn append_app_shell_fallback(
     }
 
     let video_cards = extract_embedded_video_cards(raw_html, 12);
-    if !video_cards.is_empty() {
+    let has_video_cards = !video_cards.is_empty();
+    if has_video_cards {
         push_fallback_fragment(
             fragments,
             "Videos detectados",
@@ -1008,8 +1011,38 @@ fn append_app_shell_fallback(
         added += 1;
     }
 
+    if !has_video_cards && is_youtube_home_shell(page_url, raw_html) {
+        push_fallback_fragment(
+            fragments,
+            "YouTube no envio videos en el HTML inicial de la portada. Usa una busqueda para cargar tarjetas ligeras:",
+            15.0,
+            false,
+            22.0,
+            6.0,
+            text_color,
+            true,
+        );
+        for (label, url) in [
+            (
+                "Buscar videos de musica",
+                "https://www.youtube.com/results?search_query=musica",
+            ),
+            (
+                "Buscar videos de programacion",
+                "https://www.youtube.com/results?search_query=programacion",
+            ),
+            (
+                "Buscar Rust programming",
+                "https://www.youtube.com/results?search_query=rust+programming",
+            ),
+        ] {
+            push_link_fragment(fragments, label, url);
+        }
+        added += 1;
+    }
+
     let app_texts = extract_embedded_app_text(raw_html, 10, &metadata);
-    if !app_texts.is_empty() {
+    if !app_texts.is_empty() && !is_youtube_home_shell(page_url, raw_html) {
         let source = metadata.site_name.as_deref().unwrap_or("aplicacion web");
         push_fallback_fragment(
             fragments,
@@ -1052,6 +1085,31 @@ fn append_app_shell_fallback(
             true,
         );
     }
+}
+
+fn push_link_fragment(fragments: &mut Vec<TextFragment>, text: &str, href: &str) {
+    fragments.push(TextFragment {
+        text: text.to_string(),
+        px_size: 15.0,
+        is_bold: false,
+        line_height: 22.0,
+        margin_after: 4.0,
+        line_break_after: true,
+        layout: FragmentLayout {
+            max_width: Some("860px".to_string()),
+            ..FragmentLayout::default()
+        },
+        color: [0.478, 0.635, 0.968, 1.0],
+        href: Some(href.to_string()),
+    });
+}
+
+fn is_youtube_home_shell(page_url: &str, raw_html: &str) -> bool {
+    let is_youtube = Url::parse(page_url)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| host.contains("youtube.com")))
+        .unwrap_or(false);
+    is_youtube && raw_html.contains("feedNudgeRenderer") && !raw_html.contains("\"videoId\"")
 }
 
 fn push_video_card_fragment(fragments: &mut Vec<TextFragment>, video: VideoCard) {
@@ -1489,7 +1547,10 @@ fn is_noisy_app_text(lower: &str) -> bool {
         "configuracion",
         "configuración",
         "cuadro anterior",
+        "desplazarse",
         "disminuir velocidad",
+        "fuente",
+        "niveles de opacidad",
         "pantalla completa",
         "pausa",
         "principal",
@@ -1503,6 +1564,8 @@ fn is_noisy_app_text(lower: &str) -> bool {
         "siguiente video",
         "tecla",
         "video anterior",
+        "videos esfericos",
+        "videos esfÃ©ricos",
     ];
 
     if NOISE_PARTS.iter().any(|part| lower.contains(part)) {
