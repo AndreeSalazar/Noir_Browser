@@ -951,6 +951,23 @@ struct VideoCard {
     duration: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+struct PlayerShell {
+    title: Option<String>,
+    author: Option<String>,
+    duration: Option<String>,
+    views: Option<String>,
+    status: Option<String>,
+    direct_streams: Vec<StreamLink>,
+    protected_formats: usize,
+}
+
+#[derive(Clone, Debug)]
+struct StreamLink {
+    label: String,
+    url: String,
+}
+
 fn append_app_shell_fallback(
     dom: &[DomNode],
     raw_html: &str,
@@ -968,6 +985,7 @@ fn append_app_shell_fallback(
 
     let metadata = collect_page_metadata(dom);
     let mut added = 0;
+    let is_youtube_watch = is_youtube_watch_shell(page_url, raw_html);
 
     if let Some(title) = metadata.title.as_deref().filter(|title| !title.is_empty()) {
         push_fallback_fragment(fragments, title, 30.0, true, 38.0, 8.0, text_color, true);
@@ -989,6 +1007,11 @@ fn append_app_shell_fallback(
             text_color,
             true,
         );
+        added += 1;
+    }
+
+    if let Some(player) = extract_embedded_player_shell(raw_html) {
+        push_player_shell_fragments(fragments, player, text_color);
         added += 1;
     }
 
@@ -1042,7 +1065,7 @@ fn append_app_shell_fallback(
     }
 
     let app_texts = extract_embedded_app_text(raw_html, 10, &metadata);
-    if !app_texts.is_empty() && !is_youtube_home_shell(page_url, raw_html) {
+    if !app_texts.is_empty() && !is_youtube_home_shell(page_url, raw_html) && !is_youtube_watch {
         let source = metadata.site_name.as_deref().unwrap_or("aplicacion web");
         push_fallback_fragment(
             fragments,
@@ -1087,6 +1110,77 @@ fn append_app_shell_fallback(
     }
 }
 
+fn push_player_shell_fragments(
+    fragments: &mut Vec<TextFragment>,
+    player: PlayerShell,
+    text_color: [f32; 4],
+) {
+    push_fallback_fragment(
+        fragments,
+        "Reproductor ligero",
+        20.0,
+        true,
+        28.0,
+        8.0,
+        text_color,
+        true,
+    );
+
+    if let Some(title) = player.title {
+        push_fallback_fragment(fragments, &title, 17.0, true, 25.0, 5.0, text_color, true);
+    }
+
+    let mut details = Vec::new();
+    if let Some(author) = player.author {
+        details.push(author);
+    }
+    if let Some(duration) = player.duration {
+        details.push(duration);
+    }
+    if let Some(views) = player.views {
+        details.push(format!("{views} vistas"));
+    }
+    if let Some(status) = player.status {
+        details.push(status);
+    }
+    if !details.is_empty() {
+        push_fallback_fragment(
+            fragments,
+            &details.join(" / "),
+            14.0,
+            false,
+            21.0,
+            8.0,
+            text_color,
+            true,
+        );
+    }
+
+    if player.direct_streams.is_empty() {
+        push_fallback_fragment(
+            fragments,
+            &format!(
+                "{} formatos detectados; requieren descifrar el player JS de YouTube para URL directa.",
+                player.protected_formats
+            ),
+            14.0,
+            false,
+            21.0,
+            6.0,
+            text_color,
+            true,
+        );
+    } else {
+        for stream in player.direct_streams {
+            push_link_fragment(
+                fragments,
+                &format!("Stream directo {}", stream.label),
+                &stream.url,
+            );
+        }
+    }
+}
+
 fn push_link_fragment(fragments: &mut Vec<TextFragment>, text: &str, href: &str) {
     fragments.push(TextFragment {
         text: text.to_string(),
@@ -1110,6 +1204,14 @@ fn is_youtube_home_shell(page_url: &str, raw_html: &str) -> bool {
         .and_then(|url| url.host_str().map(|host| host.contains("youtube.com")))
         .unwrap_or(false);
     is_youtube && raw_html.contains("feedNudgeRenderer") && !raw_html.contains("\"videoId\"")
+}
+
+fn is_youtube_watch_shell(page_url: &str, raw_html: &str) -> bool {
+    Url::parse(page_url).ok().is_some_and(|url| {
+        url.host_str()
+            .is_some_and(|host| host.contains("youtube.com"))
+            && url.path().contains("watch")
+    }) || raw_html.contains("ytInitialPlayerResponse")
 }
 
 fn push_video_card_fragment(fragments: &mut Vec<TextFragment>, video: VideoCard) {
@@ -1276,6 +1378,111 @@ fn extract_embedded_video_cards(raw_html: &str, limit: usize) -> Vec<VideoCard> 
     let mut videos = Vec::new();
     collect_video_cards(&value, limit, &mut videos);
     videos
+}
+
+fn extract_embedded_player_shell(raw_html: &str) -> Option<PlayerShell> {
+    let json = extract_assigned_json(raw_html, "ytInitialPlayerResponse")?;
+    let value = serde_json::from_str::<Value>(&json).ok()?;
+    let details = value.get("videoDetails");
+    let streaming = value.get("streamingData");
+    let playability = value.get("playabilityStatus");
+
+    let formats = streaming
+        .and_then(|streaming| streaming.get("formats"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .chain(
+            streaming
+                .and_then(|streaming| streaming.get("adaptiveFormats"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten(),
+        )
+        .collect::<Vec<_>>();
+
+    let mut direct_streams = Vec::new();
+    for format in &formats {
+        let Some(url) = format.get("url").and_then(Value::as_str) else {
+            continue;
+        };
+        let label = format_label(format);
+        if !direct_streams
+            .iter()
+            .any(|stream: &StreamLink| stream.url == url)
+        {
+            direct_streams.push(StreamLink {
+                label,
+                url: url.to_string(),
+            });
+        }
+        if direct_streams.len() >= 4 {
+            break;
+        }
+    }
+
+    Some(PlayerShell {
+        title: details
+            .and_then(|details| details.get("title"))
+            .and_then(Value::as_str)
+            .map(normalize_text),
+        author: details
+            .and_then(|details| details.get("author"))
+            .and_then(Value::as_str)
+            .map(normalize_text),
+        duration: details
+            .and_then(|details| details.get("lengthSeconds"))
+            .and_then(Value::as_str)
+            .and_then(format_duration),
+        views: details
+            .and_then(|details| details.get("viewCount"))
+            .and_then(Value::as_str)
+            .map(format_number_grouped),
+        status: playability
+            .and_then(|status| status.get("status"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        direct_streams,
+        protected_formats: formats.len(),
+    })
+}
+
+fn format_label(format: &Value) -> String {
+    let mime = format
+        .get("mimeType")
+        .and_then(Value::as_str)
+        .and_then(|mime| mime.split(';').next())
+        .unwrap_or("media");
+    let quality = format
+        .get("qualityLabel")
+        .or_else(|| format.get("audioQuality"))
+        .or_else(|| format.get("quality"))
+        .and_then(Value::as_str)
+        .unwrap_or("auto");
+    format!("{quality} {mime}")
+}
+
+fn format_duration(seconds: &str) -> Option<String> {
+    let total = seconds.parse::<u64>().ok()?;
+    let hours = total / 3600;
+    let minutes = (total % 3600) / 60;
+    let seconds = total % 60;
+    if hours > 0 {
+        Some(format!("{hours}:{minutes:02}:{seconds:02}"))
+    } else {
+        Some(format!("{minutes}:{seconds:02}"))
+    }
+}
+
+fn format_number_grouped(value: &str) -> String {
+    let mut out = String::new();
+    for (idx, ch) in value.chars().rev().enumerate() {
+        if idx > 0 && idx % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out.chars().rev().collect()
 }
 
 fn collect_video_cards(value: &Value, limit: usize, out: &mut Vec<VideoCard>) {
