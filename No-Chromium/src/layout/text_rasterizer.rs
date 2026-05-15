@@ -1,4 +1,7 @@
-use fontdue::{Font, FontSettings};
+use fontdue::{
+    layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle},
+    Font, FontSettings,
+};
 use std::fs;
 
 const DEFAULT_OVERSAMPLE: f32 = 3.0;
@@ -85,97 +88,98 @@ impl RasterizedAtlas {
             color: [f32; 4],
         }
 
+        struct PositionedGlyph {
+            x: f32,
+            y: f32,
+            width: usize,
+            height: usize,
+            bitmap: Vec<u8>,
+        }
+
         let mut pre_rasters = Vec::new();
         let mut max_atlas_w: u32 = 0;
         let mut total_atlas_h: u32 = 2; // 2px padding top
 
         for req in requests {
-            let mut line_glyphs = Vec::new();
-            let mut pen_x = 0.0_f32;
-            let mut min_y = 0_i32;
-            let mut max_y = 0_i32;
             let scale = options.oversample.max(1.0).round() as usize;
             let scale_f = scale as f32;
             let active_font = if req.is_bold { &font_bold } else { &font_reg };
-            
-            for c in req.text.chars() {
-                if c == ' ' {
-                    pen_x += req.px_size * 0.28;
-                    line_glyphs.push(None);
+
+            let fonts = [active_font];
+            let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+            layout.reset(&LayoutSettings {
+                x: 0.0,
+                y: 0.0,
+                ..LayoutSettings::default()
+            });
+            layout.append(&fonts, &TextStyle::new(&req.text, req.px_size, 0));
+
+            let mut positioned_glyphs = Vec::new();
+            let mut min_x = f32::MAX;
+            let mut min_y = f32::MAX;
+            let mut max_x = f32::MIN;
+            let mut max_y = f32::MIN;
+
+            for glyph in layout.glyphs() {
+                let (metrics_hi, bitmap_hi) =
+                    active_font.rasterize_indexed(glyph.key.glyph_index, req.px_size * scale_f);
+                if metrics_hi.width == 0 || metrics_hi.height == 0 {
                     continue;
                 }
-                let (metrics_3x, bitmap_3x) = active_font.rasterize(c, req.px_size * scale_f);
-                
-                let dw = (metrics_3x.width as f32 / scale_f).ceil() as usize;
-                let dh = (metrics_3x.height as f32 / scale_f).ceil() as usize;
-                let mut bitmap_1x = vec![0u8; dw * dh];
-                
-                for dy in 0..dh {
-                    for dx in 0..dw {
-                        let mut sum = 0u32;
-                        let mut count = 0u32;
-                        for sy in 0..scale {
-                            for sx in 0..scale {
-                                let src_x = dx * scale + sx;
-                                let src_y = dy * scale + sy;
-                                if src_x < metrics_3x.width && src_y < metrics_3x.height {
-                                    sum += bitmap_3x[src_y * metrics_3x.width + src_x] as u32;
-                                    count += 1;
-                                }
-                            }
-                        }
-                        let coverage = (sum as f32 / count.max(1) as f32) / 255.0;
-                        bitmap_1x[dy * dw + dx] = (coverage.powf(1.0 / options.gamma) * 255.0).round() as u8;
-                    }
-                }
-                
-                let mut metrics_1x = metrics_3x;
-                metrics_1x.width = dw;
-                metrics_1x.height = dh;
-                metrics_1x.xmin = (metrics_3x.xmin as f32 / scale_f).round() as i32;
-                metrics_1x.ymin = (metrics_3x.ymin as f32 / scale_f).round() as i32;
-                metrics_1x.advance_width = metrics_3x.advance_width / scale_f;
-                metrics_1x.advance_height = metrics_3x.advance_height / scale_f;
-                
-                min_y = min_y.min(metrics_1x.ymin);
-                max_y = max_y.max(metrics_1x.ymin + metrics_1x.height as i32);
-                pen_x += metrics_1x.advance_width;
-                line_glyphs.push(Some((metrics_1x, bitmap_1x, pen_x)));
+
+                let width = (metrics_hi.width as f32 / scale_f).ceil() as usize;
+                let height = (metrics_hi.height as f32 / scale_f).ceil() as usize;
+                let bitmap = downsample_coverage(
+                    &bitmap_hi,
+                    metrics_hi.width,
+                    metrics_hi.height,
+                    width,
+                    height,
+                    scale,
+                    options.gamma,
+                );
+
+                let x = glyph.x;
+                let y = glyph.y;
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x + width as f32);
+                max_y = max_y.max(y + height as f32);
+
+                positioned_glyphs.push(PositionedGlyph {
+                    x,
+                    y,
+                    width,
+                    height,
+                    bitmap,
+                });
             }
 
-            let w = pen_x.ceil().max(1.0) as u32;
-            let h = (max_y - min_y).max(1) as u32;
-            if w == 0 || h == 0 {
+            if positioned_glyphs.is_empty() {
                 continue;
             }
 
             let padding = options.atlas_padding;
-            let padded_w = w + padding * 2;
-            let padded_h = h + padding * 2;
+            let content_w = (max_x - min_x).ceil().max(1.0) as u32;
+            let content_h = (max_y - min_y).ceil().max(1.0) as u32;
+            let padded_w = content_w + padding * 2;
+            let padded_h = content_h + padding * 2;
 
             let mut line_buffer = vec![0u8; (padded_w * padded_h) as usize];
-            let mut cursor_x = padding as f32;
-            for glyph_opt in line_glyphs {
-                match glyph_opt {
-                    Some((metrics, bitmap, next_pen_x)) => {
-                        let glyph_x = (cursor_x + metrics.xmin as f32).round().max(0.0) as u32;
-                        let glyph_y = (padding as i32 + metrics.ymin - min_y).max(0) as u32;
-                        for y in 0..metrics.height {
-                            for x in 0..metrics.width {
-                                let global_x = glyph_x + x as u32;
-                                let global_y = glyph_y + y as u32;
-                                if global_x >= padded_w || global_y >= padded_h {
-                                    continue;
-                                }
-                                let idx = (global_y * padded_w + global_x) as usize;
-                                let alpha = bitmap[y * metrics.width + x];
-                                line_buffer[idx] = std::cmp::max(line_buffer[idx], alpha);
-                            }
+            for glyph in positioned_glyphs {
+                let glyph_x = (padding as f32 + glyph.x - min_x).round().max(0.0) as u32;
+                let glyph_y = (padding as f32 + glyph.y - min_y).round().max(0.0) as u32;
+
+                for y in 0..glyph.height {
+                    for x in 0..glyph.width {
+                        let global_x = glyph_x + x as u32;
+                        let global_y = glyph_y + y as u32;
+                        if global_x >= padded_w || global_y >= padded_h {
+                            continue;
                         }
-                        cursor_x = padding as f32 + next_pen_x;
-                    }
-                    None => {
-                        cursor_x += req.px_size * 0.28;
+                        let idx = (global_y * padded_w + global_x) as usize;
+                        let alpha = glyph.bitmap[y * glyph.width + x];
+                        line_buffer[idx] = std::cmp::max(line_buffer[idx], alpha);
                     }
                 }
             }
@@ -249,6 +253,39 @@ impl RasterizedAtlas {
             quads,
         }
     }
+}
+
+fn downsample_coverage(
+    src: &[u8],
+    src_w: usize,
+    src_h: usize,
+    dst_w: usize,
+    dst_h: usize,
+    scale: usize,
+    gamma: f32,
+) -> Vec<u8> {
+    let mut dst = vec![0u8; dst_w * dst_h];
+    for dy in 0..dst_h {
+        for dx in 0..dst_w {
+            let mut sum = 0u32;
+            let mut count = 0u32;
+
+            for sy in 0..scale {
+                for sx in 0..scale {
+                    let src_x = dx * scale + sx;
+                    let src_y = dy * scale + sy;
+                    if src_x < src_w && src_y < src_h {
+                        sum += src[src_y * src_w + src_x] as u32;
+                        count += 1;
+                    }
+                }
+            }
+
+            let coverage = (sum as f32 / count.max(1) as f32) / 255.0;
+            dst[dy * dst_w + dx] = (coverage.powf(1.0 / gamma) * 255.0).round() as u8;
+        }
+    }
+    dst
 }
 
 fn read_font(candidates: &[&str]) -> Option<Vec<u8>> {

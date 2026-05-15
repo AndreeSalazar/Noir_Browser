@@ -7,6 +7,8 @@ struct TextFragment {
     text: String,
     px_size: f32,
     is_bold: bool,
+    line_height: f32,
+    margin_after: f32,
     href: Option<String>,
 }
 
@@ -20,7 +22,7 @@ pub fn load_page(
     let dom = crate::parsers::dom_tree::parse_html(&html);
 
     let mut fragments = Vec::new();
-    extract_text_from_dom(&dom, &mut fragments, 24.0, false, None);
+    extract_text_from_dom(&dom, &mut fragments, 24.0, false, 30.0, 4.0, None);
 
     let mut text_requests = Vec::new();
     link_hitboxes.clear();
@@ -34,7 +36,7 @@ pub fn load_page(
         color: [1.0, 1.0, 1.0, 1.0],
     });
 
-    let mut current_y = 80.0;
+    let mut current_y = 78.0;
     for fragment in fragments {
         let color = if fragment.href.is_some() {
             [0.478, 0.635, 0.968, 1.0]
@@ -45,8 +47,8 @@ pub fn load_page(
         if let Some(href) = fragment.href {
             link_hitboxes.push(LinkHitbox {
                 url: href,
-                y_min: current_y - fragment.px_size * 0.5,
-                y_max: current_y + fragment.px_size * 1.5,
+                y_min: current_y,
+                y_max: current_y + fragment.line_height,
             });
         }
 
@@ -58,7 +60,7 @@ pub fn load_page(
             pos_y: current_y,
             color,
         });
-        current_y += 30.0;
+        current_y += fragment.line_height + fragment.margin_after;
     }
 
     RasterizedAtlas::with_options(&text_requests, text_options)
@@ -69,6 +71,8 @@ fn extract_text_from_dom(
     out: &mut Vec<TextFragment>,
     current_size: f32,
     current_bold: bool,
+    current_line_height: f32,
+    current_margin_after: f32,
     current_href: Option<String>,
 ) {
     for node in nodes {
@@ -88,6 +92,8 @@ fn extract_text_from_dom(
 
                 let mut new_size = current_size;
                 let mut new_bold = current_bold;
+                let mut line_height = current_line_height;
+                let mut margin_after = current_margin_after;
                 let mut new_href = current_href.clone();
 
                 match tag {
@@ -95,21 +101,31 @@ fn extract_text_from_dom(
                     HtmlTag::H1 => {
                         new_size = 32.0;
                         new_bold = true;
+                        line_height = 40.0;
+                        margin_after = 4.0;
                     }
                     HtmlTag::H2 => {
                         new_size = 24.0;
                         new_bold = true;
+                        line_height = 32.0;
+                        margin_after = 4.0;
                     }
                     HtmlTag::H3 => {
                         new_size = 20.0;
                         new_bold = true;
+                        line_height = 28.0;
+                        margin_after = 4.0;
                     }
                     HtmlTag::P => {
                         new_size = 16.0;
                         new_bold = false;
+                        line_height = 22.0;
+                        margin_after = 6.0;
                     }
                     HtmlTag::A => {
                         new_size = 14.0;
+                        line_height = 20.0;
+                        margin_after = 4.0;
                         if let Some(href) = attributes.get("href") {
                             let absolute_url = if href.starts_with('/') {
                                 format!("https://example.com{}", href)
@@ -122,7 +138,15 @@ fn extract_text_from_dom(
                     _ => {}
                 }
 
-                extract_text_from_dom(children, out, new_size, new_bold, new_href);
+                extract_text_from_dom(
+                    children,
+                    out,
+                    new_size,
+                    new_bold,
+                    line_height,
+                    margin_after,
+                    new_href,
+                );
             }
             DomNode::Text(t) => {
                 let trimmed = t.trim();
@@ -131,6 +155,8 @@ fn extract_text_from_dom(
                         text: trimmed.chars().take(40).collect(),
                         px_size: current_size,
                         is_bold: current_bold,
+                        line_height: current_line_height,
+                        margin_after: current_margin_after,
                         href: current_href.clone(),
                     });
                 }
