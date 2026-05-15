@@ -132,9 +132,12 @@ impl RealRenderer {
 
             let sampler_info = vk::SamplerCreateInfo::builder()
                 .mag_filter(vk::Filter::LINEAR).min_filter(vk::Filter::LINEAR)
+                .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
                 .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
                 .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE);
+                .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .min_lod(0.0)
+                .max_lod(0.0);
             let texture_sampler = ctx.device.create_sampler(&sampler_info, None).unwrap();
 
             // 8. Descriptor Set

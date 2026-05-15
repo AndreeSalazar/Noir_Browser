@@ -22,12 +22,18 @@ pub struct QualityProfile {
 }
 
 impl QualityProfile {
-    pub fn ultra_native() -> Self {
+    pub fn ultra_native(device_pixel_ratio: f32) -> Self {
         Self {
-            device_pixel_ratio: 1.0,
+            device_pixel_ratio: device_pixel_ratio.max(1.0),
             text_filtering: TextFiltering::SubpixelLinear,
             pixel_snap: PixelSnap::PhysicalPixels,
             msaa_samples: 1,
         }
+    }
+
+    pub fn text_rasterization_options(self) -> crate::render::text::TextRasterizationOptions {
+        let mut options = crate::render::text::TextRasterizationOptions::sharp_lcd();
+        options.oversample = (self.device_pixel_ratio * 3.0).clamp(3.0, 6.0);
+        options
     }
 }

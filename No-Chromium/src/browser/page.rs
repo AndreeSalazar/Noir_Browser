@@ -1,7 +1,7 @@
 use crate::browser::LinkHitbox;
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
-use crate::render::text::{RasterizedAtlas, TextRequest};
+use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
 
 struct TextFragment {
     text: String,
@@ -10,7 +10,11 @@ struct TextFragment {
     href: Option<String>,
 }
 
-pub fn load_page(target_url: &str, link_hitboxes: &mut Vec<LinkHitbox>) -> RasterizedAtlas {
+pub fn load_page(
+    target_url: &str,
+    link_hitboxes: &mut Vec<LinkHitbox>,
+    text_options: TextRasterizationOptions,
+) -> RasterizedAtlas {
     let html = crate::parsers::http_client::fetch_html(target_url)
         .unwrap_or_else(|_| "<h1>Network Error</h1>".to_string());
     let dom = crate::parsers::dom_tree::parse_html(&html);
@@ -57,7 +61,7 @@ pub fn load_page(target_url: &str, link_hitboxes: &mut Vec<LinkHitbox>) -> Raste
         current_y += 30.0;
     }
 
-    RasterizedAtlas::new(&text_requests)
+    RasterizedAtlas::with_options(&text_requests, text_options)
 }
 
 fn extract_text_from_dom(

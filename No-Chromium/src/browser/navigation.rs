@@ -1,5 +1,5 @@
 use crate::parsers::css_engine::ComputedStyle;
-use crate::render::text::RasterizedAtlas;
+use crate::render::text::{RasterizedAtlas, TextRasterizationOptions};
 
 #[derive(Debug, Clone)]
 pub struct LinkHitbox {
@@ -28,13 +28,13 @@ impl BrowserState {
         }
     }
 
-    pub fn load_current_page(&mut self) -> RasterizedAtlas {
-        crate::browser::page::load_page(&self.current_url, &mut self.link_hitboxes)
+    pub fn load_current_page(&mut self, text_options: TextRasterizationOptions) -> RasterizedAtlas {
+        crate::browser::page::load_page(&self.current_url, &mut self.link_hitboxes, text_options)
     }
 
-    pub fn navigate_to(&mut self, url: &str) -> RasterizedAtlas {
+    pub fn navigate_to(&mut self, url: &str, text_options: TextRasterizationOptions) -> RasterizedAtlas {
         self.current_url = url.to_string();
-        self.load_current_page()
+        self.load_current_page(text_options)
     }
 
     pub fn link_at_y(&self, y: f32) -> Option<String> {

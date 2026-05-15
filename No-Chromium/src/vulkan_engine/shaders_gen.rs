@@ -35,10 +35,11 @@ pub const FRAGMENT_SHADER_GLSL: &str = r#"
         if (fragTexCoord.x < 0.0) {
             outColor = fragColor;
         } else {
-            float dist = texture(texSampler, fragTexCoord).a;
-            float smoothing = fwidth(dist);
-            float alpha = smoothstep(0.48 - smoothing, 0.52 + smoothing, dist);
-            outColor = vec4(fragColor.rgb, fragColor.a * alpha);
+            float coverage = texture(texSampler, fragTexCoord).a;
+            if (coverage <= 0.001) {
+                discard;
+            }
+            outColor = vec4(fragColor.rgb, fragColor.a * coverage);
         }
     }
 "#;

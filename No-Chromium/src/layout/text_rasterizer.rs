@@ -1,6 +1,26 @@
 use fontdue::{Font, FontSettings};
 use std::fs;
 
+const DEFAULT_OVERSAMPLE: f32 = 3.0;
+const DEFAULT_ATLAS_PADDING: u32 = 2;
+
+#[derive(Clone, Copy, Debug)]
+pub struct TextRasterizationOptions {
+    pub oversample: f32,
+    pub atlas_padding: u32,
+    pub gamma: f32,
+}
+
+impl TextRasterizationOptions {
+    pub fn sharp_lcd() -> Self {
+        Self {
+            oversample: DEFAULT_OVERSAMPLE,
+            atlas_padding: DEFAULT_ATLAS_PADDING,
+            gamma: 1.15,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TextRequest {
     pub text: String,
@@ -32,18 +52,29 @@ pub struct RasterizedAtlas {
 }
 
 impl RasterizedAtlas {
+    #[allow(dead_code)]
     pub fn new(requests: &[TextRequest]) -> Self {
+        Self::with_options(requests, TextRasterizationOptions::sharp_lcd())
+    }
+
+    pub fn with_options(requests: &[TextRequest], options: TextRasterizationOptions) -> Self {
         println!("[*] Rasterizando Atlas de Texto en CPU con {} peticiones", requests.len());
         
-        let font_bytes_reg = fs::read("C:\\Windows\\Fonts\\arial.ttf")
-            .expect("Fallo al leer la fuente Arial Regular de Windows");
+        let font_bytes_reg = read_font(&[
+            "C:\\Windows\\Fonts\\segoeui.ttf",
+            "C:\\Windows\\Fonts\\arial.ttf",
+        ])
+        .expect("Fallo al leer una fuente regular de Windows");
         let font_reg = Font::from_bytes(font_bytes_reg, FontSettings::default())
-            .expect("Fallo al parsear la fuente Arial Regular");
+            .expect("Fallo al parsear la fuente regular");
             
-        let font_bytes_bold = fs::read("C:\\Windows\\Fonts\\arialbd.ttf")
-            .expect("Fallo al leer la fuente Arial Bold de Windows");
+        let font_bytes_bold = read_font(&[
+            "C:\\Windows\\Fonts\\segoeuib.ttf",
+            "C:\\Windows\\Fonts\\arialbd.ttf",
+        ])
+        .expect("Fallo al leer una fuente bold de Windows");
         let font_bold = Font::from_bytes(font_bytes_bold, FontSettings::default())
-            .expect("Fallo al parsear la fuente Arial Bold");
+            .expect("Fallo al parsear la fuente bold");
 
         struct PreRaster {
             width: u32,
@@ -60,84 +91,91 @@ impl RasterizedAtlas {
 
         for req in requests {
             let mut line_glyphs = Vec::new();
-            let mut w: u32 = 0;
-            let mut h: u32 = 0;
-            let scale = 3.0;
+            let mut pen_x = 0.0_f32;
+            let mut min_y = 0_i32;
+            let mut max_y = 0_i32;
+            let scale = options.oversample.max(1.0).round() as usize;
+            let scale_f = scale as f32;
             let active_font = if req.is_bold { &font_bold } else { &font_reg };
             
             for c in req.text.chars() {
                 if c == ' ' {
-                    w += (req.px_size * 0.25).round() as u32;
+                    pen_x += req.px_size * 0.28;
                     line_glyphs.push(None);
                     continue;
                 }
-                let (metrics_3x, bitmap_3x) = active_font.rasterize(c, req.px_size * scale);
+                let (metrics_3x, bitmap_3x) = active_font.rasterize(c, req.px_size * scale_f);
                 
-                // Downscale 3x to 1x
-                let dw = (metrics_3x.width as f32 / scale).ceil() as usize;
-                let dh = (metrics_3x.height as f32 / scale).ceil() as usize;
+                let dw = (metrics_3x.width as f32 / scale_f).ceil() as usize;
+                let dh = (metrics_3x.height as f32 / scale_f).ceil() as usize;
                 let mut bitmap_1x = vec![0u8; dw * dh];
                 
                 for dy in 0..dh {
                     for dx in 0..dw {
                         let mut sum = 0u32;
                         let mut count = 0u32;
-                        for sy in 0..3 {
-                            for sx in 0..3 {
-                                let src_x = dx * 3 + sx;
-                                let src_y = dy * 3 + sy;
+                        for sy in 0..scale {
+                            for sx in 0..scale {
+                                let src_x = dx * scale + sx;
+                                let src_y = dy * scale + sy;
                                 if src_x < metrics_3x.width && src_y < metrics_3x.height {
                                     sum += bitmap_3x[src_y * metrics_3x.width + src_x] as u32;
                                     count += 1;
                                 }
                             }
                         }
-                        bitmap_1x[dy * dw + dx] = (sum / count) as u8;
+                        let coverage = (sum as f32 / count.max(1) as f32) / 255.0;
+                        bitmap_1x[dy * dw + dx] = (coverage.powf(1.0 / options.gamma) * 255.0).round() as u8;
                     }
                 }
                 
                 let mut metrics_1x = metrics_3x;
                 metrics_1x.width = dw;
                 metrics_1x.height = dh;
-                metrics_1x.advance_width = metrics_3x.advance_width / scale;
-                metrics_1x.advance_height = metrics_3x.advance_height / scale;
+                metrics_1x.xmin = (metrics_3x.xmin as f32 / scale_f).round() as i32;
+                metrics_1x.ymin = (metrics_3x.ymin as f32 / scale_f).round() as i32;
+                metrics_1x.advance_width = metrics_3x.advance_width / scale_f;
+                metrics_1x.advance_height = metrics_3x.advance_height / scale_f;
                 
-                line_glyphs.push(Some((metrics_1x, bitmap_1x)));
-                
-                let advance = metrics_1x.advance_width.round() as u32;
-                w += advance + 1; // 1px intra-letter padding
-                
-                if metrics_1x.height as u32 > h {
-                    h = metrics_1x.height as u32;
-                }
+                min_y = min_y.min(metrics_1x.ymin);
+                max_y = max_y.max(metrics_1x.ymin + metrics_1x.height as i32);
+                pen_x += metrics_1x.advance_width;
+                line_glyphs.push(Some((metrics_1x, bitmap_1x, pen_x)));
             }
 
+            let w = pen_x.ceil().max(1.0) as u32;
+            let h = (max_y - min_y).max(1) as u32;
             if w == 0 || h == 0 {
                 continue;
             }
 
-            let radius = 4;
-            let padded_w = w + radius * 2;
-            let padded_h = h + radius * 2;
+            let padding = options.atlas_padding;
+            let padded_w = w + padding * 2;
+            let padded_h = h + padding * 2;
 
             let mut line_buffer = vec![0u8; (padded_w * padded_h) as usize];
-            let mut cursor_x = radius;
+            let mut cursor_x = padding as f32;
             for glyph_opt in line_glyphs {
                 match glyph_opt {
-                    Some((metrics, bitmap)) => {
+                    Some((metrics, bitmap, next_pen_x)) => {
+                        let glyph_x = (cursor_x + metrics.xmin as f32).round().max(0.0) as u32;
+                        let glyph_y = (padding as i32 + metrics.ymin - min_y).max(0) as u32;
                         for y in 0..metrics.height {
                             for x in 0..metrics.width {
-                                let global_x = cursor_x + x as u32;
-                                let global_y = radius + y as u32;
+                                let global_x = glyph_x + x as u32;
+                                let global_y = glyph_y + y as u32;
+                                if global_x >= padded_w || global_y >= padded_h {
+                                    continue;
+                                }
                                 let idx = (global_y * padded_w + global_x) as usize;
                                 let alpha = bitmap[y * metrics.width + x];
                                 line_buffer[idx] = std::cmp::max(line_buffer[idx], alpha);
                             }
                         }
-                        cursor_x += metrics.advance_width.round() as u32 + 1;
+                        cursor_x = padding as f32 + next_pen_x;
                     }
                     None => {
-                        cursor_x += (req.px_size * 0.25).round() as u32;
+                        cursor_x += req.px_size * 0.28;
                     }
                 }
             }
@@ -150,8 +188,8 @@ impl RasterizedAtlas {
                 width: padded_w,
                 height: padded_h,
                 buffer: line_buffer,
-                screen_x: req.pos_x - radius as f32,
-                screen_y: req.pos_y - radius as f32,
+                screen_x: req.pos_x - padding as f32,
+                screen_y: req.pos_y - padding as f32,
                 color: req.color,
             });
 
@@ -170,18 +208,9 @@ impl RasterizedAtlas {
         let mut quads = Vec::new();
 
         let mut current_y: u32 = 2; // initial top padding
-        for mut pr in pre_rasters {
+        for pr in pre_rasters {
             let px: u32 = 2; // 2px left padding
             let py: u32 = current_y;
-
-            let mut sdf_buffer = vec![0u8; (pr.width * pr.height) as usize];
-            for y in 0..pr.height {
-                for x in 0..pr.width {
-                    let idx = (y * pr.width + x) as usize;
-                    sdf_buffer[idx] = pr.buffer[idx];
-                }
-            }
-            pr.buffer = sdf_buffer;
 
             for y in 0..pr.height {
                 for x in 0..pr.width {
@@ -220,4 +249,8 @@ impl RasterizedAtlas {
             quads,
         }
     }
+}
+
+fn read_font(candidates: &[&str]) -> Option<Vec<u8>> {
+    candidates.iter().find_map(|path| fs::read(path).ok())
 }
