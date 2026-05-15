@@ -106,6 +106,7 @@ impl BrowserState {
             return None;
         }
 
+        self.style = document.computed_style();
         self.document = Some(document);
         if let Some(summary) = self.document.as_ref().and_then(PageDocument::media_summary) {
             println!("[Media] {}", summary);

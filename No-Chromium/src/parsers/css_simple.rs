@@ -16,6 +16,8 @@ struct CssRule {
 
 #[derive(Clone, Debug, Default)]
 pub struct CssDeclarations {
+    pub background: Option<String>,
+    pub background_color: Option<String>,
     pub display: Option<String>,
     pub visibility: Option<String>,
     pub opacity: Option<String>,
@@ -24,6 +26,7 @@ pub struct CssDeclarations {
     pub font_weight: Option<String>,
     pub line_height: Option<String>,
     pub margin_bottom: Option<String>,
+    pub margin_top: Option<String>,
     pub text_transform: Option<String>,
 }
 
@@ -73,6 +76,8 @@ impl CssCascade {
 
 impl CssDeclarations {
     fn merge(&mut self, other: &CssDeclarations) {
+        assign_if_some(&mut self.background, &other.background);
+        assign_if_some(&mut self.background_color, &other.background_color);
         assign_if_some(&mut self.display, &other.display);
         assign_if_some(&mut self.visibility, &other.visibility);
         assign_if_some(&mut self.opacity, &other.opacity);
@@ -81,6 +86,7 @@ impl CssDeclarations {
         assign_if_some(&mut self.font_weight, &other.font_weight);
         assign_if_some(&mut self.line_height, &other.line_height);
         assign_if_some(&mut self.margin_bottom, &other.margin_bottom);
+        assign_if_some(&mut self.margin_top, &other.margin_top);
         assign_if_some(&mut self.text_transform, &other.text_transform);
     }
 }
@@ -174,11 +180,19 @@ pub fn parse_color(value: &str) -> Option<[f32; 4]> {
         "green" => (0, 128, 0),
         "blue" => (0, 0, 255),
         "gray" | "grey" => (128, 128, 128),
+        "darkgray" | "darkgrey" => (169, 169, 169),
+        "lightgray" | "lightgrey" => (211, 211, 211),
         "silver" => (192, 192, 192),
         "navy" => (0, 0, 128),
         "teal" => (0, 128, 128),
         "purple" => (128, 0, 128),
         "orange" => (255, 165, 0),
+        "yellow" => (255, 255, 0),
+        "maroon" => (128, 0, 0),
+        "olive" => (128, 128, 0),
+        "lime" => (0, 255, 0),
+        "aqua" | "cyan" => (0, 255, 255),
+        "fuchsia" | "magenta" => (255, 0, 255),
         _ => return None,
     };
 
@@ -218,7 +232,12 @@ fn parse_selector(selector: &str) -> Option<SimpleSelector> {
         .unwrap_or(selector)
         .trim()
         .trim_matches(|ch: char| matches!(ch, '>' | '+' | '~' | '*'));
-    if selector.is_empty() || selector.contains(':') || selector.contains('[') {
+    if selector.is_empty() || selector.contains('[') {
+        return None;
+    }
+
+    let selector = selector.split(':').next().unwrap_or(selector).trim();
+    if selector.is_empty() {
         return None;
     }
 
@@ -267,10 +286,14 @@ fn parse_declarations(text: &str) -> CssDeclarations {
             .trim()
             .trim_matches('"')
             .trim_matches('\'')
+            .trim_end_matches("!important")
+            .trim()
             .to_string();
 
         match name.as_str() {
             "display" => declarations.display = Some(value),
+            "background" => declarations.background = Some(value),
+            "background-color" => declarations.background_color = Some(value),
             "visibility" => declarations.visibility = Some(value),
             "opacity" => declarations.opacity = Some(value),
             "color" => declarations.color = Some(value),
@@ -278,14 +301,43 @@ fn parse_declarations(text: &str) -> CssDeclarations {
             "font-weight" => declarations.font_weight = Some(value),
             "line-height" => declarations.line_height = Some(value),
             "margin-bottom" => declarations.margin_bottom = Some(value),
+            "margin-top" => declarations.margin_top = Some(value),
             "margin" => {
-                declarations.margin_bottom = value.split_whitespace().last().map(str::to_string)
+                declarations.margin_top = box_edge_value(&value, BoxEdge::Top);
+                declarations.margin_bottom = box_edge_value(&value, BoxEdge::Bottom);
             }
             "text-transform" => declarations.text_transform = Some(value),
             _ => {}
         }
     }
     declarations
+}
+
+#[derive(Clone, Copy)]
+enum BoxEdge {
+    Top,
+    Bottom,
+}
+
+fn box_edge_value(value: &str, edge: BoxEdge) -> Option<String> {
+    let parts = value
+        .split_whitespace()
+        .filter(|part| !part.eq_ignore_ascii_case("auto"))
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        return None;
+    }
+
+    let index = match (parts.len(), edge) {
+        (1, _) => 0,
+        (2, BoxEdge::Top | BoxEdge::Bottom) => 0,
+        (3, BoxEdge::Top) => 0,
+        (3, BoxEdge::Bottom) => 2,
+        (_, BoxEdge::Top) => 0,
+        (_, BoxEdge::Bottom) => 2,
+    };
+
+    parts.get(index).map(|value| (*value).to_string())
 }
 
 fn strip_comments(css: &str) -> String {
@@ -309,21 +361,26 @@ fn strip_comments(css: &str) -> String {
 
 fn parse_hex_color(hex: &str) -> Option<[f32; 4]> {
     let expanded;
-    let hex = if hex.len() == 3 {
+    let hex = if hex.len() == 3 || hex.len() == 4 {
         expanded = hex.chars().flat_map(|ch| [ch, ch]).collect::<String>();
         expanded.as_str()
     } else {
         hex
     };
 
-    if hex.len() != 6 {
+    if hex.len() != 6 && hex.len() != 8 {
         return None;
     }
 
     let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
     let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
     let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some([r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0])
+    let a = if hex.len() == 8 {
+        u8::from_str_radix(&hex[6..8], 16).ok()? as f32 / 255.0
+    } else {
+        1.0
+    };
+    Some([r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a])
 }
 
 fn parse_rgb_color(value: &str) -> Option<[f32; 4]> {
@@ -331,20 +388,39 @@ fn parse_rgb_color(value: &str) -> Option<[f32; 4]> {
         .trim_start_matches("rgba(")
         .trim_start_matches("rgb(")
         .trim_end_matches(')');
-    let parts = inner
-        .split(',')
-        .map(|part| part.trim().parse::<f32>().ok())
+    let normalized = inner.replace('/', " ").replace(',', " ");
+    let parts = normalized
+        .split_whitespace()
+        .map(parse_rgb_component)
         .collect::<Option<Vec<_>>>()?;
     if parts.len() < 3 {
         return None;
     }
 
     Some([
-        (parts[0] / 255.0).clamp(0.0, 1.0),
-        (parts[1] / 255.0).clamp(0.0, 1.0),
-        (parts[2] / 255.0).clamp(0.0, 1.0),
+        parts[0].clamp(0.0, 1.0),
+        parts[1].clamp(0.0, 1.0),
+        parts[2].clamp(0.0, 1.0),
         parts.get(3).copied().unwrap_or(1.0).clamp(0.0, 1.0),
     ])
+}
+
+fn parse_rgb_component(part: &str) -> Option<f32> {
+    let part = part.trim();
+    if let Some(percent) = part.strip_suffix('%') {
+        return percent
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|value| value / 100.0);
+    }
+
+    let value = part.parse::<f32>().ok()?;
+    if value <= 1.0 {
+        Some(value)
+    } else {
+        Some(value / 255.0)
+    }
 }
 
 fn assign_if_some(target: &mut Option<String>, source: &Option<String>) {

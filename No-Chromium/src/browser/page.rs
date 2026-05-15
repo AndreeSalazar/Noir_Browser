@@ -1,5 +1,6 @@
 use crate::browser::LinkHitbox;
 use crate::media::discovery::{discover_media, MediaReport};
+use crate::parsers::css_engine::ComputedStyle;
 use crate::parsers::css_simple::{parse_color, parse_px, CssCascade};
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
@@ -29,6 +30,7 @@ struct TextFragment {
     is_bold: bool,
     line_height: f32,
     margin_after: f32,
+    line_break_after: bool,
     color: [f32; 4],
     href: Option<String>,
 }
@@ -41,18 +43,26 @@ struct TextStyleState {
     margin_after: f32,
     color: [f32; 4],
     hidden: bool,
+    display: Option<String>,
     text_transform: Option<String>,
 }
 
 impl Default for TextStyleState {
     fn default() -> Self {
+        Self::default_with_color([1.0, 1.0, 1.0, 1.0])
+    }
+}
+
+impl TextStyleState {
+    fn default_with_color(color: [f32; 4]) -> Self {
         Self {
             px_size: 16.0,
             is_bold: false,
             line_height: 22.0,
             margin_after: 6.0,
-            color: [1.0, 1.0, 1.0, 1.0],
+            color,
             hidden: false,
+            display: None,
             text_transform: None,
         }
     }
@@ -61,12 +71,27 @@ impl Default for TextStyleState {
 pub struct PageDocument {
     fragments: Vec<TextFragment>,
     media: MediaReport,
+    page_style: PageStyle,
 }
 
 impl PageDocument {
     pub fn media_summary(&self) -> Option<String> {
         self.media.summary()
     }
+
+    pub fn computed_style(&self) -> ComputedStyle {
+        let mut style = ComputedStyle::default();
+        style.background_color = Some(self.page_style.background_hex.clone());
+        style.width = Some("100%".to_string());
+        style.height = Some("100%".to_string());
+        style
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PageStyle {
+    background_hex: String,
+    default_text_color: [f32; 4],
 }
 
 pub struct PageRender {
@@ -96,11 +121,12 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
     let mut fragments = Vec::new();
     let stylesheet_bundle = load_stylesheet_bundle(&dom, base_url.as_ref());
     let css = CssCascade::from_blocks(&stylesheet_bundle.blocks);
+    let page_style = derive_page_style(&css);
     extract_text_from_dom(
         &dom,
         &mut fragments,
         &css,
-        TextStyleState::default(),
+        TextStyleState::default_with_color(page_style.default_text_color),
         None,
         base_url.as_ref(),
     );
@@ -111,7 +137,11 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
     append_media_summary(&mut fragments, &media);
     normalize_fragments(&mut fragments);
 
-    PageDocument { fragments, media }
+    PageDocument {
+        fragments,
+        media,
+        page_style,
+    }
 }
 
 fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &ResourceResponse) {
@@ -151,6 +181,7 @@ fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &Resourc
             is_bold: true,
             line_height: 19.0,
             margin_after: 6.0,
+            line_break_after: true,
             color: [0.725, 0.790, 0.980, 1.0],
             href: None,
         },
@@ -190,10 +221,73 @@ fn append_stylesheet_summary(fragments: &mut Vec<TextFragment>, bundle: &Stylesh
             is_bold: true,
             line_height: 19.0,
             margin_after: 6.0,
+            line_break_after: true,
             color: [0.725, 0.790, 0.980, 1.0],
             href: None,
         },
     );
+}
+
+fn derive_page_style(css: &CssCascade) -> PageStyle {
+    let empty = HashMap::new();
+    let html = css.declarations_for(&HtmlTag::Custom("html".to_string()), &empty);
+    let body = css.declarations_for(&HtmlTag::Custom("body".to_string()), &empty);
+
+    let background = body
+        .background_color
+        .as_deref()
+        .or(body.background.as_deref())
+        .or(html.background_color.as_deref())
+        .or(html.background.as_deref())
+        .and_then(first_css_color)
+        .unwrap_or([0.102, 0.102, 0.180, 1.0]);
+
+    let mut text = body
+        .color
+        .as_deref()
+        .or(html.color.as_deref())
+        .and_then(parse_color)
+        .unwrap_or_else(|| readable_text_color(background));
+    text = ensure_contrast(text, background);
+
+    PageStyle {
+        background_hex: rgba_to_hex(background),
+        default_text_color: text,
+    }
+}
+
+fn first_css_color(value: &str) -> Option<[f32; 4]> {
+    parse_color(value).or_else(|| {
+        value
+            .split_whitespace()
+            .find_map(|part| parse_color(part.trim_matches(',')))
+    })
+}
+
+fn readable_text_color(background: [f32; 4]) -> [f32; 4] {
+    let luminance = 0.2126 * background[0] + 0.7152 * background[1] + 0.0722 * background[2];
+    if luminance > 0.55 {
+        [0.08, 0.08, 0.10, 1.0]
+    } else {
+        [1.0, 1.0, 1.0, 1.0]
+    }
+}
+
+fn ensure_contrast(text: [f32; 4], background: [f32; 4]) -> [f32; 4] {
+    let text_lum = 0.2126 * text[0] + 0.7152 * text[1] + 0.0722 * text[2];
+    let bg_lum = 0.2126 * background[0] + 0.7152 * background[1] + 0.0722 * background[2];
+    if (text_lum - bg_lum).abs() >= 0.32 {
+        return text;
+    }
+
+    readable_text_color(background)
+}
+
+fn rgba_to_hex(color: [f32; 4]) -> String {
+    let r = (color[0].clamp(0.0, 1.0) * 255.0).round() as u8;
+    let g = (color[1].clamp(0.0, 1.0) * 255.0).round() as u8;
+    let b = (color[2].clamp(0.0, 1.0) * 255.0).round() as u8;
+    format!("#{r:02x}{g:02x}{b:02x}")
 }
 
 pub fn render_page(
@@ -220,7 +314,10 @@ pub fn render_page(
     let content_width = (viewport_width - CONTENT_SIDE_PADDING).clamp(320.0, 1120.0);
     let visible_bottom = (viewport_height - VIEWPORT_BOTTOM_PADDING).max(CONTENT_TOP);
     let mut document_y = CONTENT_TOP;
-    let mut visible_lines = 0;
+    let mut cursor_x = CONTENT_X;
+    let mut line_height = 0.0_f32;
+    let mut line_started = false;
+    let mut line_index = 0;
 
     for fragment in &document.fragments {
         let color = if fragment.href.is_some() && fragment.color == TextStyleState::default().color
@@ -230,13 +327,26 @@ pub fn render_page(
             fragment.color
         };
 
-        for line in wrap_text(&fragment.text, fragment.px_size, content_width) {
+        let space_width = estimated_text_width(" ", fragment.px_size);
+        for word in fragment.text.split_whitespace() {
+            let word_width = estimated_text_width(word, fragment.px_size);
+            let mut leading_space = if line_started { space_width } else { 0.0 };
+            if line_started && cursor_x + leading_space + word_width > CONTENT_X + content_width {
+                document_y += line_height.max(fragment.line_height);
+                cursor_x = CONTENT_X;
+                line_height = 0.0;
+                leading_space = 0.0;
+                line_index += 1;
+            }
+
+            let x = cursor_x + leading_space;
+            let active_line_height = line_height.max(fragment.line_height);
             let screen_y = document_y - scroll_offset;
-            let line_bottom = screen_y + fragment.line_height;
+            let line_bottom = screen_y + active_line_height;
 
             if line_bottom >= CONTENT_TOP
                 && screen_y <= visible_bottom
-                && visible_lines < MAX_VISIBLE_LINES
+                && line_index < MAX_VISIBLE_LINES
             {
                 if let Some(href) = &fragment.href {
                     link_hitboxes.push(LinkHitbox {
@@ -247,20 +357,35 @@ pub fn render_page(
                 }
 
                 text_requests.push(TextRequest {
-                    text: line,
+                    text: word.to_string(),
                     px_size: fragment.px_size,
                     is_bold: fragment.is_bold,
-                    pos_x: CONTENT_X,
+                    pos_x: x,
                     pos_y: screen_y,
                     color,
                 });
-                visible_lines += 1;
             }
 
-            document_y += fragment.line_height;
+            cursor_x = x + word_width;
+            line_height = active_line_height;
+            line_started = true;
         }
 
-        document_y += fragment.margin_after;
+        if fragment.line_break_after && line_started {
+            document_y += line_height.max(fragment.line_height);
+            cursor_x = CONTENT_X;
+            line_height = 0.0;
+            line_started = false;
+            line_index += 1;
+        }
+
+        if fragment.line_break_after {
+            document_y += fragment.margin_after;
+        }
+    }
+
+    if line_started {
+        document_y += line_height;
     }
 
     let content_height = document_y + VIEWPORT_BOTTOM_PADDING;
@@ -321,11 +446,10 @@ fn extract_text_from_dom(
 
                 match tag {
                     HtmlTag::A => {
-                        if current_style.px_size <= 16.0 {
-                            next_style.px_size = 14.0;
-                            next_style.line_height = 20.0;
+                        next_style.margin_after = 0.0;
+                        if next_style.color == current_style.color {
+                            next_style.color = [0.0, 0.33, 0.70, 1.0];
                         }
-                        next_style.margin_after = 4.0;
                         if let Some(href) = attributes.get("href") {
                             new_href = resolve_url(base_url, href);
                         }
@@ -337,7 +461,16 @@ fn extract_text_from_dom(
                     continue;
                 }
 
+                let fragments_before = out.len();
+                let should_break = element_breaks_line(tag, &next_style);
+                let element_margin_after = next_style.margin_after.max(block_margin_after(tag));
                 extract_text_from_dom(children, out, css, next_style, new_href, base_url);
+                if should_break && out.len() > fragments_before {
+                    if let Some(last) = out.last_mut() {
+                        last.line_break_after = true;
+                        last.margin_after = last.margin_after.max(element_margin_after);
+                    }
+                }
             }
             DomNode::Text(t) => {
                 let text = normalize_text(t.trim());
@@ -348,7 +481,8 @@ fn extract_text_from_dom(
                         px_size: current_style.px_size,
                         is_bold: current_style.is_bold,
                         line_height: current_style.line_height,
-                        margin_after: current_style.margin_after,
+                        margin_after: 0.0,
+                        line_break_after: false,
                         color: current_style.color,
                         href: current_href.clone(),
                     });
@@ -396,6 +530,10 @@ fn apply_tag_defaults(tag: &HtmlTag, current: &TextStyleState) -> TextStyleState
             next.line_height = 22.0;
             next.margin_after = 6.0;
         }
+        HtmlTag::Pre | HtmlTag::Code | HtmlTag::Samp | HtmlTag::Kbd => {
+            next.px_size = 14.0;
+            next.line_height = 20.0;
+        }
         HtmlTag::Strong | HtmlTag::B => {
             next.is_bold = true;
         }
@@ -412,8 +550,14 @@ fn apply_css_declarations(
     mut style: TextStyleState,
     declarations: &crate::parsers::css_simple::CssDeclarations,
 ) -> TextStyleState {
-    if declarations.display.as_deref() == Some("none")
-        || declarations.visibility.as_deref() == Some("hidden")
+    if declarations
+        .display
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("none"))
+        || declarations
+            .visibility
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("hidden"))
         || declarations.opacity.as_deref() == Some("0")
     {
         style.hidden = true;
@@ -454,8 +598,67 @@ fn apply_css_declarations(
     if let Some(transform) = &declarations.text_transform {
         style.text_transform = Some(transform.to_ascii_lowercase());
     }
+    if let Some(display) = &declarations.display {
+        style.display = Some(display.to_ascii_lowercase());
+    }
 
     style
+}
+
+fn element_breaks_line(tag: &HtmlTag, style: &TextStyleState) -> bool {
+    if let Some(display) = style.display.as_deref() {
+        if matches!(
+            display,
+            "inline" | "inline-block" | "inline-flex" | "contents"
+        ) {
+            return false;
+        }
+    }
+
+    matches!(
+        tag,
+        HtmlTag::Address
+            | HtmlTag::Article
+            | HtmlTag::Aside
+            | HtmlTag::Blockquote
+            | HtmlTag::Dd
+            | HtmlTag::Div
+            | HtmlTag::Dl
+            | HtmlTag::Dt
+            | HtmlTag::Figcaption
+            | HtmlTag::Figure
+            | HtmlTag::Footer
+            | HtmlTag::Form
+            | HtmlTag::H1
+            | HtmlTag::H2
+            | HtmlTag::H3
+            | HtmlTag::H4
+            | HtmlTag::H5
+            | HtmlTag::H6
+            | HtmlTag::Header
+            | HtmlTag::Hr
+            | HtmlTag::Li
+            | HtmlTag::Main
+            | HtmlTag::Nav
+            | HtmlTag::Ol
+            | HtmlTag::P
+            | HtmlTag::Pre
+            | HtmlTag::Section
+            | HtmlTag::Table
+            | HtmlTag::Ul
+    )
+}
+
+fn block_margin_after(tag: &HtmlTag) -> f32 {
+    match tag {
+        HtmlTag::H1 => 10.0,
+        HtmlTag::H2 => 8.0,
+        HtmlTag::H3 | HtmlTag::H4 | HtmlTag::H5 | HtmlTag::H6 => 6.0,
+        HtmlTag::P | HtmlTag::Pre | HtmlTag::Blockquote => 10.0,
+        HtmlTag::Li => 4.0,
+        HtmlTag::Nav | HtmlTag::Header | HtmlTag::Footer => 8.0,
+        _ => 6.0,
+    }
 }
 
 fn apply_text_transform(text: String, transform: Option<&str>) -> String {
@@ -521,59 +724,8 @@ fn is_low_value_text(text: &str) -> bool {
     matches!(text.trim(), "." | "," | "|" | "-" | "•")
 }
 
-fn wrap_text(text: &str, px_size: f32, max_width: f32) -> Vec<String> {
-    let avg_char_width = (px_size * 0.54).max(7.0);
-    let max_chars = (max_width / avg_char_width).floor().max(12.0) as usize;
-    let mut lines = Vec::new();
-    let mut current = String::new();
-
-    for word in text.split_whitespace() {
-        if word.chars().count() > max_chars {
-            flush_line(&mut lines, &mut current);
-            split_long_word(word, max_chars, &mut lines);
-            continue;
-        }
-
-        let candidate_len =
-            current.chars().count() + usize::from(!current.is_empty()) + word.chars().count();
-        if candidate_len > max_chars {
-            flush_line(&mut lines, &mut current);
-        }
-
-        if !current.is_empty() {
-            current.push(' ');
-        }
-        current.push_str(word);
-    }
-
-    flush_line(&mut lines, &mut current);
-
-    if lines.is_empty() {
-        vec![text.to_string()]
-    } else {
-        lines
-    }
-}
-
-fn flush_line(lines: &mut Vec<String>, current: &mut String) {
-    if !current.trim().is_empty() {
-        lines.push(current.trim().to_string());
-        current.clear();
-    }
-}
-
-fn split_long_word(word: &str, max_chars: usize, lines: &mut Vec<String>) {
-    let mut chunk = String::new();
-    for ch in word.chars() {
-        if chunk.chars().count() >= max_chars {
-            lines.push(chunk);
-            chunk = String::new();
-        }
-        chunk.push(ch);
-    }
-    if !chunk.is_empty() {
-        lines.push(chunk);
-    }
+fn estimated_text_width(text: &str, px_size: f32) -> f32 {
+    text.chars().count() as f32 * (px_size * 0.54).max(7.0)
 }
 
 fn should_skip_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> bool {
@@ -668,6 +820,7 @@ fn apply_runtime_scripts(
                 is_bold: true,
                 line_height: 32.0,
                 margin_after: 4.0,
+                line_break_after: true,
                 color: [1.0, 1.0, 1.0, 1.0],
                 href: None,
             },
@@ -685,6 +838,7 @@ fn apply_runtime_scripts(
             is_bold: false,
             line_height: 22.0,
             margin_after: 6.0,
+            line_break_after: true,
             color: [1.0, 1.0, 1.0, 1.0],
             href: None,
         });
@@ -704,6 +858,7 @@ fn append_media_summary(fragments: &mut Vec<TextFragment>, media: &MediaReport) 
             is_bold: true,
             line_height: 20.0,
             margin_after: 8.0,
+            line_break_after: true,
             color: [0.725, 0.790, 0.980, 1.0],
             href: None,
         },

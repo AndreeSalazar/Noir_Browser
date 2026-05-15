@@ -731,9 +731,14 @@ impl RealRenderer {
                 &[],
             );
 
+            let clear_color = style
+                .background_color
+                .as_deref()
+                .map(crate::layout::layout_gen::LayoutEngine::parse_color)
+                .unwrap_or((0.102, 0.102, 0.180, 1.0));
             let clear_values = [vk::ClearValue {
                 color: vk::ClearColorValue {
-                    float32: [0.102, 0.102, 0.180, 1.0],
+                    float32: [clear_color.0, clear_color.1, clear_color.2, clear_color.3],
                 },
             }];
             let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
