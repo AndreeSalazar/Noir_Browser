@@ -27,10 +27,13 @@ Fuentes primarias revisadas:
 6. Los recursos tienen tipo desde el borde de red.
    `Document`, `Style`, `Script`, `Media`, `Image` y `Other` usan accept headers y buckets de cache separados.
 
+7. CSS empieza como cascade pequeno, no como motor gigante.
+   Primero respetamos selectores simples y propiedades visibles: ocultamiento, color, font-size, font-weight, line-height, margin-bottom y text-transform.
+
 ## Siguiente fase
 
 - Cache con expiracion y control de tamano.
-- Aplicar CSS externo precargado al estilo computado.
+- Ampliar selectores CSS: descendientes completos, atributos y pseudo-clases simples.
 - Scripts externos usando `ResourceType::Script`.
 - Audio backend Rust con `cpal` o `rodio`.
 - Resolver MSE/HLS/DASH para streams modernos.

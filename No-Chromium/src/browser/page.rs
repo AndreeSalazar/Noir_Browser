@@ -1,11 +1,14 @@
 use crate::browser::LinkHitbox;
 use crate::media::discovery::{discover_media, MediaReport};
+use crate::parsers::css_simple::{parse_color, parse_px, CssCascade};
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
 use crate::parsers::resource_loader::{
     fetch_document, CacheStatus, ResourceResponse, ResourceType,
 };
-use crate::parsers::style_collector::collect_stylesheets;
+use crate::parsers::style_collector::{
+    collect_inline_styles, collect_stylesheets, StylesheetBundle,
+};
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
 use crate::runtime::{collect_scripts, BrowserRuntime};
 use std::collections::HashMap;
@@ -26,7 +29,33 @@ struct TextFragment {
     is_bold: bool,
     line_height: f32,
     margin_after: f32,
+    color: [f32; 4],
     href: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct TextStyleState {
+    px_size: f32,
+    is_bold: bool,
+    line_height: f32,
+    margin_after: f32,
+    color: [f32; 4],
+    hidden: bool,
+    text_transform: Option<String>,
+}
+
+impl Default for TextStyleState {
+    fn default() -> Self {
+        Self {
+            px_size: 16.0,
+            is_bold: false,
+            line_height: 22.0,
+            margin_after: 6.0,
+            color: [1.0, 1.0, 1.0, 1.0],
+            hidden: false,
+            text_transform: None,
+        }
+    }
 }
 
 pub struct PageDocument {
@@ -65,17 +94,17 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
         .ok();
 
     let mut fragments = Vec::new();
+    let stylesheet_bundle = load_stylesheet_bundle(&dom, base_url.as_ref());
+    let css = CssCascade::from_blocks(&stylesheet_bundle.blocks);
     extract_text_from_dom(
         &dom,
         &mut fragments,
-        16.0,
-        false,
-        22.0,
-        6.0,
+        &css,
+        TextStyleState::default(),
         None,
         base_url.as_ref(),
     );
-    append_stylesheet_summary(&dom, &mut fragments, base_url.as_ref());
+    append_stylesheet_summary(&mut fragments, &stylesheet_bundle);
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
     append_response_summary(&mut fragments, &response);
     let media = discover_media(&dom, &response.final_url);
@@ -122,40 +151,46 @@ fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &Resourc
             is_bold: true,
             line_height: 19.0,
             margin_after: 6.0,
+            color: [0.725, 0.790, 0.980, 1.0],
             href: None,
         },
     );
 }
 
-fn append_stylesheet_summary(
-    dom: &[DomNode],
-    fragments: &mut Vec<TextFragment>,
-    base_url: Option<&Url>,
-) {
+fn load_stylesheet_bundle(dom: &[DomNode], base_url: Option<&Url>) -> StylesheetBundle {
+    let mut bundle = StylesheetBundle::default();
     let stylesheets = collect_stylesheets(dom, base_url);
-    if stylesheets.is_empty() {
-        return;
+    bundle.external_count = stylesheets.len();
+    bundle.blocks.extend(collect_inline_styles(dom));
+    bundle.inline_count = bundle.blocks.len();
+
+    for stylesheet in stylesheets.iter().take(16) {
+        if let Ok(response) = crate::parsers::resource_loader::fetch_style(&stylesheet.url) {
+            bundle.loaded_external += 1;
+            bundle.blocks.push(response.body);
+        }
     }
 
-    let mut loaded = 0usize;
-    for stylesheet in stylesheets.iter().take(16) {
-        if crate::parsers::resource_loader::fetch_style(&stylesheet.url).is_ok() {
-            loaded += 1;
-        }
+    bundle
+}
+
+fn append_stylesheet_summary(fragments: &mut Vec<TextFragment>, bundle: &StylesheetBundle) {
+    if bundle.external_count == 0 && bundle.inline_count == 0 {
+        return;
     }
 
     fragments.insert(
         0,
         TextFragment {
             text: format!(
-                "CSS externo detectado: {} hojas / {} precargadas",
-                stylesheets.len(),
-                loaded
+                "CSS detectado: {} inline / {} externas / {} precargadas",
+                bundle.inline_count, bundle.external_count, bundle.loaded_external
             ),
             px_size: 13.0,
             is_bold: true,
             line_height: 19.0,
             margin_after: 6.0,
+            color: [0.725, 0.790, 0.980, 1.0],
             href: None,
         },
     );
@@ -188,10 +223,11 @@ pub fn render_page(
     let mut visible_lines = 0;
 
     for fragment in &document.fragments {
-        let color = if fragment.href.is_some() {
+        let color = if fragment.href.is_some() && fragment.color == TextStyleState::default().color
+        {
             [0.478, 0.635, 0.968, 1.0]
         } else {
-            [1.0, 1.0, 1.0, 1.0]
+            fragment.color
         };
 
         for line in wrap_text(&fragment.text, fragment.px_size, content_width) {
@@ -257,10 +293,8 @@ fn compact_url_text(url: &str, viewport_width: f32) -> String {
 fn extract_text_from_dom(
     nodes: &[DomNode],
     out: &mut Vec<TextFragment>,
-    current_size: f32,
-    current_bold: bool,
-    current_line_height: f32,
-    current_margin_after: f32,
+    css: &CssCascade,
+    current_style: TextStyleState,
     current_href: Option<String>,
     base_url: Option<&Url>,
 ) {
@@ -279,77 +313,43 @@ fn extract_text_from_dom(
                     continue;
                 }
 
-                let mut new_size = current_size;
-                let mut new_bold = current_bold;
-                let mut line_height = current_line_height;
-                let mut margin_after = current_margin_after;
+                let mut next_style = apply_css_declarations(
+                    apply_tag_defaults(tag, &current_style),
+                    &css.declarations_for(tag, attributes),
+                );
                 let mut new_href = current_href.clone();
 
                 match tag {
-                    HtmlTag::H1 => {
-                        new_size = 32.0;
-                        new_bold = true;
-                        line_height = 40.0;
-                        margin_after = 6.0;
-                    }
-                    HtmlTag::H2 => {
-                        new_size = 24.0;
-                        new_bold = true;
-                        line_height = 32.0;
-                        margin_after = 5.0;
-                    }
-                    HtmlTag::H3 => {
-                        new_size = 20.0;
-                        new_bold = true;
-                        line_height = 28.0;
-                        margin_after = 4.0;
-                    }
-                    HtmlTag::P | HtmlTag::Li | HtmlTag::Dd | HtmlTag::Dt => {
-                        new_size = 16.0;
-                        new_bold = false;
-                        line_height = 22.0;
-                        margin_after = 6.0;
-                    }
                     HtmlTag::A => {
-                        if current_size <= 16.0 {
-                            new_size = 14.0;
-                            line_height = 20.0;
+                        if current_style.px_size <= 16.0 {
+                            next_style.px_size = 14.0;
+                            next_style.line_height = 20.0;
                         }
-                        margin_after = 4.0;
+                        next_style.margin_after = 4.0;
                         if let Some(href) = attributes.get("href") {
                             new_href = resolve_url(base_url, href);
                         }
                     }
-                    HtmlTag::Strong | HtmlTag::B => {
-                        new_bold = true;
-                    }
-                    HtmlTag::Small => {
-                        new_size = 13.0;
-                        line_height = 18.0;
-                    }
                     _ => {}
                 }
 
-                extract_text_from_dom(
-                    children,
-                    out,
-                    new_size,
-                    new_bold,
-                    line_height,
-                    margin_after,
-                    new_href,
-                    base_url,
-                );
+                if next_style.hidden {
+                    continue;
+                }
+
+                extract_text_from_dom(children, out, css, next_style, new_href, base_url);
             }
             DomNode::Text(t) => {
                 let text = normalize_text(t.trim());
                 if text.len() > 2 {
+                    let text = apply_text_transform(text, current_style.text_transform.as_deref());
                     out.push(TextFragment {
                         text,
-                        px_size: current_size,
-                        is_bold: current_bold,
-                        line_height: current_line_height,
-                        margin_after: current_margin_after,
+                        px_size: current_style.px_size,
+                        is_bold: current_style.is_bold,
+                        line_height: current_style.line_height,
+                        margin_after: current_style.margin_after,
+                        color: current_style.color,
                         href: current_href.clone(),
                     });
                 }
@@ -366,6 +366,114 @@ fn resolve_url(base_url: Option<&Url>, href: &str) -> Option<String> {
     match base_url {
         Some(base) => base.join(href).ok().map(|url| url.to_string()),
         None => Some(href.to_string()),
+    }
+}
+
+fn apply_tag_defaults(tag: &HtmlTag, current: &TextStyleState) -> TextStyleState {
+    let mut next = current.clone();
+    match tag {
+        HtmlTag::H1 => {
+            next.px_size = 32.0;
+            next.is_bold = true;
+            next.line_height = 40.0;
+            next.margin_after = 6.0;
+        }
+        HtmlTag::H2 => {
+            next.px_size = 24.0;
+            next.is_bold = true;
+            next.line_height = 32.0;
+            next.margin_after = 5.0;
+        }
+        HtmlTag::H3 => {
+            next.px_size = 20.0;
+            next.is_bold = true;
+            next.line_height = 28.0;
+            next.margin_after = 4.0;
+        }
+        HtmlTag::P | HtmlTag::Li | HtmlTag::Dd | HtmlTag::Dt => {
+            next.px_size = 16.0;
+            next.is_bold = false;
+            next.line_height = 22.0;
+            next.margin_after = 6.0;
+        }
+        HtmlTag::Strong | HtmlTag::B => {
+            next.is_bold = true;
+        }
+        HtmlTag::Small => {
+            next.px_size = 13.0;
+            next.line_height = 18.0;
+        }
+        _ => {}
+    }
+    next
+}
+
+fn apply_css_declarations(
+    mut style: TextStyleState,
+    declarations: &crate::parsers::css_simple::CssDeclarations,
+) -> TextStyleState {
+    if declarations.display.as_deref() == Some("none")
+        || declarations.visibility.as_deref() == Some("hidden")
+        || declarations.opacity.as_deref() == Some("0")
+    {
+        style.hidden = true;
+    }
+
+    if let Some(color) = declarations.color.as_deref().and_then(parse_color) {
+        style.color = color;
+    }
+    if let Some(px_size) = declarations
+        .font_size
+        .as_deref()
+        .and_then(|value| parse_px(value, style.px_size))
+    {
+        style.px_size = px_size.clamp(8.0, 72.0);
+    }
+    if let Some(line_height) = declarations
+        .line_height
+        .as_deref()
+        .and_then(|value| parse_px(value, style.px_size))
+    {
+        style.line_height = line_height.clamp(style.px_size, 96.0);
+    } else {
+        style.line_height = style.line_height.max(style.px_size * 1.2);
+    }
+    if let Some(margin_after) = declarations
+        .margin_bottom
+        .as_deref()
+        .and_then(|value| parse_px(value, style.px_size))
+    {
+        style.margin_after = margin_after.clamp(0.0, 48.0);
+    }
+    if let Some(weight) = &declarations.font_weight {
+        let weight = weight.trim().to_ascii_lowercase();
+        style.is_bold = weight == "bold"
+            || weight == "bolder"
+            || weight.parse::<u16>().is_ok_and(|value| value >= 600);
+    }
+    if let Some(transform) = &declarations.text_transform {
+        style.text_transform = Some(transform.to_ascii_lowercase());
+    }
+
+    style
+}
+
+fn apply_text_transform(text: String, transform: Option<&str>) -> String {
+    match transform {
+        Some("uppercase") => text.to_uppercase(),
+        Some("lowercase") => text.to_lowercase(),
+        Some("capitalize") => text
+            .split_whitespace()
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        _ => text,
     }
 }
 
@@ -560,6 +668,7 @@ fn apply_runtime_scripts(
                 is_bold: true,
                 line_height: 32.0,
                 margin_after: 4.0,
+                color: [1.0, 1.0, 1.0, 1.0],
                 href: None,
             },
         );
@@ -576,6 +685,7 @@ fn apply_runtime_scripts(
             is_bold: false,
             line_height: 22.0,
             margin_after: 6.0,
+            color: [1.0, 1.0, 1.0, 1.0],
             href: None,
         });
     }
@@ -594,6 +704,7 @@ fn append_media_summary(fragments: &mut Vec<TextFragment>, media: &MediaReport) 
             is_bold: true,
             line_height: 20.0,
             margin_after: 8.0,
+            color: [0.725, 0.790, 0.980, 1.0],
             href: None,
         },
     );
