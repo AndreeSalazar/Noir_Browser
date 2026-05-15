@@ -236,7 +236,7 @@ fn append_direct_resource_notice(
 
     push_notice_fragment(
         fragments,
-        &format!("{kind} detectado"),
+        &format!("{kind} - detectado"),
         22.0,
         true,
         text_color,
