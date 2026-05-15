@@ -150,6 +150,12 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
     );
     append_stylesheet_summary(&mut fragments, &stylesheet_bundle);
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
+    append_app_shell_fallback(
+        &dom,
+        &response.body,
+        &mut fragments,
+        page_style.default_text_color,
+    );
     append_response_summary(&mut fragments, &response);
     let media = discover_media(&dom, &response.final_url);
     append_media_summary(&mut fragments, &media);
@@ -925,6 +931,307 @@ fn normalize_fragments(fragments: &mut Vec<TextFragment>) {
     }
 
     *fragments = cleaned;
+}
+
+#[derive(Default)]
+struct PageMetadata {
+    title: Option<String>,
+    description: Option<String>,
+    site_name: Option<String>,
+    canonical_url: Option<String>,
+}
+
+fn append_app_shell_fallback(
+    dom: &[DomNode],
+    raw_html: &str,
+    fragments: &mut Vec<TextFragment>,
+    text_color: [f32; 4],
+) {
+    let visible_fragments = fragments
+        .iter()
+        .filter(|fragment| fragment.px_size >= 15.0 && fragment.text.len() > 3)
+        .count();
+    if visible_fragments >= 3 {
+        return;
+    }
+
+    let metadata = collect_page_metadata(dom);
+    let mut added = 0;
+
+    if let Some(title) = metadata.title.as_deref().filter(|title| !title.is_empty()) {
+        push_fallback_fragment(fragments, title, 30.0, true, 38.0, 8.0, text_color, true);
+        added += 1;
+    }
+
+    if let Some(description) = metadata
+        .description
+        .as_deref()
+        .filter(|description| !description.is_empty())
+    {
+        push_fallback_fragment(
+            fragments,
+            description,
+            16.0,
+            false,
+            23.0,
+            10.0,
+            text_color,
+            true,
+        );
+        added += 1;
+    }
+
+    let app_texts = extract_embedded_app_text(raw_html, 18);
+    if !app_texts.is_empty() {
+        let source = metadata.site_name.as_deref().unwrap_or("aplicacion web");
+        push_fallback_fragment(
+            fragments,
+            &format!("Contenido inicial detectado en {source}"),
+            18.0,
+            true,
+            26.0,
+            6.0,
+            text_color,
+            true,
+        );
+        for text in app_texts {
+            push_fallback_fragment(fragments, &text, 15.0, false, 22.0, 4.0, text_color, true);
+        }
+        added += 1;
+    }
+
+    if added == 0 {
+        push_fallback_fragment(
+            fragments,
+            "Aplicacion web detectada: el HTML inicial no trae contenido visible suficiente.",
+            16.0,
+            false,
+            23.0,
+            8.0,
+            text_color,
+            true,
+        );
+    }
+
+    if let Some(canonical_url) = metadata.canonical_url {
+        push_fallback_fragment(
+            fragments,
+            &canonical_url,
+            13.0,
+            false,
+            19.0,
+            4.0,
+            [0.478, 0.635, 0.968, 1.0],
+            true,
+        );
+    }
+}
+
+fn push_fallback_fragment(
+    fragments: &mut Vec<TextFragment>,
+    text: &str,
+    px_size: f32,
+    is_bold: bool,
+    line_height: f32,
+    margin_after: f32,
+    color: [f32; 4],
+    line_break_after: bool,
+) {
+    let text = normalize_text(text);
+    if text.len() <= 2 {
+        return;
+    }
+
+    fragments.push(TextFragment {
+        text,
+        px_size,
+        is_bold,
+        line_height,
+        margin_after,
+        line_break_after,
+        layout: FragmentLayout {
+            max_width: Some("860px".to_string()),
+            ..FragmentLayout::default()
+        },
+        color,
+        href: None,
+    });
+}
+
+fn collect_page_metadata(nodes: &[DomNode]) -> PageMetadata {
+    let mut metadata = PageMetadata::default();
+    collect_page_metadata_inner(nodes, &mut metadata);
+    metadata
+}
+
+fn collect_page_metadata_inner(nodes: &[DomNode], metadata: &mut PageMetadata) {
+    for node in nodes {
+        let DomNode::Element {
+            tag,
+            attributes,
+            children,
+        } = node
+        else {
+            continue;
+        };
+
+        if matches!(tag, HtmlTag::Custom(name) if name == "title") {
+            let title = collect_node_text(children);
+            if !title.trim().is_empty() {
+                metadata.title = Some(normalize_text(&title));
+            }
+        }
+
+        if matches!(tag, HtmlTag::Custom(name) if name == "meta") {
+            let key = attributes
+                .get("name")
+                .or_else(|| attributes.get("property"))
+                .map(|value| value.to_ascii_lowercase());
+            if let (Some(key), Some(content)) = (key, attributes.get("content")) {
+                let content = normalize_text(content);
+                match key.as_str() {
+                    "description" | "og:description" | "twitter:description"
+                        if metadata.description.is_none() =>
+                    {
+                        metadata.description = Some(content)
+                    }
+                    "og:title" | "twitter:title" | "title" if metadata.title.is_none() => {
+                        metadata.title = Some(content)
+                    }
+                    "og:site_name" | "application-name" if metadata.site_name.is_none() => {
+                        metadata.site_name = Some(content)
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if matches!(tag, HtmlTag::Custom(name) if name == "link")
+            && attributes
+                .get("rel")
+                .is_some_and(|rel| rel.to_ascii_lowercase().contains("canonical"))
+            && metadata.canonical_url.is_none()
+        {
+            metadata.canonical_url = attributes.get("href").cloned();
+        }
+
+        collect_page_metadata_inner(children, metadata);
+    }
+}
+
+fn collect_node_text(nodes: &[DomNode]) -> String {
+    let mut out = String::new();
+    for node in nodes {
+        match node {
+            DomNode::Text(text) => {
+                out.push_str(text);
+                out.push(' ');
+            }
+            DomNode::Element { children, .. } => out.push_str(&collect_node_text(children)),
+        }
+    }
+    out
+}
+
+fn extract_embedded_app_text(raw_html: &str, limit: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for marker in [
+        "\"simpleText\":\"",
+        "\"text\":\"",
+        "\"title\":\"",
+        "\"label\":\"",
+        "\"ariaLabel\":\"",
+    ] {
+        collect_json_string_values(raw_html, marker, limit, &mut out);
+        if out.len() >= limit {
+            break;
+        }
+    }
+    out
+}
+
+fn collect_json_string_values(raw_html: &str, marker: &str, limit: usize, out: &mut Vec<String>) {
+    let mut start = 0;
+    while out.len() < limit {
+        let Some(pos) = raw_html[start..].find(marker) else {
+            break;
+        };
+        let value_start = start + pos + marker.len();
+        let Some((value, consumed)) = read_json_string_fragment(&raw_html[value_start..]) else {
+            start = value_start;
+            continue;
+        };
+        start = value_start + consumed;
+
+        let value = normalize_text(&decode_json_text(&value));
+        if is_useful_app_text(&value)
+            && !out
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(&value))
+        {
+            out.push(value);
+        }
+    }
+}
+
+fn read_json_string_fragment(text: &str) -> Option<(String, usize)> {
+    let mut value = String::new();
+    let mut escaped = false;
+    for (idx, ch) in text.char_indices() {
+        if escaped {
+            value.push('\\');
+            value.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' => escaped = true,
+            '"' => return Some((value, idx + 1)),
+            _ => value.push(ch),
+        }
+    }
+    None
+}
+
+fn decode_json_text(text: &str) -> String {
+    let mut out = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+
+        match chars.next() {
+            Some('n') | Some('r') | Some('t') => out.push(' '),
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some('/') => out.push('/'),
+            Some('u') => {
+                let hex = chars.by_ref().take(4).collect::<String>();
+                if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                    if let Some(decoded) = char::from_u32(code) {
+                        out.push(decoded);
+                    }
+                }
+            }
+            Some(other) => out.push(other),
+            None => {}
+        }
+    }
+    out
+}
+
+fn is_useful_app_text(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.len() < 3 || trimmed.len() > 120 {
+        return false;
+    }
+    if trimmed.starts_with("http") || trimmed.contains(".js") || trimmed.contains(".css") {
+        return false;
+    }
+    let letters = trimmed.chars().filter(|ch| ch.is_alphabetic()).count();
+    letters >= 2
 }
 
 fn collapse_repeated_text(text: &str) -> String {

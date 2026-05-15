@@ -1,6 +1,8 @@
 use crate::runtime::dom_runtime::{RuntimeDom, RuntimeReport};
 use crate::runtime::script_collector::ScriptSource;
 
+const MAX_INLINE_SCRIPT_BYTES: usize = 64 * 1024;
+
 #[derive(Debug, Default)]
 pub struct BrowserRuntime {
     dom: RuntimeDom,
@@ -19,6 +21,13 @@ impl BrowserRuntime {
         for script in scripts {
             match script {
                 ScriptSource::Inline(code) => {
+                    if code.len() > MAX_INLINE_SCRIPT_BYTES {
+                        self.unsupported_statements.push(format!(
+                            "inline script omitido por tamano: {} bytes",
+                            code.len()
+                        ));
+                        continue;
+                    }
                     self.execute_inline(code);
                     self.inline_scripts_executed += 1;
                 }
