@@ -26,7 +26,8 @@ pub fn run() {
 
     let quality = QualityProfile::ultra_native(window.scale_factor() as f32);
     let mut browser = BrowserState::new(INITIAL_URL);
-    let text_data = browser.load_current_page(quality.text_rasterization_options());
+    let initial_width = window.inner_size().width as f32;
+    let text_data = browser.load_current_page(quality.text_rasterization_options(), initial_width);
 
     let mut vk_ctx = VulkanContext::new(&window);
     let mut renderer = Some(RealRenderer::new(&vk_ctx, text_data, quality));
@@ -99,7 +100,12 @@ pub fn run() {
                 if !hit_button {
                     if let Some(url) = browser.link_at_y(cursor_pos.y as f32) {
                         println!("[Browser] Navigating to {}", url);
-                        let new_atlas = browser.navigate_to(&url, quality.text_rasterization_options());
+                        let win_size = window.inner_size();
+                        let new_atlas = browser.navigate_to(
+                            &url,
+                            quality.text_rasterization_options(),
+                            win_size.width as f32,
+                        );
 
                         if let Some(mut r) = renderer.take() {
                             r.cleanup(&vk_ctx.device);

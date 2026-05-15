@@ -6,6 +6,10 @@ use crate::runtime::{collect_scripts, BrowserRuntime};
 use url::Url;
 
 const MAX_VISIBLE_TEXTS: usize = 48;
+const MAX_VISIBLE_LINES: usize = 120;
+const CONTENT_X: f32 = 40.0;
+const CONTENT_TOP: f32 = 78.0;
+const CONTENT_SIDE_PADDING: f32 = 80.0;
 
 struct TextFragment {
     text: String,
@@ -20,6 +24,7 @@ pub fn load_page(
     target_url: &str,
     link_hitboxes: &mut Vec<LinkHitbox>,
     text_options: TextRasterizationOptions,
+    viewport_width: f32,
 ) -> RasterizedAtlas {
     let html = crate::parsers::http_client::fetch_html(target_url)
         .unwrap_or_else(|_| "<h1>Network Error</h1>".to_string());
@@ -29,6 +34,7 @@ pub fn load_page(
     let mut fragments = Vec::new();
     extract_text_from_dom(&dom, &mut fragments, 24.0, false, 30.0, 4.0, None, base_url.as_ref());
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
+    normalize_fragments(&mut fragments);
 
     let mut text_requests = Vec::new();
     link_hitboxes.clear();
@@ -42,7 +48,10 @@ pub fn load_page(
         color: [1.0, 1.0, 1.0, 1.0],
     });
 
-    let mut current_y = 78.0;
+    let content_width = (viewport_width - CONTENT_SIDE_PADDING).clamp(320.0, 1120.0);
+    let mut current_y = CONTENT_TOP;
+    let mut visible_lines = 0;
+
     for fragment in fragments {
         let color = if fragment.href.is_some() {
             [0.478, 0.635, 0.968, 1.0]
@@ -50,23 +59,36 @@ pub fn load_page(
             [1.0, 1.0, 1.0, 1.0]
         };
 
-        if let Some(href) = fragment.href {
-            link_hitboxes.push(LinkHitbox {
-                url: href,
-                y_min: current_y,
-                y_max: current_y + fragment.line_height,
+        let lines = wrap_text(&fragment.text, fragment.px_size, content_width);
+        for line in lines {
+            if visible_lines >= MAX_VISIBLE_LINES {
+                break;
+            }
+
+            if let Some(href) = &fragment.href {
+                link_hitboxes.push(LinkHitbox {
+                    url: href.clone(),
+                    y_min: current_y,
+                    y_max: current_y + fragment.line_height,
+                });
+            }
+
+            text_requests.push(TextRequest {
+                text: line,
+                px_size: fragment.px_size,
+                is_bold: fragment.is_bold,
+                pos_x: CONTENT_X,
+                pos_y: current_y,
+                color,
             });
+            current_y += fragment.line_height;
+            visible_lines += 1;
         }
 
-        text_requests.push(TextRequest {
-            text: fragment.text,
-            px_size: fragment.px_size,
-            is_bold: fragment.is_bold,
-            pos_x: 40.0,
-            pos_y: current_y,
-            color,
-        });
-        current_y += fragment.line_height + fragment.margin_after;
+        current_y += fragment.margin_after;
+        if visible_lines >= MAX_VISIBLE_LINES {
+            break;
+        }
     }
 
     RasterizedAtlas::with_options(&text_requests, text_options)
@@ -93,7 +115,7 @@ fn extract_text_from_dom(
                 attributes,
                 children,
             } => {
-                if matches!(tag, HtmlTag::Script | HtmlTag::Noscript) {
+                if should_skip_element(tag, attributes) {
                     continue;
                 }
 
@@ -155,7 +177,7 @@ fn extract_text_from_dom(
                 let trimmed = t.trim();
                 if trimmed.len() > 2 {
                     out.push(TextFragment {
-                        text: normalize_text(trimmed).chars().take(96).collect(),
+                        text: normalize_text(trimmed),
                         px_size: current_size,
                         is_bold: current_bold,
                         line_height: current_line_height,
@@ -181,6 +203,162 @@ fn resolve_url(base_url: Option<&Url>, href: &str) -> Option<String> {
 
 fn normalize_text(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn normalize_fragments(fragments: &mut Vec<TextFragment>) {
+    let mut cleaned = Vec::new();
+    let mut previous_key = String::new();
+
+    for mut fragment in fragments.drain(..) {
+        fragment.text = collapse_repeated_text(&normalize_text(&fragment.text));
+        if fragment.text.len() <= 2 {
+            continue;
+        }
+
+        let key = fragment.text.to_lowercase();
+        if key == previous_key {
+            continue;
+        }
+
+        previous_key = key;
+        cleaned.push(fragment);
+    }
+
+    *fragments = cleaned;
+}
+
+fn collapse_repeated_text(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() < 4 || chars.len() % 2 != 0 {
+        return text.to_string();
+    }
+
+    let half = chars.len() / 2;
+    if chars[..half] == chars[half..] {
+        chars[..half].iter().collect()
+    } else {
+        text.to_string()
+    }
+}
+
+fn wrap_text(text: &str, px_size: f32, max_width: f32) -> Vec<String> {
+    let avg_char_width = (px_size * 0.54).max(7.0);
+    let max_chars = (max_width / avg_char_width).floor().max(12.0) as usize;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+
+    for word in text.split_whitespace() {
+        if word.chars().count() > max_chars {
+            flush_line(&mut lines, &mut current);
+            split_long_word(word, max_chars, &mut lines);
+            continue;
+        }
+
+        let candidate_len = current.chars().count() + usize::from(!current.is_empty()) + word.chars().count();
+        if candidate_len > max_chars {
+            flush_line(&mut lines, &mut current);
+        }
+
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+
+    flush_line(&mut lines, &mut current);
+
+    if lines.is_empty() {
+        vec![text.to_string()]
+    } else {
+        lines
+    }
+}
+
+fn flush_line(lines: &mut Vec<String>, current: &mut String) {
+    if !current.trim().is_empty() {
+        lines.push(current.trim().to_string());
+        current.clear();
+    }
+}
+
+fn split_long_word(word: &str, max_chars: usize, lines: &mut Vec<String>) {
+    let mut chunk = String::new();
+    for ch in word.chars() {
+        if chunk.chars().count() >= max_chars {
+            lines.push(chunk);
+            chunk = String::new();
+        }
+        chunk.push(ch);
+    }
+    if !chunk.is_empty() {
+        lines.push(chunk);
+    }
+}
+
+fn should_skip_element(
+    tag: &HtmlTag,
+    attributes: &std::collections::HashMap<String, String>,
+) -> bool {
+    if matches!(
+        tag,
+        HtmlTag::Script
+            | HtmlTag::Noscript
+            | HtmlTag::Template
+            | HtmlTag::Svg
+            | HtmlTag::Canvas
+    ) {
+        return true;
+    }
+
+    if matches!(tag, HtmlTag::Custom(name) if name == "style" || name == "title") {
+        return true;
+    }
+
+    if attributes.contains_key("hidden") {
+        return true;
+    }
+
+    if attributes
+        .get("aria-hidden")
+        .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+    {
+        return true;
+    }
+
+    if let Some(style) = attributes.get("style").map(|value| value.to_ascii_lowercase()) {
+        if style.contains("display:none")
+            || style.contains("display: none")
+            || style.contains("visibility:hidden")
+            || style.contains("visibility: hidden")
+            || style.contains("opacity:0")
+            || style.contains("opacity: 0")
+        {
+            return true;
+        }
+    }
+
+    let Some(class) = attributes.get("class") else {
+        return false;
+    };
+
+    class
+        .split_whitespace()
+        .map(|token| token.to_ascii_lowercase())
+        .any(|token| {
+            matches!(
+                token.as_str(),
+                "hidden"
+                    | "d-none"
+                    | "sr-only"
+                    | "visually-hidden"
+                    | "modal"
+                    | "modal-dialog"
+                    | "modal-content"
+                    | "offcanvas"
+                    | "dropdown-menu"
+                    | "collapse"
+            )
+        })
 }
 
 fn apply_runtime_scripts(dom: &[DomNode], fragments: &mut Vec<TextFragment>, base_url: Option<&Url>) {

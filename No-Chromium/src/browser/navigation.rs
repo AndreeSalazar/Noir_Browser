@@ -28,13 +28,27 @@ impl BrowserState {
         }
     }
 
-    pub fn load_current_page(&mut self, text_options: TextRasterizationOptions) -> RasterizedAtlas {
-        crate::browser::page::load_page(&self.current_url, &mut self.link_hitboxes, text_options)
+    pub fn load_current_page(
+        &mut self,
+        text_options: TextRasterizationOptions,
+        viewport_width: f32,
+    ) -> RasterizedAtlas {
+        crate::browser::page::load_page(
+            &self.current_url,
+            &mut self.link_hitboxes,
+            text_options,
+            viewport_width,
+        )
     }
 
-    pub fn navigate_to(&mut self, url: &str, text_options: TextRasterizationOptions) -> RasterizedAtlas {
+    pub fn navigate_to(
+        &mut self,
+        url: &str,
+        text_options: TextRasterizationOptions,
+        viewport_width: f32,
+    ) -> RasterizedAtlas {
         self.current_url = url.to_string();
-        self.load_current_page(text_options)
+        self.load_current_page(text_options, viewport_width)
     }
 
     pub fn link_at_y(&self, y: f32) -> Option<String> {
