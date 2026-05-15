@@ -1,5 +1,5 @@
 use winit::{
-    event::{Event, WindowEvent},
+    event::{Event, MouseScrollDelta, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
@@ -26,8 +26,12 @@ pub fn run() {
 
     let quality = QualityProfile::ultra_native(window.scale_factor() as f32);
     let mut browser = BrowserState::new(INITIAL_URL);
-    let initial_width = window.inner_size().width as f32;
-    let text_data = browser.load_current_page(quality.text_rasterization_options(), initial_width);
+    let initial_size = window.inner_size();
+    let text_data = browser.load_current_page(
+        quality.text_rasterization_options(),
+        initial_size.width as f32,
+        initial_size.height as f32,
+    );
 
     let mut vk_ctx = VulkanContext::new(&window);
     let mut renderer = Some(RealRenderer::new(&vk_ctx, text_data, quality));
@@ -53,9 +57,38 @@ pub fn run() {
                 event: WindowEvent::Resized(new_size),
                 ..
             } => {
+                if let Some(mut r) = renderer.take() {
+                    r.cleanup(&vk_ctx.device);
+                }
                 vk_ctx.recreate_swapchain(new_size.width, new_size.height);
-                if let Some(r) = &mut renderer {
-                    r.recreate_swapchain(&vk_ctx);
+                let new_atlas = browser.rerender_current_page(
+                    quality.text_rasterization_options(),
+                    new_size.width as f32,
+                    new_size.height as f32,
+                );
+                renderer = Some(RealRenderer::new(&vk_ctx, new_atlas, quality));
+            }
+            Event::WindowEvent {
+                event: WindowEvent::MouseWheel { delta, .. },
+                ..
+            } => {
+                let scroll_delta = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => -y * 72.0,
+                    MouseScrollDelta::PixelDelta(pos) => -pos.y as f32,
+                };
+
+                let win_size = window.inner_size();
+                if let Some(new_atlas) = browser.scroll_by(
+                    scroll_delta,
+                    quality.text_rasterization_options(),
+                    win_size.width as f32,
+                    win_size.height as f32,
+                ) {
+                    if let Some(mut r) = renderer.take() {
+                        r.cleanup(&vk_ctx.device);
+                    }
+                    renderer = Some(RealRenderer::new(&vk_ctx, new_atlas, quality));
+                    window.request_redraw();
                 }
             }
             Event::WindowEvent {
@@ -105,6 +138,7 @@ pub fn run() {
                             &url,
                             quality.text_rasterization_options(),
                             win_size.width as f32,
+                            win_size.height as f32,
                         );
 
                         if let Some(mut r) = renderer.take() {

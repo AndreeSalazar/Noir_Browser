@@ -184,20 +184,6 @@ impl RealRenderer {
         }
     }
 
-    pub fn recreate_swapchain(&mut self, ctx: &VulkanContext) {
-        unsafe {
-            for fb in &self.framebuffers {
-                ctx.device.destroy_framebuffer(*fb, None);
-            }
-            self.framebuffers = ctx.present_image_views.iter().map(|&view| {
-                let fb_info = vk::FramebufferCreateInfo::builder()
-                    .render_pass(self.pipeline_manager.render_pass).attachments(std::slice::from_ref(&view))
-                    .width(ctx.extent.width).height(ctx.extent.height).layers(1);
-                ctx.device.create_framebuffer(&fb_info, None).unwrap()
-            }).collect();
-        }
-    }
-
     pub fn draw_frame(&mut self, ctx: &VulkanContext, style: &crate::parsers::css_engine::ComputedStyle, win_width: f32, win_height: f32) {
         unsafe {
             ctx.device.wait_for_fences(&[self.in_flight_fence], true, std::u64::MAX).unwrap();

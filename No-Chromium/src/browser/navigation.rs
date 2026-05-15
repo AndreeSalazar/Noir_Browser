@@ -1,3 +1,4 @@
+use crate::browser::page::{load_page_document, render_page, PageDocument};
 use crate::parsers::css_engine::ComputedStyle;
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions};
 
@@ -12,6 +13,9 @@ pub struct BrowserState {
     current_url: String,
     link_hitboxes: Vec<LinkHitbox>,
     style: ComputedStyle,
+    document: Option<PageDocument>,
+    scroll_offset: f32,
+    content_height: f32,
 }
 
 impl BrowserState {
@@ -25,6 +29,9 @@ impl BrowserState {
             current_url: initial_url.to_string(),
             link_hitboxes: Vec::new(),
             style,
+            document: None,
+            scroll_offset: 0.0,
+            content_height: 0.0,
         }
     }
 
@@ -32,13 +39,14 @@ impl BrowserState {
         &mut self,
         text_options: TextRasterizationOptions,
         viewport_width: f32,
+        viewport_height: f32,
     ) -> RasterizedAtlas {
-        crate::browser::page::load_page(
-            &self.current_url,
-            &mut self.link_hitboxes,
-            text_options,
-            viewport_width,
-        )
+        if self.document.is_none() {
+            self.document = Some(load_page_document(&self.current_url));
+            self.scroll_offset = 0.0;
+        }
+
+        self.render_current_page(text_options, viewport_width, viewport_height)
     }
 
     pub fn navigate_to(
@@ -46,9 +54,41 @@ impl BrowserState {
         url: &str,
         text_options: TextRasterizationOptions,
         viewport_width: f32,
+        viewport_height: f32,
     ) -> RasterizedAtlas {
         self.current_url = url.to_string();
-        self.load_current_page(text_options, viewport_width)
+        self.document = Some(load_page_document(&self.current_url));
+        self.scroll_offset = 0.0;
+        self.render_current_page(text_options, viewport_width, viewport_height)
+    }
+
+    pub fn scroll_by(
+        &mut self,
+        delta_y: f32,
+        text_options: TextRasterizationOptions,
+        viewport_width: f32,
+        viewport_height: f32,
+    ) -> Option<RasterizedAtlas> {
+        let max_scroll = (self.content_height - viewport_height).max(0.0);
+        let previous = self.scroll_offset;
+        self.scroll_offset = (self.scroll_offset + delta_y).clamp(0.0, max_scroll);
+
+        if (self.scroll_offset - previous).abs() < f32::EPSILON {
+            return None;
+        }
+
+        Some(self.render_current_page(text_options, viewport_width, viewport_height))
+    }
+
+    pub fn rerender_current_page(
+        &mut self,
+        text_options: TextRasterizationOptions,
+        viewport_width: f32,
+        viewport_height: f32,
+    ) -> RasterizedAtlas {
+        let max_scroll = (self.content_height - viewport_height).max(0.0);
+        self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
+        self.render_current_page(text_options, viewport_width, viewport_height)
     }
 
     pub fn link_at_y(&self, y: f32) -> Option<String> {
@@ -60,5 +100,45 @@ impl BrowserState {
 
     pub fn style(&self) -> &ComputedStyle {
         &self.style
+    }
+
+    fn render_current_page(
+        &mut self,
+        text_options: TextRasterizationOptions,
+        viewport_width: f32,
+        viewport_height: f32,
+    ) -> RasterizedAtlas {
+        let document = self
+            .document
+            .as_ref()
+            .expect("Browser document should be loaded before rendering");
+        let rendered = render_page(
+            &self.current_url,
+            document,
+            &mut self.link_hitboxes,
+            text_options,
+            viewport_width,
+            viewport_height,
+            self.scroll_offset,
+        );
+        self.content_height = rendered.content_height;
+
+        let max_scroll = (self.content_height - viewport_height).max(0.0);
+        if self.scroll_offset > max_scroll {
+            self.scroll_offset = max_scroll;
+            let rendered = render_page(
+                &self.current_url,
+                document,
+                &mut self.link_hitboxes,
+                text_options,
+                viewport_width,
+                viewport_height,
+                self.scroll_offset,
+            );
+            self.content_height = rendered.content_height;
+            rendered.atlas
+        } else {
+            rendered.atlas
+        }
     }
 }

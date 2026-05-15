@@ -3,14 +3,17 @@ use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
 use crate::runtime::{collect_scripts, BrowserRuntime};
+use std::collections::HashMap;
 use url::Url;
 
-const MAX_VISIBLE_TEXTS: usize = 48;
-const MAX_VISIBLE_LINES: usize = 120;
+const MAX_TEXT_FRAGMENTS: usize = 2048;
+const MAX_VISIBLE_LINES: usize = 180;
 const CONTENT_X: f32 = 40.0;
 const CONTENT_TOP: f32 = 78.0;
 const CONTENT_SIDE_PADDING: f32 = 80.0;
+const VIEWPORT_BOTTOM_PADDING: f32 = 48.0;
 
+#[derive(Clone, Debug)]
 struct TextFragment {
     text: String,
     px_size: f32,
@@ -20,22 +23,47 @@ struct TextFragment {
     href: Option<String>,
 }
 
-pub fn load_page(
-    target_url: &str,
-    link_hitboxes: &mut Vec<LinkHitbox>,
-    text_options: TextRasterizationOptions,
-    viewport_width: f32,
-) -> RasterizedAtlas {
+pub struct PageDocument {
+    fragments: Vec<TextFragment>,
+}
+
+pub struct PageRender {
+    pub atlas: RasterizedAtlas,
+    pub content_height: f32,
+}
+
+pub fn load_page_document(target_url: &str) -> PageDocument {
     let html = crate::parsers::http_client::fetch_html(target_url)
         .unwrap_or_else(|_| "<h1>Network Error</h1>".to_string());
     let dom = crate::parsers::dom_tree::parse_html(&html);
     let base_url = Url::parse(target_url).ok();
 
     let mut fragments = Vec::new();
-    extract_text_from_dom(&dom, &mut fragments, 24.0, false, 30.0, 4.0, None, base_url.as_ref());
+    extract_text_from_dom(
+        &dom,
+        &mut fragments,
+        16.0,
+        false,
+        22.0,
+        6.0,
+        None,
+        base_url.as_ref(),
+    );
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
     normalize_fragments(&mut fragments);
 
+    PageDocument { fragments }
+}
+
+pub fn render_page(
+    target_url: &str,
+    document: &PageDocument,
+    link_hitboxes: &mut Vec<LinkHitbox>,
+    text_options: TextRasterizationOptions,
+    viewport_width: f32,
+    viewport_height: f32,
+    scroll_offset: f32,
+) -> PageRender {
     let mut text_requests = Vec::new();
     link_hitboxes.clear();
 
@@ -49,49 +77,52 @@ pub fn load_page(
     });
 
     let content_width = (viewport_width - CONTENT_SIDE_PADDING).clamp(320.0, 1120.0);
-    let mut current_y = CONTENT_TOP;
+    let visible_bottom = (viewport_height - VIEWPORT_BOTTOM_PADDING).max(CONTENT_TOP);
+    let mut document_y = CONTENT_TOP;
     let mut visible_lines = 0;
 
-    for fragment in fragments {
+    for fragment in &document.fragments {
         let color = if fragment.href.is_some() {
             [0.478, 0.635, 0.968, 1.0]
         } else {
             [1.0, 1.0, 1.0, 1.0]
         };
 
-        let lines = wrap_text(&fragment.text, fragment.px_size, content_width);
-        for line in lines {
-            if visible_lines >= MAX_VISIBLE_LINES {
-                break;
-            }
+        for line in wrap_text(&fragment.text, fragment.px_size, content_width) {
+            let screen_y = document_y - scroll_offset;
+            let line_bottom = screen_y + fragment.line_height;
 
-            if let Some(href) = &fragment.href {
-                link_hitboxes.push(LinkHitbox {
-                    url: href.clone(),
-                    y_min: current_y,
-                    y_max: current_y + fragment.line_height,
+            if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom && visible_lines < MAX_VISIBLE_LINES {
+                if let Some(href) = &fragment.href {
+                    link_hitboxes.push(LinkHitbox {
+                        url: href.clone(),
+                        y_min: screen_y,
+                        y_max: line_bottom,
+                    });
+                }
+
+                text_requests.push(TextRequest {
+                    text: line,
+                    px_size: fragment.px_size,
+                    is_bold: fragment.is_bold,
+                    pos_x: CONTENT_X,
+                    pos_y: screen_y,
+                    color,
                 });
+                visible_lines += 1;
             }
 
-            text_requests.push(TextRequest {
-                text: line,
-                px_size: fragment.px_size,
-                is_bold: fragment.is_bold,
-                pos_x: CONTENT_X,
-                pos_y: current_y,
-                color,
-            });
-            current_y += fragment.line_height;
-            visible_lines += 1;
+            document_y += fragment.line_height;
         }
 
-        current_y += fragment.margin_after;
-        if visible_lines >= MAX_VISIBLE_LINES {
-            break;
-        }
+        document_y += fragment.margin_after;
     }
 
-    RasterizedAtlas::with_options(&text_requests, text_options)
+    let content_height = document_y + VIEWPORT_BOTTOM_PADDING;
+    PageRender {
+        atlas: RasterizedAtlas::with_options(&text_requests, text_options),
+        content_height,
+    }
 }
 
 fn extract_text_from_dom(
@@ -105,7 +136,7 @@ fn extract_text_from_dom(
     base_url: Option<&Url>,
 ) {
     for node in nodes {
-        if out.len() >= MAX_VISIBLE_TEXTS {
+        if out.len() >= MAX_TEXT_FRAGMENTS {
             break;
         }
 
@@ -126,18 +157,17 @@ fn extract_text_from_dom(
                 let mut new_href = current_href.clone();
 
                 match tag {
-                    HtmlTag::Custom(name) if name == "style" || name == "title" => continue,
                     HtmlTag::H1 => {
                         new_size = 32.0;
                         new_bold = true;
                         line_height = 40.0;
-                        margin_after = 4.0;
+                        margin_after = 6.0;
                     }
                     HtmlTag::H2 => {
                         new_size = 24.0;
                         new_bold = true;
                         line_height = 32.0;
-                        margin_after = 4.0;
+                        margin_after = 5.0;
                     }
                     HtmlTag::H3 => {
                         new_size = 20.0;
@@ -145,19 +175,28 @@ fn extract_text_from_dom(
                         line_height = 28.0;
                         margin_after = 4.0;
                     }
-                    HtmlTag::P => {
+                    HtmlTag::P | HtmlTag::Li | HtmlTag::Dd | HtmlTag::Dt => {
                         new_size = 16.0;
                         new_bold = false;
                         line_height = 22.0;
                         margin_after = 6.0;
                     }
                     HtmlTag::A => {
-                        new_size = 14.0;
-                        line_height = 20.0;
+                        if current_size <= 16.0 {
+                            new_size = 14.0;
+                            line_height = 20.0;
+                        }
                         margin_after = 4.0;
                         if let Some(href) = attributes.get("href") {
                             new_href = resolve_url(base_url, href);
                         }
+                    }
+                    HtmlTag::Strong | HtmlTag::B => {
+                        new_bold = true;
+                    }
+                    HtmlTag::Small => {
+                        new_size = 13.0;
+                        line_height = 18.0;
                     }
                     _ => {}
                 }
@@ -174,10 +213,10 @@ fn extract_text_from_dom(
                 );
             }
             DomNode::Text(t) => {
-                let trimmed = t.trim();
-                if trimmed.len() > 2 {
+                let text = normalize_text(t.trim());
+                if text.len() > 2 {
                     out.push(TextFragment {
-                        text: normalize_text(trimmed),
+                        text,
                         px_size: current_size,
                         is_bold: current_bold,
                         line_height: current_line_height,
@@ -211,7 +250,7 @@ fn normalize_fragments(fragments: &mut Vec<TextFragment>) {
 
     for mut fragment in fragments.drain(..) {
         fragment.text = collapse_repeated_text(&normalize_text(&fragment.text));
-        if fragment.text.len() <= 2 {
+        if fragment.text.len() <= 2 || is_low_value_text(&fragment.text) {
             continue;
         }
 
@@ -241,6 +280,10 @@ fn collapse_repeated_text(text: &str) -> String {
     }
 }
 
+fn is_low_value_text(text: &str) -> bool {
+    matches!(text.trim(), "." | "," | "|" | "-" | "•")
+}
+
 fn wrap_text(text: &str, px_size: f32, max_width: f32) -> Vec<String> {
     let avg_char_width = (px_size * 0.54).max(7.0);
     let max_chars = (max_width / avg_char_width).floor().max(12.0) as usize;
@@ -254,7 +297,9 @@ fn wrap_text(text: &str, px_size: f32, max_width: f32) -> Vec<String> {
             continue;
         }
 
-        let candidate_len = current.chars().count() + usize::from(!current.is_empty()) + word.chars().count();
+        let candidate_len = current.chars().count()
+            + usize::from(!current.is_empty())
+            + word.chars().count();
         if candidate_len > max_chars {
             flush_line(&mut lines, &mut current);
         }
@@ -295,10 +340,7 @@ fn split_long_word(word: &str, max_chars: usize, lines: &mut Vec<String>) {
     }
 }
 
-fn should_skip_element(
-    tag: &HtmlTag,
-    attributes: &std::collections::HashMap<String, String>,
-) -> bool {
+fn should_skip_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> bool {
     if matches!(
         tag,
         HtmlTag::Script
@@ -393,12 +435,12 @@ fn apply_runtime_scripts(dom: &[DomNode], fragments: &mut Vec<TextFragment>, bas
     }
 
     for text in report.dom.appended_text {
-        if fragments.len() >= MAX_VISIBLE_TEXTS {
+        if fragments.len() >= MAX_TEXT_FRAGMENTS {
             break;
         }
 
         fragments.push(TextFragment {
-            text: normalize_text(&text).chars().take(96).collect(),
+            text: normalize_text(&text),
             px_size: 16.0,
             is_bold: false,
             line_height: 22.0,
