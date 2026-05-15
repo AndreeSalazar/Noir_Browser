@@ -53,16 +53,20 @@ impl ShaderModuleLoader {
         let compiler = shaderc::Compiler::new().expect("Failed to initialize shader compiler");
         let mut options = shaderc::CompileOptions::new().unwrap();
         options.set_optimization_level(shaderc::OptimizationLevel::Performance);
-        
-        let binary_result = compiler.compile_into_spirv(
-            source, kind, name, "main", Some(&options)
-        ).expect("Failed to compile shader");
-        
+
+        let binary_result = compiler
+            .compile_into_spirv(source, kind, name, "main", Some(&options))
+            .expect("Failed to compile shader");
+
         binary_result.as_binary().to_vec()
     }
 
     pub fn create_shader_module(device: &ash::Device, code: &[u32]) -> vk::ShaderModule {
         let create_info = vk::ShaderModuleCreateInfo::builder().code(code);
-        unsafe { device.create_shader_module(&create_info, None).expect("Failed to create shader module") }
+        unsafe {
+            device
+                .create_shader_module(&create_info, None)
+                .expect("Failed to create shader module")
+        }
     }
 }

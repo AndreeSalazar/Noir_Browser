@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use crate::parsers::html_elements::HtmlTag;
 use html5ever::parse_document;
 use html5ever::tendril::TendrilSink;
-use markup5ever_rcdom::{NodeData, RcDom, Handle};
-use crate::parsers::html_elements::HtmlTag;
+use markup5ever_rcdom::{Handle, NodeData, RcDom};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum DomNode {
@@ -34,7 +34,7 @@ fn visit_node(handle: &Handle) -> Option<DomNode> {
         NodeData::Element { name, attrs, .. } => {
             let tag_name = name.local.as_ref();
             let tag = map_tag_name(tag_name);
-            
+
             let mut attributes = HashMap::new();
             for attr in attrs.borrow().iter() {
                 attributes.insert(attr.name.local.to_string(), attr.value.to_string());

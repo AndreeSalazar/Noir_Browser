@@ -22,9 +22,7 @@ pub struct Compositor {
 
 impl Compositor {
     pub fn new() -> Self {
-        Self {
-            layers: Vec::new(),
-        }
+        Self { layers: Vec::new() }
     }
 
     pub fn push_layer(&mut self, layer: RenderLayer) {

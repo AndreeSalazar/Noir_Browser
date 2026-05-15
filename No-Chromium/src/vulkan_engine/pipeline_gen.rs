@@ -24,11 +24,15 @@ impl PipelineManager {
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build();
-            
+
         let layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(std::slice::from_ref(&sampler_layout_binding));
-            
-        let descriptor_set_layout = unsafe { device.create_descriptor_set_layout(&layout_info, None).unwrap() };
+
+        let descriptor_set_layout = unsafe {
+            device
+                .create_descriptor_set_layout(&layout_info, None)
+                .unwrap()
+        };
 
         println!("[*] Creando Render Pass...");
         let color_attachment = vk::AttachmentDescription::builder()
@@ -40,15 +44,15 @@ impl PipelineManager {
             .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .final_layout(vk::ImageLayout::PRESENT_SRC_KHR);
-            
+
         let color_attachment_ref = vk::AttachmentReference::builder()
             .attachment(0)
             .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
-            
+
         let subpass = vk::SubpassDescription::builder()
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
             .color_attachments(std::slice::from_ref(&color_attachment_ref));
-            
+
         let dependency = vk::SubpassDependency::builder()
             .src_subpass(vk::SUBPASS_EXTERNAL)
             .dst_subpass(0)
@@ -56,28 +60,31 @@ impl PipelineManager {
             .src_access_mask(vk::AccessFlags::empty())
             .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
             .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
-            
+
         let render_pass_info = vk::RenderPassCreateInfo::builder()
             .attachments(std::slice::from_ref(&color_attachment))
             .subpasses(std::slice::from_ref(&subpass))
             .dependencies(std::slice::from_ref(&dependency));
-            
+
         let render_pass = unsafe { device.create_render_pass(&render_pass_info, None).unwrap() };
 
         println!("[*] Compilando el Graphics Pipeline...");
         let main_function_name = CString::new("main").unwrap();
-        
+
         let vert_shader_stage_info = vk::PipelineShaderStageCreateInfo::builder()
             .stage(vk::ShaderStageFlags::VERTEX)
             .module(vertex_shader_module)
             .name(&main_function_name);
-            
+
         let frag_shader_stage_info = vk::PipelineShaderStageCreateInfo::builder()
             .stage(vk::ShaderStageFlags::FRAGMENT)
             .module(fragment_shader_module)
             .name(&main_function_name);
-            
-        let shader_stages = [vert_shader_stage_info.build(), frag_shader_stage_info.build()];
+
+        let shader_stages = [
+            vert_shader_stage_info.build(),
+            frag_shader_stage_info.build(),
+        ];
 
         // Binding description (vec2 pos, vec4 color, vec2 uv)
         let vertex_binding_description = vk::VertexInputBindingDescription::builder()
@@ -85,7 +92,7 @@ impl PipelineManager {
             .stride(32) // 8 floats * 4 bytes
             .input_rate(vk::VertexInputRate::VERTEX)
             .build();
-            
+
         let vertex_attribute_descriptions = [
             vk::VertexInputAttributeDescription::builder()
                 .binding(0)
@@ -116,8 +123,8 @@ impl PipelineManager {
             .primitive_restart_enable(false);
 
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::builder()
-            .dynamic_states(&dynamic_states);
+        let dynamic_state_info =
+            vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_states);
 
         let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
             .viewport_count(1)
@@ -158,8 +165,12 @@ impl PipelineManager {
 
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(std::slice::from_ref(&descriptor_set_layout));
-            
-        let pipeline_layout = unsafe { device.create_pipeline_layout(&pipeline_layout_info, None).unwrap() };
+
+        let pipeline_layout = unsafe {
+            device
+                .create_pipeline_layout(&pipeline_layout_info, None)
+                .unwrap()
+        };
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&shader_stages)
@@ -175,11 +186,13 @@ impl PipelineManager {
             .subpass(0);
 
         let graphics_pipeline = unsafe {
-            device.create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                std::slice::from_ref(&pipeline_info),
-                None,
-            ).expect("Failed to create Graphics Pipeline")[0]
+            device
+                .create_graphics_pipelines(
+                    vk::PipelineCache::null(),
+                    std::slice::from_ref(&pipeline_info),
+                    None,
+                )
+                .expect("Failed to create Graphics Pipeline")[0]
         };
 
         Self {

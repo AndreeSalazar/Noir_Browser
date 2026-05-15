@@ -51,7 +51,8 @@ impl BrowserRuntime {
                 continue;
             }
 
-            self.unsupported_statements.push(statement.chars().take(160).collect());
+            self.unsupported_statements
+                .push(statement.chars().take(160).collect());
         }
     }
 
@@ -78,8 +79,10 @@ impl BrowserRuntime {
             return true;
         }
 
-        if let Some(value) = assignment_value(statement, "document.querySelector(\"title\").textContent")
-            .or_else(|| assignment_value(statement, "document.querySelector('title').textContent"))
+        if let Some(value) =
+            assignment_value(statement, "document.querySelector(\"title\").textContent").or_else(
+                || assignment_value(statement, "document.querySelector('title').textContent"),
+            )
         {
             self.dom.set_title(value);
             return true;

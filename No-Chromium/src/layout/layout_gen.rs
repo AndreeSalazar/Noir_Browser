@@ -1,6 +1,6 @@
 // AUTO-GENERATED VULKAN LAYOUT ENGINE
-use crate::ui::ui_gen::UIVertex;
 use crate::parsers::css_engine::ComputedStyle;
+use crate::ui::ui_gen::UIVertex;
 
 pub struct LayoutEngine;
 
@@ -22,13 +22,29 @@ impl LayoutEngine {
         clean.parse::<f32>().unwrap_or(0.0)
     }
 
-    pub fn build_dom_vertices(style: &ComputedStyle, window_width: f32, window_height: f32) -> Vec<UIVertex> {
+    pub fn build_dom_vertices(
+        style: &ComputedStyle,
+        window_width: f32,
+        window_height: f32,
+    ) -> Vec<UIVertex> {
         let mut vertices = Vec::new();
-        
+
         // 1. Extraer propiedades CSS
-        let width = if let Some(w) = &style.width { Self::parse_px(w) } else { 100.0 };
-        let height = if let Some(h) = &style.height { Self::parse_px(h) } else { 100.0 };
-        let color_hex = if let Some(c) = &style.background_color { c.clone() } else { "#ffffff".to_string() };
+        let width = if let Some(w) = &style.width {
+            Self::parse_px(w)
+        } else {
+            100.0
+        };
+        let height = if let Some(h) = &style.height {
+            Self::parse_px(h)
+        } else {
+            100.0
+        };
+        let color_hex = if let Some(c) = &style.background_color {
+            c.clone()
+        } else {
+            "#ffffff".to_string()
+        };
         let (r, g, b, a) = Self::parse_color(&color_hex);
 
         // 2. Calcular coordenadas (Top-Left 0,0 default offset por ahora debajo del Top Bar 40px)
@@ -45,7 +61,7 @@ impl LayoutEngine {
         vertices.push(UIVertex::solid(ndc_x, ndc_y, r, g, b, a));
         vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y, r, g, b, a));
         vertices.push(UIVertex::solid(ndc_x, ndc_y + ndc_h, r, g, b, a));
-        
+
         vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y, r, g, b, a));
         vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y + ndc_h, r, g, b, a));
         vertices.push(UIVertex::solid(ndc_x, ndc_y + ndc_h, r, g, b, a));

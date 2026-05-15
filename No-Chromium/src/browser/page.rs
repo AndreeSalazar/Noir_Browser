@@ -12,6 +12,7 @@ const CONTENT_X: f32 = 40.0;
 const CONTENT_TOP: f32 = 78.0;
 const CONTENT_SIDE_PADDING: f32 = 80.0;
 const VIEWPORT_BOTTOM_PADDING: f32 = 48.0;
+const URL_TEXT_X: f32 = 202.0;
 
 #[derive(Clone, Debug)]
 struct TextFragment {
@@ -71,7 +72,7 @@ pub fn render_page(
         text: target_url.to_string(),
         px_size: 16.0,
         is_bold: false,
-        pos_x: 20.0,
+        pos_x: URL_TEXT_X,
         pos_y: 48.0,
         color: [1.0, 1.0, 1.0, 1.0],
     });
@@ -92,7 +93,10 @@ pub fn render_page(
             let screen_y = document_y - scroll_offset;
             let line_bottom = screen_y + fragment.line_height;
 
-            if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom && visible_lines < MAX_VISIBLE_LINES {
+            if line_bottom >= CONTENT_TOP
+                && screen_y <= visible_bottom
+                && visible_lines < MAX_VISIBLE_LINES
+            {
                 if let Some(href) = &fragment.href {
                     link_hitboxes.push(LinkHitbox {
                         url: href.clone(),
@@ -297,9 +301,8 @@ fn wrap_text(text: &str, px_size: f32, max_width: f32) -> Vec<String> {
             continue;
         }
 
-        let candidate_len = current.chars().count()
-            + usize::from(!current.is_empty())
-            + word.chars().count();
+        let candidate_len =
+            current.chars().count() + usize::from(!current.is_empty()) + word.chars().count();
         if candidate_len > max_chars {
             flush_line(&mut lines, &mut current);
         }
@@ -343,11 +346,7 @@ fn split_long_word(word: &str, max_chars: usize, lines: &mut Vec<String>) {
 fn should_skip_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> bool {
     if matches!(
         tag,
-        HtmlTag::Script
-            | HtmlTag::Noscript
-            | HtmlTag::Template
-            | HtmlTag::Svg
-            | HtmlTag::Canvas
+        HtmlTag::Script | HtmlTag::Noscript | HtmlTag::Template | HtmlTag::Svg | HtmlTag::Canvas
     ) {
         return true;
     }
@@ -367,7 +366,10 @@ fn should_skip_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> b
         return true;
     }
 
-    if let Some(style) = attributes.get("style").map(|value| value.to_ascii_lowercase()) {
+    if let Some(style) = attributes
+        .get("style")
+        .map(|value| value.to_ascii_lowercase())
+    {
         if style.contains("display:none")
             || style.contains("display: none")
             || style.contains("visibility:hidden")
@@ -403,7 +405,11 @@ fn should_skip_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> b
         })
 }
 
-fn apply_runtime_scripts(dom: &[DomNode], fragments: &mut Vec<TextFragment>, base_url: Option<&Url>) {
+fn apply_runtime_scripts(
+    dom: &[DomNode],
+    fragments: &mut Vec<TextFragment>,
+    base_url: Option<&Url>,
+) {
     let scripts = collect_scripts(dom, base_url);
     if scripts.is_empty() {
         return;

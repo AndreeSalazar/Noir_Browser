@@ -14,7 +14,11 @@ pub fn collect_scripts(nodes: &[DomNode], base_url: Option<&Url>) -> Vec<ScriptS
     scripts
 }
 
-fn collect_scripts_inner(nodes: &[DomNode], base_url: Option<&Url>, scripts: &mut Vec<ScriptSource>) {
+fn collect_scripts_inner(
+    nodes: &[DomNode],
+    base_url: Option<&Url>,
+    scripts: &mut Vec<ScriptSource>,
+) {
     for node in nodes {
         let DomNode::Element {
             tag,
@@ -30,7 +34,10 @@ fn collect_scripts_inner(nodes: &[DomNode], base_url: Option<&Url>, scripts: &mu
                 continue;
             }
 
-            if let Some(src) = attributes.get("src").and_then(|src| resolve_script_url(base_url, src)) {
+            if let Some(src) = attributes
+                .get("src")
+                .and_then(|src| resolve_script_url(base_url, src))
+            {
                 scripts.push(ScriptSource::External(src));
             }
 
@@ -53,8 +60,7 @@ fn is_javascript_script(script_type: Option<&str>) -> bool {
 
     matches!(
         script_type.trim().to_ascii_lowercase().as_str(),
-        ""
-            | "module"
+        "" | "module"
             | "text/javascript"
             | "application/javascript"
             | "application/ecmascript"

@@ -1,0 +1,24 @@
+{
+  "root": "SVG-Icon",
+  "style": "noir-browser-ui",
+  "notes": "SVG puro para atlas futuro: browser, navegacion, seguridad, marcas y herramientas 3D/animacion.",
+  "icons": [
+    { "id": "browser-close", "file": "browser-close.svg", "category": "browser" },
+    { "id": "browser-minimize", "file": "browser-minimize.svg", "category": "browser" },
+    { "id": "browser-maximize", "file": "browser-maximize.svg", "category": "browser" },
+    { "id": "nav-back", "file": "nav-back.svg", "category": "navigation" },
+    { "id": "nav-forward", "file": "nav-forward.svg", "category": "navigation" },
+    { "id": "nav-reload", "file": "nav-reload.svg", "category": "navigation" },
+    { "id": "nav-home", "file": "nav-home.svg", "category": "navigation" },
+    { "id": "internet-globe", "file": "internet-globe.svg", "category": "security" },
+    { "id": "security-lock", "file": "security-lock.svg", "category": "security" },
+    { "id": "security-shield", "file": "security-shield.svg", "category": "security" },
+    { "id": "brand-youtube", "file": "brand-youtube.svg", "category": "brand" },
+    { "id": "brand-github", "file": "brand-github.svg", "category": "brand" },
+    { "id": "brand-x", "file": "brand-x.svg", "category": "brand" },
+    { "id": "brand-openai", "file": "brand-openai.svg", "category": "brand" },
+    { "id": "framework-threejs", "file": "framework-threejs.svg", "category": "creative-3d" },
+    { "id": "framework-spline", "file": "framework-spline.svg", "category": "creative-3d" },
+    { "id": "framework-rive", "file": "framework-rive.svg", "category": "creative-3d" }
+  ]
+}

@@ -96,7 +96,10 @@ impl RasterizedAtlas {
     }
 
     pub fn with_options(requests: &[TextRequest], options: TextRasterizationOptions) -> Self {
-        println!("[*] Rasterizando Atlas de Texto en CPU con {} peticiones", requests.len());
+        println!(
+            "[*] Rasterizando Atlas de Texto en CPU con {} peticiones",
+            requests.len()
+        );
         let font_pair = load_font_pair();
         let font_reg = &font_pair.regular;
         let font_bold = &font_pair.bold;
@@ -215,9 +218,12 @@ impl RasterizedAtlas {
                         let dst_idx = ((global_y * padded_w + global_x) as usize) * 4;
                         let src_idx = (y * glyph.width + x) * 4;
                         line_rgba[dst_idx] = line_rgba[dst_idx].max(glyph.rgba[src_idx]);
-                        line_rgba[dst_idx + 1] = line_rgba[dst_idx + 1].max(glyph.rgba[src_idx + 1]);
-                        line_rgba[dst_idx + 2] = line_rgba[dst_idx + 2].max(glyph.rgba[src_idx + 2]);
-                        line_rgba[dst_idx + 3] = line_rgba[dst_idx + 3].max(glyph.rgba[src_idx + 3]);
+                        line_rgba[dst_idx + 1] =
+                            line_rgba[dst_idx + 1].max(glyph.rgba[src_idx + 1]);
+                        line_rgba[dst_idx + 2] =
+                            line_rgba[dst_idx + 2].max(glyph.rgba[src_idx + 2]);
+                        line_rgba[dst_idx + 3] =
+                            line_rgba[dst_idx + 3].max(glyph.rgba[src_idx + 3]);
                     }
                 }
             }
@@ -283,7 +289,12 @@ impl RasterizedAtlas {
             current_y += pr.height + 2; // advance Y with padding
         }
 
-        println!("[+] Texture Atlas generado. Dimensión: {}x{} con {} textos.", max_atlas_w, total_atlas_h, quads.len());
+        println!(
+            "[+] Texture Atlas generado. Dimensión: {}x{} con {} textos.",
+            max_atlas_w,
+            total_atlas_h,
+            quads.len()
+        );
 
         Self {
             width: max_atlas_w,
@@ -353,7 +364,8 @@ fn rasterize_glyph(
             }
         }
         TextBitmapMode::SubpixelMask => {
-            let (metrics_hi, bitmap_hi) = font.rasterize_indexed_subpixel(glyph_index, px_size * scale_f);
+            let (metrics_hi, bitmap_hi) =
+                font.rasterize_indexed_subpixel(glyph_index, px_size * scale_f);
             let width = (metrics_hi.width as f32 / scale_f).ceil() as usize;
             let height = (metrics_hi.height as f32 / scale_f).ceil() as usize;
             CachedGlyph {

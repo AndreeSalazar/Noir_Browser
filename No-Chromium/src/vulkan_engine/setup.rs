@@ -1,6 +1,6 @@
 // AUTO-GENERATED VULKAN SETUP BOILERPLATE
-use ash::{vk, Entry, Instance, Device};
-use ash::extensions::{khr::Surface, khr::Swapchain, ext::DebugUtils};
+use ash::extensions::{ext::DebugUtils, khr::Surface, khr::Swapchain};
+use ash::{vk, Device, Entry, Instance};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_void;
@@ -61,14 +61,27 @@ impl VulkanContext {
                 .api_version(vk::make_api_version(0, 1, 3, 0));
 
             let layer_names = [CString::new("VK_LAYER_KHRONOS_validation").unwrap()];
-            let layers_names_raw: Vec<*const i8> = layer_names.iter().map(|raw_name| raw_name.as_ptr()).collect();
+            let layers_names_raw: Vec<*const i8> = layer_names
+                .iter()
+                .map(|raw_name| raw_name.as_ptr())
+                .collect();
 
-            let mut extension_names = ash_window::enumerate_required_extensions(window.raw_display_handle()).unwrap().to_vec();
+            let mut extension_names =
+                ash_window::enumerate_required_extensions(window.raw_display_handle())
+                    .unwrap()
+                    .to_vec();
             extension_names.push(DebugUtils::name().as_ptr());
 
             let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-                .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::WARNING | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR)
-                .message_type(vk::DebugUtilsMessageTypeFlagsEXT::GENERAL | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE)
+                .message_severity(
+                    vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                )
+                .message_type(
+                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                )
                 .pfn_user_callback(Some(vulkan_debug_callback));
 
             let create_info = vk::InstanceCreateInfo::builder()
@@ -78,63 +91,95 @@ impl VulkanContext {
                 .push_next(&mut debug_create_info);
 
             println!("[*] Creando Instancia Vulkan...");
-            let instance = entry.create_instance(&create_info, None).expect("Failed to create Vulkan Instance");
+            let instance = entry
+                .create_instance(&create_info, None)
+                .expect("Failed to create Vulkan Instance");
 
             let debug_utils_loader = DebugUtils::new(&entry, &instance);
-            let debug_messenger = debug_utils_loader.create_debug_utils_messenger(&debug_create_info, None).unwrap();
+            let debug_messenger = debug_utils_loader
+                .create_debug_utils_messenger(&debug_create_info, None)
+                .unwrap();
 
             println!("[*] Vinculando Surface con Windows (winit)...");
-            let surface = ash_window::create_surface(&entry, &instance, window.raw_display_handle(), window.raw_window_handle(), None).unwrap();
+            let surface = ash_window::create_surface(
+                &entry,
+                &instance,
+                window.raw_display_handle(),
+                window.raw_window_handle(),
+                None,
+            )
+            .unwrap();
             let surface_loader = Surface::new(&entry, &instance);
 
             println!("[*] Seleccionando Hardware...");
             let physical_devices = instance.enumerate_physical_devices().unwrap();
-            let (physical_device, queue_family_index) = physical_devices.into_iter().find_map(|pdevice| {
-                let props = instance.get_physical_device_queue_family_properties(pdevice);
-                for (index, family) in props.iter().enumerate() {
-                    let supports_graphic_and_surface = family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                        && surface_loader.get_physical_device_surface_support(pdevice, index as u32, surface).unwrap();
-                    if supports_graphic_and_surface {
-                        return Some((pdevice, index as u32));
+            let (physical_device, queue_family_index) = physical_devices
+                .into_iter()
+                .find_map(|pdevice| {
+                    let props = instance.get_physical_device_queue_family_properties(pdevice);
+                    for (index, family) in props.iter().enumerate() {
+                        let supports_graphic_and_surface = family
+                            .queue_flags
+                            .contains(vk::QueueFlags::GRAPHICS)
+                            && surface_loader
+                                .get_physical_device_surface_support(pdevice, index as u32, surface)
+                                .unwrap();
+                        if supports_graphic_and_surface {
+                            return Some((pdevice, index as u32));
+                        }
                     }
-                }
-                None
-            }).expect("No suitable hardware found (RTX 3060 missing or drivers broken)");
+                    None
+                })
+                .expect("No suitable hardware found (RTX 3060 missing or drivers broken)");
 
             println!("[*] Creando Device Lógico y Cola...");
             let priorities = [1.0];
             let queue_info = vk::DeviceQueueCreateInfo::builder()
                 .queue_family_index(queue_family_index)
                 .queue_priorities(&priorities);
-            
+
             let device_extension_names_raw = [Swapchain::name().as_ptr()];
             let features = vk::PhysicalDeviceFeatures::builder();
-            
+
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(std::slice::from_ref(&queue_info))
                 .enabled_extension_names(&device_extension_names_raw)
                 .enabled_features(&features);
 
-            let device = instance.create_device(physical_device, &device_create_info, None).unwrap();
+            let device = instance
+                .create_device(physical_device, &device_create_info, None)
+                .unwrap();
             let present_queue = device.get_device_queue(queue_family_index, 0);
 
             println!("[*] Configurando Swapchain...");
-            let surface_capabilities = surface_loader.get_physical_device_surface_capabilities(physical_device, surface).unwrap();
+            let surface_capabilities = surface_loader
+                .get_physical_device_surface_capabilities(physical_device, surface)
+                .unwrap();
             let mut desired_image_count = surface_capabilities.min_image_count + 1;
-            if surface_capabilities.max_image_count > 0 && desired_image_count > surface_capabilities.max_image_count {
+            if surface_capabilities.max_image_count > 0
+                && desired_image_count > surface_capabilities.max_image_count
+            {
                 desired_image_count = surface_capabilities.max_image_count;
             }
             let surface_resolution = match surface_capabilities.current_extent.width {
-                std::u32::MAX => vk::Extent2D { width: 1280, height: 720 },
+                std::u32::MAX => vk::Extent2D {
+                    width: 1280,
+                    height: 720,
+                },
                 _ => surface_capabilities.current_extent,
             };
-            let pre_transform = if surface_capabilities.supported_transforms.contains(vk::SurfaceTransformFlagsKHR::IDENTITY) {
+            let pre_transform = if surface_capabilities
+                .supported_transforms
+                .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+            {
                 vk::SurfaceTransformFlagsKHR::IDENTITY
             } else {
                 surface_capabilities.current_transform
             };
-            
-            let surface_formats = surface_loader.get_physical_device_surface_formats(physical_device, surface).unwrap();
+
+            let surface_formats = surface_loader
+                .get_physical_device_surface_formats(physical_device, surface)
+                .unwrap();
             let surface_format = surface_formats.first().unwrap().clone();
 
             let swapchain_loader = Swapchain::new(&instance, &device);
@@ -144,31 +189,61 @@ impl VulkanContext {
                 .image_color_space(surface_format.color_space)
                 .image_format(surface_format.format)
                 .image_extent(surface_resolution)
-                .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST)
+                .image_usage(
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
+                )
                 .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
                 .pre_transform(pre_transform)
                 .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
                 .present_mode(vk::PresentModeKHR::FIFO)
                 .clipped(true)
                 .image_array_layers(1);
-            
-            let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
+
+            let swapchain = swapchain_loader
+                .create_swapchain(&swapchain_create_info, None)
+                .unwrap();
             let present_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
-            let present_image_views: Vec<vk::ImageView> = present_images.iter().map(|&image| {
-                let create_view_info = vk::ImageViewCreateInfo::builder()
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(surface_format.format)
-                    .components(vk::ComponentMapping { r: vk::ComponentSwizzle::R, g: vk::ComponentSwizzle::G, b: vk::ComponentSwizzle::B, a: vk::ComponentSwizzle::A })
-                    .subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 })
-                    .image(image);
-                device.create_image_view(&create_view_info, None).unwrap()
-            }).collect();
+            let present_image_views: Vec<vk::ImageView> = present_images
+                .iter()
+                .map(|&image| {
+                    let create_view_info = vk::ImageViewCreateInfo::builder()
+                        .view_type(vk::ImageViewType::TYPE_2D)
+                        .format(surface_format.format)
+                        .components(vk::ComponentMapping {
+                            r: vk::ComponentSwizzle::R,
+                            g: vk::ComponentSwizzle::G,
+                            b: vk::ComponentSwizzle::B,
+                            a: vk::ComponentSwizzle::A,
+                        })
+                        .subresource_range(vk::ImageSubresourceRange {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            base_mip_level: 0,
+                            level_count: 1,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        })
+                        .image(image);
+                    device.create_image_view(&create_view_info, None).unwrap()
+                })
+                .collect();
 
             Self {
-                entry, instance, debug_utils_loader, debug_messenger, surface_loader, surface,
-                physical_device, device, queue_family_index, present_queue,
-                swapchain_loader, swapchain, present_images, present_image_views,
-                surface_format, extent: surface_resolution
+                entry,
+                instance,
+                debug_utils_loader,
+                debug_messenger,
+                surface_loader,
+                surface,
+                physical_device,
+                device,
+                queue_family_index,
+                present_queue,
+                swapchain_loader,
+                swapchain,
+                present_images,
+                present_image_views,
+                surface_format,
+                extent: surface_resolution,
             }
         }
     }
@@ -180,9 +255,13 @@ impl VulkanContext {
             for view in &self.present_image_views {
                 self.device.destroy_image_view(*view, None);
             }
-            self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+            self.swapchain_loader
+                .destroy_swapchain(self.swapchain, None);
 
-            let surface_capabilities = self.surface_loader.get_physical_device_surface_capabilities(self.physical_device, self.surface).unwrap();
+            let surface_capabilities = self
+                .surface_loader
+                .get_physical_device_surface_capabilities(self.physical_device, self.surface)
+                .unwrap();
             let surface_resolution = match surface_capabilities.current_extent.width {
                 std::u32::MAX => vk::Extent2D {
                     width: new_width,
@@ -194,7 +273,10 @@ impl VulkanContext {
                 return; // Minimized, nothing to do
             }
 
-            let pre_transform = if surface_capabilities.supported_transforms.contains(vk::SurfaceTransformFlagsKHR::IDENTITY) {
+            let pre_transform = if surface_capabilities
+                .supported_transforms
+                .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+            {
                 vk::SurfaceTransformFlagsKHR::IDENTITY
             } else {
                 surface_capabilities.current_transform
@@ -206,7 +288,9 @@ impl VulkanContext {
                 .image_color_space(self.surface_format.color_space)
                 .image_format(self.surface_format.format)
                 .image_extent(surface_resolution)
-                .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST)
+                .image_usage(
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
+                )
                 .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
                 .pre_transform(pre_transform)
                 .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
@@ -214,17 +298,40 @@ impl VulkanContext {
                 .clipped(true)
                 .image_array_layers(1);
 
-            self.swapchain = self.swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
-            self.present_images = self.swapchain_loader.get_swapchain_images(self.swapchain).unwrap();
-            self.present_image_views = self.present_images.iter().map(|&image| {
-                let create_view_info = vk::ImageViewCreateInfo::builder()
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(self.surface_format.format)
-                    .components(vk::ComponentMapping { r: vk::ComponentSwizzle::R, g: vk::ComponentSwizzle::G, b: vk::ComponentSwizzle::B, a: vk::ComponentSwizzle::A })
-                    .subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 })
-                    .image(image);
-                self.device.create_image_view(&create_view_info, None).unwrap()
-            }).collect();
+            self.swapchain = self
+                .swapchain_loader
+                .create_swapchain(&swapchain_create_info, None)
+                .unwrap();
+            self.present_images = self
+                .swapchain_loader
+                .get_swapchain_images(self.swapchain)
+                .unwrap();
+            self.present_image_views = self
+                .present_images
+                .iter()
+                .map(|&image| {
+                    let create_view_info = vk::ImageViewCreateInfo::builder()
+                        .view_type(vk::ImageViewType::TYPE_2D)
+                        .format(self.surface_format.format)
+                        .components(vk::ComponentMapping {
+                            r: vk::ComponentSwizzle::R,
+                            g: vk::ComponentSwizzle::G,
+                            b: vk::ComponentSwizzle::B,
+                            a: vk::ComponentSwizzle::A,
+                        })
+                        .subresource_range(vk::ImageSubresourceRange {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            base_mip_level: 0,
+                            level_count: 1,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        })
+                        .image(image);
+                    self.device
+                        .create_image_view(&create_view_info, None)
+                        .unwrap()
+                })
+                .collect();
 
             self.extent = surface_resolution;
         }
@@ -236,7 +343,8 @@ impl VulkanContext {
             for view in &self.present_image_views {
                 self.device.destroy_image_view(*view, None);
             }
-            self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+            self.swapchain_loader
+                .destroy_swapchain(self.swapchain, None);
             self.surface_loader.destroy_surface(self.surface, None);
             self.device.destroy_device(None);
             self.instance.destroy_instance(None);

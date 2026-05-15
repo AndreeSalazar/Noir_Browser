@@ -172,10 +172,7 @@ pub fn run() {
                     if let Some(url) = browser.link_at_y(cursor_pos.y as f32) {
                         println!("[Browser] Navigating to {}", url);
                         browser.set_pending_url(&url);
-                        let loading = loading_atlas(
-                            &url,
-                            quality.text_rasterization_options(),
-                        );
+                        let loading = loading_atlas(&url, quality.text_rasterization_options());
 
                         if let (Some(ctx), Some(r)) = (vk_ctx.as_ref(), renderer.as_mut()) {
                             r.update_text_atlas(ctx, loading);
@@ -245,7 +242,7 @@ fn loading_atlas(
                 text: url.to_string(),
                 px_size: 16.0,
                 is_bold: false,
-                pos_x: 20.0,
+                pos_x: 202.0,
                 pos_y: 48.0,
                 color: [1.0, 1.0, 1.0, 1.0],
             },
