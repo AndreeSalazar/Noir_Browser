@@ -174,7 +174,6 @@ impl RasterizedAtlas {
             let px: u32 = 2; // 2px left padding
             let py: u32 = current_y;
 
-            let radius = 4;
             let mut sdf_buffer = vec![0u8; (pr.width * pr.height) as usize];
             for y in 0..pr.height {
                 for x in 0..pr.width {

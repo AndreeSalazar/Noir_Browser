@@ -112,6 +112,7 @@ pub enum HtmlTag {
     Custom(String),
 }
 
+#[allow(dead_code)]
 pub struct HTMLElement {
     pub tag: HtmlTag,
     pub attributes: HashMap<String, String>,

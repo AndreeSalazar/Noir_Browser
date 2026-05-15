@@ -1,5 +1,6 @@
 // MASSIVE AUTO-GENERATED CSS ENGINE
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct ComputedStyle {
     pub align_content: Option<String>,

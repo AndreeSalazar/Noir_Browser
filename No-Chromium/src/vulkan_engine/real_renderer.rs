@@ -1,12 +1,11 @@
 use ash::vk;
-use std::ffi::c_void;
 use crate::vulkan_engine::setup::VulkanContext;
 use crate::vulkan_engine::shaders_gen::{ShaderModuleLoader, VERTEX_SHADER_GLSL, FRAGMENT_SHADER_GLSL};
 use crate::vulkan_engine::memory_gen::MemoryManager;
 use crate::vulkan_engine::pipeline_gen::PipelineManager;
-use crate::ui::ui_gen::{generate_chrome_vertices, UIVertex};
-use crate::layout::layout_gen::LayoutEngine;
-use crate::layout::text_rasterizer::{RasterizedAtlas, TextQuad};
+use crate::ui::ui_gen::UIVertex;
+use crate::render::quality::{PixelSnap, QualityProfile, TextFiltering};
+use crate::render::text::{RasterizedAtlas, TextQuad};
 use vk_mem::Alloc;
 
 pub struct RealRenderer {
@@ -40,10 +39,11 @@ pub struct RealRenderer {
 
     // Layout State
     pub text_quads: Vec<TextQuad>,
+    pub quality: QualityProfile,
 }
 
 impl RealRenderer {
-    pub fn new(ctx: &VulkanContext, text_data: RasterizedAtlas) -> Self {
+    pub fn new(ctx: &VulkanContext, text_data: RasterizedAtlas, quality: QualityProfile) -> Self {
         unsafe {
             println!("[*] Inicializando Renderizador Real de Texturas...");
 
@@ -176,6 +176,7 @@ impl RealRenderer {
                 descriptor_pool, descriptor_set,
                 vertex_buffer: vk::Buffer::null(), vertex_allocation: std::mem::zeroed(), vertex_count: 0,
                 text_quads,
+                quality,
             }
         }
     }
@@ -221,10 +222,22 @@ impl RealRenderer {
             
             // Text Quads (placed from Atlas)
             for tq in &self.text_quads {
+                let scale = self.quality.device_pixel_ratio.max(1.0);
+                let snap = |value: f32| match self.quality.pixel_snap {
+                    PixelSnap::None => value,
+                    PixelSnap::LogicalPixels => value.round(),
+                    PixelSnap::PhysicalPixels => (value * scale).round() / scale,
+                };
+                let filter_bias = match self.quality.text_filtering {
+                    TextFiltering::Linear => 0.0,
+                    TextFiltering::SubpixelLinear => 0.0,
+                };
+                let _msaa_samples = self.quality.msaa_samples;
+
                 let text_w = (tq.w / win_width) * 2.0;
                 let text_h = (tq.h / win_height) * 2.0;
-                let text_x = -1.0 + (tq.x / win_width) * 2.0;
-                let text_y = -1.0 + (tq.y / win_height) * 2.0;
+                let text_x = -1.0 + ((snap(tq.x) + filter_bias) / win_width) * 2.0;
+                let text_y = -1.0 + ((snap(tq.y) + filter_bias) / win_height) * 2.0;
 
                 let c = tq.color;
                 let quad = [
@@ -344,7 +357,7 @@ impl RealRenderer {
             device.device_wait_idle().unwrap();
 
             // VMA Cleanup (crucial to prevent Assertion crashes)
-            let mut alloc = self.memory_manager.allocator.lock().unwrap();
+            let alloc = self.memory_manager.allocator.lock().unwrap();
             
             // Note: v_staging_alloc was already destroyed in new(). We only need to destroy persistent ones.
             // But texture_allocation and vertex_allocation are not mutable here, we must use std::mem::replace or similar?

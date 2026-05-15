@@ -13,7 +13,7 @@ impl PipelineManager {
     pub fn new(
         device: &Device,
         surface_format: vk::SurfaceFormatKHR,
-        extent: vk::Extent2D,
+        _extent: vk::Extent2D,
         vertex_shader_module: vk::ShaderModule,
         fragment_shader_module: vk::ShaderModule,
     ) -> Self {

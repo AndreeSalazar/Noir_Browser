@@ -24,6 +24,7 @@ unsafe extern "system" fn vulkan_debug_callback(
     vk::FALSE
 }
 
+#[allow(dead_code)]
 pub struct VulkanContext {
     pub entry: Entry,
     pub instance: Instance,
@@ -182,7 +183,7 @@ impl VulkanContext {
             self.swapchain_loader.destroy_swapchain(self.swapchain, None);
 
             let surface_capabilities = self.surface_loader.get_physical_device_surface_capabilities(self.physical_device, self.surface).unwrap();
-            let mut surface_resolution = match surface_capabilities.current_extent.width {
+            let surface_resolution = match surface_capabilities.current_extent.width {
                 std::u32::MAX => vk::Extent2D {
                     width: new_width,
                     height: new_height,
