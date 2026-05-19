@@ -741,5 +741,9 @@ fn push_triangle_px(
         raw.push(v.a);
         raw.push(v.u);
         raw.push(v.v);
+        raw.push(v.box_w);
+        raw.push(v.box_h);
+        raw.push(v.radius);
+        raw.push(v.is_text);
     }
 }
