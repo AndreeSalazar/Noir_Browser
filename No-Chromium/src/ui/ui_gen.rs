@@ -8,6 +8,10 @@ pub struct UIVertex {
     pub a: f32,
     pub u: f32,
     pub v: f32,
+    pub box_w: f32,
+    pub box_h: f32,
+    pub radius: f32,
+    pub is_text: f32,
 }
 
 impl UIVertex {
@@ -21,7 +25,17 @@ impl UIVertex {
             a,
             u: -1.0,
             v: -1.0,
-        } // -1.0 indicates solid color to the shader
+            box_w: 0.0,
+            box_h: 0.0,
+            radius: 0.0,
+            is_text: 0.0,
+        }
+    }
+    
+    pub fn solid_box(x: f32, y: f32, r: f32, g: f32, b: f32, a: f32, u: f32, v: f32, box_w: f32, box_h: f32, radius: f32) -> Self {
+        Self {
+            x, y, r, g, b, a, u, v, box_w, box_h, radius, is_text: 0.0,
+        }
     }
     pub fn textured(x: f32, y: f32, r: f32, g: f32, b: f32, a: f32, u: f32, v: f32) -> Self {
         Self {
@@ -33,6 +47,10 @@ impl UIVertex {
             a,
             u,
             v,
+            box_w: 0.0,
+            box_h: 0.0,
+            radius: 0.0,
+            is_text: 1.0,
         }
     }
 }

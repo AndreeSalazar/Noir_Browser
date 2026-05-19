@@ -32,6 +32,8 @@ pub struct RenderBox {
     pub w: f32,
     pub h: f32,
     pub color: [f32; 4],
+    pub radius: f32,
+    pub href: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -42,6 +44,8 @@ enum LayoutFragment {
         layout: FragmentLayout,
         background_color: Option<[f32; 4]>,
         is_block: bool,
+        border_radius: Option<f32>,
+        href: Option<String>,
     },
     BlockEnd {
         id: usize,
@@ -72,6 +76,7 @@ struct FragmentLayout {
     padding_left: Option<String>,
     padding_right: Option<String>,
     text_align: Option<String>,
+    border_radius: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -87,6 +92,8 @@ struct TextStyleState {
     background_color: Option<[f32; 4]>,
     layout: FragmentLayout,
     in_navigation: bool,
+    border_radius: Option<f32>,
+    href: Option<String>,
 }
 
 impl Default for TextStyleState {
@@ -109,6 +116,8 @@ impl TextStyleState {
             background_color: None,
             layout: FragmentLayout::default(),
             in_navigation: false,
+            border_radius: None,
+            href: None,
         }
     }
 }
@@ -522,12 +531,14 @@ pub fn render_page(
     let mut line_started = false;
     let mut line_index = 0;
     let mut active_box = ResolvedLayoutBox {
-        x: default_content_x,
-        width: default_content_width,
+        content_x: default_content_x,
+        content_width: default_content_width,
+        box_x: default_content_x,
+        box_width: default_content_width,
     };
 
     let mut render_boxes = Vec::new();
-    let mut active_blocks: Vec<(usize, ResolvedLayoutBox, f32, [f32; 4])> = Vec::new();
+    let mut active_blocks: Vec<(usize, ResolvedLayoutBox, f32, [f32; 4], f32, Option<String>)> = Vec::new();
 
     for layout_frag in &document.fragments {
         match layout_frag {
@@ -536,10 +547,12 @@ pub fn render_page(
                 layout,
                 background_color,
                 is_block,
+                border_radius,
+                href,
             } => {
                 if *is_block && line_started {
                     document_y += line_height;
-                    cursor_x = active_box.x;
+                    cursor_x = active_box.content_x;
                     line_height = 0.0;
                     line_started = false;
                     line_index += 1;
@@ -552,8 +565,11 @@ pub fn render_page(
                     default_content_width,
                 );
 
+                active_box = layout_box;
+
                 if let Some(color) = background_color {
-                    active_blocks.push((*id, layout_box, document_y, *color));
+                    let radius = border_radius.unwrap_or(0.0);
+                    active_blocks.push((*id, layout_box, document_y, *color, radius, href.clone()));
                 }
             }
             LayoutFragment::BlockEnd {
@@ -563,14 +579,14 @@ pub fn render_page(
             } => {
                 if *is_block && line_started {
                     document_y += line_height;
-                    cursor_x = active_box.x;
+                    cursor_x = active_box.content_x;
                     line_height = 0.0;
                     line_started = false;
                     line_index += 1;
                 }
 
                 if let Some(pos) = active_blocks.iter().position(|b| b.0 == *id) {
-                    let (_, layout_box, start_y, color) = active_blocks.remove(pos);
+                    let (_, layout_box, start_y, color, radius, href) = active_blocks.remove(pos);
                     let height = document_y - start_y;
                     if height > 0.0 && color[3] > 0.0 {
                         let screen_y = start_y - scroll_offset;
@@ -578,12 +594,23 @@ pub fn render_page(
 
                         if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom {
                             render_boxes.push(RenderBox {
-                                x: layout_box.x,
+                                x: layout_box.box_x,
                                 y: screen_y,
-                                w: layout_box.width,
+                                w: layout_box.box_width,
                                 h: height,
                                 color,
+                                radius,
+                                href: href.clone(),
                             });
+                            if let Some(link) = href {
+                                link_hitboxes.push(LinkHitbox {
+                                    href: link,
+                                    x: layout_box.box_x,
+                                    y: screen_y,
+                                    w: layout_box.box_width,
+                                    h: height,
+                                });
+                            }
                         }
                     }
                 }
@@ -601,7 +628,7 @@ pub fn render_page(
                 );
                 if line_started && layout_box != active_box {
                     document_y += line_height.max(fragment.line_height);
-                    cursor_x = layout_box.x;
+                    cursor_x = layout_box.content_x;
                     line_height = 0.0;
                     line_started = false;
                     line_index += 1;
@@ -620,10 +647,10 @@ pub fn render_page(
                     let word_width = estimated_text_width(word, fragment.px_size);
                     let mut leading_space = if line_started { space_width } else { 0.0 };
                     if line_started
-                        && cursor_x + leading_space + word_width > layout_box.x + layout_box.width
+                        && cursor_x + leading_space + word_width > layout_box.content_x + layout_box.content_width
                     {
                         document_y += line_height.max(fragment.line_height);
-                        cursor_x = layout_box.x;
+                        cursor_x = layout_box.content_x;
                         line_height = 0.0;
                         leading_space = 0.0;
                         line_index += 1;
@@ -640,9 +667,11 @@ pub fn render_page(
                     {
                         if let Some(href) = &fragment.href {
                             link_hitboxes.push(LinkHitbox {
-                                url: href.clone(),
-                                y_min: screen_y,
-                                y_max: line_bottom,
+                                href: href.clone(),
+                                x: layout_box.content_x,
+                                y: screen_y,
+                                w: layout_box.content_width,
+                                h: active_line_height,
                             });
                         }
 
@@ -663,7 +692,7 @@ pub fn render_page(
 
                 if fragment.line_break_after && line_started {
                     document_y += line_height.max(fragment.line_height);
-                    cursor_x = active_box.x;
+                    cursor_x = active_box.content_x;
                     line_height = 0.0;
                     line_started = false;
                     line_index += 1;
@@ -690,8 +719,10 @@ pub fn render_page(
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct ResolvedLayoutBox {
-    x: f32,
-    width: f32,
+    content_x: f32,
+    content_width: f32,
+    box_x: f32,
+    box_width: f32,
 }
 
 fn resolve_fragment_layout(
@@ -749,8 +780,10 @@ fn resolve_fragment_layout(
     };
 
     ResolvedLayoutBox {
-        x: x + padding_left,
-        width: (width - padding_left - padding_right).max(240.0),
+        content_x: x + padding_left,
+        content_width: (width - padding_left - padding_right).max(240.0),
+        box_x: x,
+        box_width: width.max(240.0),
     }
 }
 
@@ -894,6 +927,12 @@ fn extract_text_from_dom(
                 let should_break = element_breaks_line(tag, &next_style);
                 let element_margin_after = next_style.margin_after.max(block_margin_after(tag));
                 
+                let border_radius = next_style
+                    .layout
+                    .border_radius
+                    .as_deref()
+                    .and_then(|val| parse_layout_length(val, 16.0));
+
                 let block_id = out.len();
                 if should_break {
                     out.push(LayoutFragment::BlockStart {
@@ -901,6 +940,8 @@ fn extract_text_from_dom(
                         layout: next_style.layout.clone(),
                         background_color: next_style.background_color,
                         is_block: true,
+                        border_radius,
+                        href: new_href.clone(),
                     });
                 }
 
@@ -1223,6 +1264,7 @@ fn apply_css_declarations(
     assign_layout_property(&mut style.layout.padding_left, &declarations.padding_left);
     assign_layout_property(&mut style.layout.padding_right, &declarations.padding_right);
     assign_layout_property(&mut style.layout.text_align, &declarations.text_align);
+    assign_layout_property(&mut style.layout.border_radius, &declarations.border_radius);
 
     style
 }
@@ -1240,6 +1282,7 @@ fn clear_inline_box_layout(layout: &mut FragmentLayout) {
     layout.margin_right = None;
     layout.padding_left = None;
     layout.padding_right = None;
+    layout.border_radius = None;
 }
 
 fn is_navigation_context(tag: &HtmlTag, attributes: &HashMap<String, String>) -> bool {

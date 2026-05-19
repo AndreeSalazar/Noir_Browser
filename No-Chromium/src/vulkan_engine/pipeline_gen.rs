@@ -89,7 +89,7 @@ impl PipelineManager {
         // Binding description (vec2 pos, vec4 color, vec2 uv)
         let vertex_binding_description = vk::VertexInputBindingDescription::builder()
             .binding(0)
-            .stride(32) // 8 floats * 4 bytes
+            .stride(48) // 12 floats * 4 bytes
             .input_rate(vk::VertexInputRate::VERTEX)
             .build();
 
@@ -111,6 +111,12 @@ impl PipelineManager {
                 .location(2)
                 .format(vk::Format::R32G32_SFLOAT)
                 .offset(24)
+                .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(3)
+                .format(vk::Format::R32G32B32A32_SFLOAT)
+                .offset(32)
                 .build(),
         ];
 

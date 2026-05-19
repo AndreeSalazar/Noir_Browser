@@ -37,6 +37,7 @@ pub struct CssDeclarations {
     pub padding_left: Option<String>,
     pub text_align: Option<String>,
     pub text_transform: Option<String>,
+    pub border_radius: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -146,6 +147,7 @@ impl CssDeclarations {
         assign_if_some(&mut self.padding_left, &other.padding_left);
         assign_if_some(&mut self.text_align, &other.text_align);
         assign_if_some(&mut self.text_transform, &other.text_transform);
+        assign_if_some(&mut self.border_radius, &other.border_radius);
     }
 }
 
@@ -454,6 +456,7 @@ fn parse_declarations(text: &str) -> CssDeclarations {
             }
             "text-align" => declarations.text_align = Some(value),
             "text-transform" => declarations.text_transform = Some(value),
+            "border-radius" => declarations.border_radius = Some(value),
             _ => {}
         }
     }

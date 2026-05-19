@@ -328,7 +328,7 @@ pub fn run() {
 
                 if !hit_button {
                     address_focused = false;
-                    if let Some(url) = browser.link_at_y(cursor_pos.y as f32) {
+                    if let Some(url) = browser.link_at_pos(cursor_pos.x as f32, cursor_pos.y as f32) {
                         println!("[Browser] Navigating to {}", url);
                         address_input = url.clone();
                         begin_navigation(

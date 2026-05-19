@@ -43,15 +43,15 @@ impl LayoutEngine {
             let ndc_w = (b.w / window_width) * 2.0;
             let ndc_h = (b.h / window_height) * 2.0;
 
-            let (r, g, b, a) = (b.color[0], b.color[1], b.color[2], b.color[3]);
+            let (r, g, b_col, a) = (b.color[0], b.color[1], b.color[2], b.color[3]);
 
-            vertices.push(UIVertex::solid(ndc_x, ndc_y, r, g, b, a));
-            vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y, r, g, b, a));
-            vertices.push(UIVertex::solid(ndc_x, ndc_y + ndc_h, r, g, b, a));
+            vertices.push(UIVertex::solid_box(ndc_x, ndc_y, r, g, b_col, a, 0.0, 0.0, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(ndc_x + ndc_w, ndc_y, r, g, b_col, a, b.w, 0.0, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(ndc_x, ndc_y + ndc_h, r, g, b_col, a, 0.0, b.h, b.w, b.h, b.radius));
 
-            vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y, r, g, b, a));
-            vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y + ndc_h, r, g, b, a));
-            vertices.push(UIVertex::solid(ndc_x, ndc_y + ndc_h, r, g, b, a));
+            vertices.push(UIVertex::solid_box(ndc_x + ndc_w, ndc_y, r, g, b_col, a, b.w, 0.0, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(ndc_x + ndc_w, ndc_y + ndc_h, r, g, b_col, a, b.w, b.h, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(ndc_x, ndc_y + ndc_h, r, g, b_col, a, 0.0, b.h, b.w, b.h, b.radius));
         }
 
         vertices

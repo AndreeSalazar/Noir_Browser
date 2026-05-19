@@ -5,9 +5,11 @@ use crate::render::text::{RasterizedAtlas, TextRasterizationOptions};
 
 #[derive(Debug, Clone)]
 pub struct LinkHitbox {
-    pub url: String,
-    pub y_min: f32,
-    pub y_max: f32,
+    pub href: String,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
 }
 
 pub struct BrowserState {
@@ -171,11 +173,11 @@ impl BrowserState {
         Some(rendered.atlas)
     }
 
-    pub fn link_at_y(&self, y: f32) -> Option<String> {
+    pub fn link_at_pos(&self, x: f32, y: f32) -> Option<String> {
         self.link_hitboxes
             .iter()
-            .find(|link| y >= link.y_min && y <= link.y_max)
-            .map(|link| link.url.clone())
+            .find(|link| x >= link.x && x <= link.x + link.w && y >= link.y && y <= link.y + link.h)
+            .map(|link| link.href.clone())
     }
 
     pub fn style(&self) -> &ComputedStyle {
