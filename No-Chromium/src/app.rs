@@ -10,7 +10,7 @@ use crate::browser::{load_page_document, BrowserState, PageDocument};
 use crate::render::quality::QualityProfile;
 use crate::render::text::{RasterizedAtlas, TextRequest};
 use crate::vulkan_engine::real_renderer::RealRenderer;
-use crate::vulkan_engine::setup::VulkanContext;
+use crate::vulkan_engine::context::VulkanContext;
 
 const INITIAL_URL: &str = "https://example.com";
 
@@ -167,7 +167,7 @@ pub fn run() {
                 };
 
                 if let Some(mut r) = renderer.take() {
-                    r.cleanup(&ctx.device);
+                    r.cleanup(&ctx.device.device);
                 }
                 ctx.recreate_swapchain(new_size.width, new_size.height);
                 let new_atlas = browser
@@ -558,10 +558,10 @@ fn shutdown(
     control_flow: &mut ControlFlow,
 ) {
     if let (Some(mut r), Some(ctx)) = (renderer.take(), vk_ctx.as_ref()) {
-        r.cleanup(&ctx.device);
+        r.cleanup(&ctx.device.device);
     }
-    if let Some(mut ctx) = vk_ctx.take() {
-        ctx.cleanup();
+    if let Some(_ctx) = vk_ctx.take() {
+        // Drop automatically cleans up contexts
     }
     *control_flow = ControlFlow::Exit;
 }

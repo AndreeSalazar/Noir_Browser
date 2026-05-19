@@ -1,5 +1,6 @@
 use ash::{vk, Instance, Device};
 use ash::extensions::khr::Swapchain;
+use std::ops::Deref;
 
 pub struct VulkanDevice {
     pub physical_device: vk::PhysicalDevice,
@@ -49,5 +50,21 @@ impl VulkanDevice {
                 present_queue,
             }
         }
+    }
+}
+
+impl Drop for VulkanDevice {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_device(None);
+        }
+    }
+}
+
+impl Deref for VulkanDevice {
+    type Target = ash::Device;
+
+    fn deref(&self) -> &Self::Target {
+        &self.device
     }
 }

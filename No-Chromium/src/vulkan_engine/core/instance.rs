@@ -17,7 +17,10 @@ unsafe extern "system" fn vulkan_debug_callback(
         CStr::from_ptr(callback_data.p_message).to_string_lossy()
     };
     if message_severity >= vk::DebugUtilsMessageSeverityFlagsEXT::WARNING {
-        println!("[Vulkan Debug] {}", message);
+        // Ignorar advertencia específica de ash
+        if !message.contains("vkGetPhysicalDevicePresentRectanglesKHR") {
+            println!("[Vulkan Debug] {}", message);
+        }
     }
     vk::FALSE
 }
@@ -74,6 +77,16 @@ impl VulkanInstance {
                 debug_utils_loader,
                 debug_messenger,
             }
+        }
+    }
+}
+
+impl Drop for VulkanInstance {
+    fn drop(&mut self) {
+        unsafe {
+            self.debug_utils_loader
+                .destroy_debug_utils_messenger(self.debug_messenger, None);
+            self.instance.destroy_instance(None);
         }
     }
 }

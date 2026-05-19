@@ -3,7 +3,7 @@ use crate::render::text::{RasterizedAtlas, TextQuad};
 use crate::ui::ui_gen::UIVertex;
 use crate::vulkan_engine::memory_gen::MemoryManager;
 use crate::vulkan_engine::pipeline_gen::PipelineManager;
-use crate::vulkan_engine::setup::VulkanContext;
+use crate::vulkan_engine::context::VulkanContext;
 use crate::vulkan_engine::shaders_gen::{
     ShaderModuleLoader, FRAGMENT_SHADER_GLSL, VERTEX_SHADER_GLSL,
 };
@@ -66,11 +66,11 @@ impl RealRenderer {
 
             // 2. Memory & Pipeline
             let memory_manager =
-                MemoryManager::new(&ctx.instance, ctx.physical_device, &ctx.device);
+                MemoryManager::new(&ctx.instance.instance, ctx.device.physical_device, &ctx.device.device);
             let pipeline_manager = PipelineManager::new(
-                &ctx.device,
-                ctx.surface_format,
-                ctx.extent,
+                &ctx.device.device,
+                ctx.swapchain_manager.surface_format,
+                ctx.swapchain_manager.extent,
                 vert_module,
                 frag_module,
             );
@@ -78,7 +78,7 @@ impl RealRenderer {
             // 3. Command Pool & Buffers
             let pool_info = vk::CommandPoolCreateInfo::builder()
                 .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(ctx.queue_family_index);
+                .queue_family_index(ctx.device.queue_family_index);
             let command_pool = ctx.device.create_command_pool(&pool_info, None).unwrap();
 
             let alloc_info = vk::CommandBufferAllocateInfo::builder()
@@ -196,12 +196,12 @@ impl RealRenderer {
                 vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&command_buffer));
             ctx.device
                 .queue_submit(
-                    ctx.present_queue,
+                    ctx.device.present_queue,
                     std::slice::from_ref(&submit_info),
                     vk::Fence::null(),
                 )
                 .unwrap();
-            ctx.device.queue_wait_idle(ctx.present_queue).unwrap();
+            ctx.device.queue_wait_idle(ctx.device.present_queue).unwrap();
 
             let text_quads = text_data.quads;
 
@@ -272,14 +272,14 @@ impl RealRenderer {
 
             // 9. Framebuffers
             let framebuffers: Vec<vk::Framebuffer> = ctx
-                .present_image_views
+                .swapchain_manager.present_image_views
                 .iter()
                 .map(|&view| {
                     let fb_info = vk::FramebufferCreateInfo::builder()
                         .render_pass(pipeline_manager.render_pass)
                         .attachments(std::slice::from_ref(&view))
-                        .width(ctx.extent.width)
-                        .height(ctx.extent.height)
+                        .width(ctx.swapchain_manager.extent.width)
+                        .height(ctx.swapchain_manager.extent.height)
                         .layers(1);
                     ctx.device.create_framebuffer(&fb_info, None).unwrap()
                 })
@@ -465,12 +465,12 @@ impl RealRenderer {
                 .command_buffers(std::slice::from_ref(&self.command_buffer));
             ctx.device
                 .queue_submit(
-                    ctx.present_queue,
+                    ctx.device.present_queue,
                     std::slice::from_ref(&submit_info),
                     vk::Fence::null(),
                 )
                 .unwrap();
-            ctx.device.queue_wait_idle(ctx.present_queue).unwrap();
+            ctx.device.queue_wait_idle(ctx.device.present_queue).unwrap();
             self.memory_manager
                 .allocator
                 .lock()
@@ -522,8 +522,8 @@ impl RealRenderer {
                 .wait_for_fences(&[self.in_flight_fence], true, std::u64::MAX)
                 .unwrap();
 
-            let (image_index, _) = match ctx.swapchain_loader.acquire_next_image(
-                ctx.swapchain,
+            let (image_index, _) = match ctx.swapchain_manager.swapchain_loader.acquire_next_image(
+                ctx.swapchain_manager.swapchain,
                 std::u64::MAX,
                 self.image_available_semaphore,
                 vk::Fence::null(),
@@ -746,7 +746,7 @@ impl RealRenderer {
                 .framebuffer(self.framebuffers[image_index as usize])
                 .render_area(vk::Rect2D {
                     offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: ctx.extent,
+                    extent: ctx.swapchain_manager.extent,
                 })
                 .clear_values(&clear_values);
 
@@ -764,8 +764,8 @@ impl RealRenderer {
             let viewport = vk::Viewport::builder()
                 .x(0.0)
                 .y(0.0)
-                .width(ctx.extent.width as f32)
-                .height(ctx.extent.height as f32)
+                .width(ctx.swapchain_manager.extent.width as f32)
+                .height(ctx.swapchain_manager.extent.height as f32)
                 .min_depth(0.0)
                 .max_depth(1.0);
             ctx.device
@@ -773,7 +773,7 @@ impl RealRenderer {
 
             let scissor = vk::Rect2D::builder()
                 .offset(vk::Offset2D { x: 0, y: 0 })
-                .extent(ctx.extent);
+                .extent(ctx.swapchain_manager.extent);
             ctx.device
                 .cmd_set_scissor(self.command_buffer, 0, std::slice::from_ref(&scissor));
 
@@ -807,12 +807,12 @@ impl RealRenderer {
 
             ctx.device
                 .queue_submit(
-                    ctx.present_queue,
+                    ctx.device.present_queue,
                     std::slice::from_ref(&submit_info),
                     self.in_flight_fence,
                 )
                 .unwrap();
-            ctx.device.queue_wait_idle(ctx.present_queue).unwrap(); // Wait to safely destroy staging buffer
+            ctx.device.queue_wait_idle(ctx.device.present_queue).unwrap(); // Wait to safely destroy staging buffer
 
             self.memory_manager
                 .allocator
@@ -820,7 +820,7 @@ impl RealRenderer {
                 .unwrap()
                 .destroy_buffer(v_staging_buffer, &mut v_staging_alloc);
 
-            let swapchains = [ctx.swapchain];
+            let swapchains = [ctx.swapchain_manager.swapchain];
             let image_indices = [image_index];
             let present_info = vk::PresentInfoKHR::builder()
                 .wait_semaphores(&signal_semaphores)
@@ -828,8 +828,8 @@ impl RealRenderer {
                 .image_indices(&image_indices);
 
             match ctx
-                .swapchain_loader
-                .queue_present(ctx.present_queue, &present_info)
+                .swapchain_manager.swapchain_loader
+                .queue_present(ctx.device.present_queue, &present_info)
             {
                 Ok(_) => {}
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) | Err(vk::Result::SUBOPTIMAL_KHR) => {
