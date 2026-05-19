@@ -40,7 +40,8 @@ pub fn run() {
     let mut address_focused = false;
     let mut address_input = INITIAL_URL.to_string();
     let event_proxy = event_loop.create_proxy();
-    spawn_page_load(event_proxy.clone(), INITIAL_URL.to_string());
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    spawn_page_load(rt.handle().clone(), event_proxy.clone(), INITIAL_URL.to_string());
     window.request_redraw();
 
     event_loop.run(move |event, _, control_flow| {
@@ -131,13 +132,14 @@ pub fn run() {
                                 address_input = url.clone();
                                 begin_navigation(
                                     &mut browser,
+                                    rt.handle().clone(),
                                     &event_proxy,
                                     &mut renderer,
                                     &mut pending_atlas,
                                     vk_ctx.as_ref(),
                                     &window,
                                     quality,
-                                    &url,
+                                    &address_input,
                                 );
                             }
                         }
@@ -239,6 +241,7 @@ pub fn run() {
                                 if let Some(url) = browser.go_back() {
                                     address_input = url.clone();
                                     begin_pending_load(
+                                        rt.handle().clone(),
                                         &event_proxy,
                                         &mut renderer,
                                         &mut pending_atlas,
@@ -254,6 +257,7 @@ pub fn run() {
                                 if let Some(url) = browser.go_forward() {
                                     address_input = url.clone();
                                     begin_pending_load(
+                                        rt.handle().clone(),
                                         &event_proxy,
                                         &mut renderer,
                                         &mut pending_atlas,
@@ -269,6 +273,7 @@ pub fn run() {
                                 let url = browser.reload();
                                 address_input = url.clone();
                                 begin_pending_load(
+                                    rt.handle().clone(),
                                     &event_proxy,
                                     &mut renderer,
                                     &mut pending_atlas,
@@ -283,6 +288,7 @@ pub fn run() {
                                 address_input = INITIAL_URL.to_string();
                                 begin_navigation(
                                     &mut browser,
+                                    rt.handle().clone(),
                                     &event_proxy,
                                     &mut renderer,
                                     &mut pending_atlas,
@@ -327,6 +333,7 @@ pub fn run() {
                         address_input = url.clone();
                         begin_navigation(
                             &mut browser,
+                            rt.handle().clone(),
                             &event_proxy,
                             &mut renderer,
                             &mut pending_atlas,
@@ -346,6 +353,7 @@ pub fn run() {
                     r.draw_frame(
                         ctx,
                         browser.style(),
+                        &browser.layout_boxes,
                         win_size.width as f32,
                         win_size.height as f32,
                     );
@@ -382,15 +390,16 @@ fn ensure_gpu_ready(
     window.request_redraw();
 }
 
-fn spawn_page_load(proxy: EventLoopProxy<BrowserEvent>, url: String) {
-    std::thread::spawn(move || {
-        let document = load_page_document(&url);
+fn spawn_page_load(rt: tokio::runtime::Handle, proxy: EventLoopProxy<BrowserEvent>, url: String) {
+    rt.spawn(async move {
+        let document = load_page_document(&url).await;
         let _ = proxy.send_event(BrowserEvent::PageLoaded { url, document });
     });
 }
 
 fn begin_navigation(
     browser: &mut BrowserState,
+    rt: tokio::runtime::Handle,
     proxy: &EventLoopProxy<BrowserEvent>,
     renderer: &mut Option<RealRenderer>,
     pending_atlas: &mut Option<RasterizedAtlas>,
@@ -400,10 +409,11 @@ fn begin_navigation(
     url: &str,
 ) {
     browser.navigate_new(url);
-    begin_pending_load(proxy, renderer, pending_atlas, vk_ctx, window, quality, url);
+    begin_pending_load(rt, proxy, renderer, pending_atlas, vk_ctx, window, quality, url);
 }
 
 fn begin_pending_load(
+    rt: tokio::runtime::Handle,
     proxy: &EventLoopProxy<BrowserEvent>,
     renderer: &mut Option<RealRenderer>,
     pending_atlas: &mut Option<RasterizedAtlas>,
@@ -419,7 +429,7 @@ fn begin_pending_load(
         win_size.width as f32,
     );
     apply_atlas(renderer, pending_atlas, vk_ctx, loading);
-    spawn_page_load(proxy.clone(), url.to_string());
+    spawn_page_load(rt, proxy.clone(), url.to_string());
     window.request_redraw();
 }
 

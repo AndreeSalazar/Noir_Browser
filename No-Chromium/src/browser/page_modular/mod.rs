@@ -26,6 +26,31 @@ const VIEWPORT_BOTTOM_PADDING: f32 = 48.0;
 const URL_TEXT_X: f32 = 202.0;
 
 #[derive(Clone, Debug)]
+pub struct RenderBox {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub color: [f32; 4],
+}
+
+#[derive(Clone, Debug)]
+enum LayoutFragment {
+    Text(TextFragment),
+    BlockStart {
+        id: usize,
+        layout: FragmentLayout,
+        background_color: Option<[f32; 4]>,
+        is_block: bool,
+    },
+    BlockEnd {
+        id: usize,
+        margin_after: f32,
+        is_block: bool,
+    },
+}
+
+#[derive(Clone, Debug)]
 struct TextFragment {
     text: String,
     px_size: f32,
@@ -59,6 +84,7 @@ struct TextStyleState {
     hidden: bool,
     display: Option<String>,
     text_transform: Option<String>,
+    background_color: Option<[f32; 4]>,
     layout: FragmentLayout,
     in_navigation: bool,
 }
@@ -80,6 +106,7 @@ impl TextStyleState {
             hidden: false,
             display: None,
             text_transform: None,
+            background_color: None,
             layout: FragmentLayout::default(),
             in_navigation: false,
         }
@@ -87,7 +114,7 @@ impl TextStyleState {
 }
 
 pub struct PageDocument {
-    fragments: Vec<TextFragment>,
+    fragments: Vec<LayoutFragment>,
     media: MediaReport,
     page_style: PageStyle,
 }
@@ -114,11 +141,12 @@ struct PageStyle {
 
 pub struct PageRender {
     pub atlas: RasterizedAtlas,
+    pub boxes: Vec<RenderBox>,
     pub content_height: f32,
 }
 
-pub fn load_page_document(target_url: &str) -> PageDocument {
-    let response = fetch_document(target_url).unwrap_or_else(|error| {
+pub async fn load_page_document(target_url: &str) -> PageDocument {
+    let response = fetch_document(target_url).await.unwrap_or_else(|error| {
         let body = format!("<h1>Network Error</h1><p>{error}</p>");
         ResourceResponse {
             requested_url: target_url.to_string(),
@@ -137,7 +165,7 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
         .ok();
 
     let mut fragments = Vec::new();
-    let stylesheet_bundle = load_stylesheet_bundle(&dom, base_url.as_ref());
+    let stylesheet_bundle = load_stylesheet_bundle(&dom, base_url.as_ref()).await;
     let css = CssCascade::from_blocks(&stylesheet_bundle.blocks);
     let page_style = derive_page_style(&css);
     let mut ancestors = Vec::new();
@@ -172,7 +200,7 @@ pub fn load_page_document(target_url: &str) -> PageDocument {
     }
 }
 
-fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &ResourceResponse) {
+fn append_response_summary(fragments: &mut Vec<LayoutFragment>, response: &ResourceResponse) {
     if response.is_success()
         && response.requested_url == response.final_url
         && response.is_html_like()
@@ -203,7 +231,7 @@ fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &Resourc
 
     fragments.insert(
         0,
-        TextFragment {
+        LayoutFragment::Text(TextFragment {
             text: summary,
             px_size: 13.0,
             is_bold: true,
@@ -213,12 +241,12 @@ fn append_response_summary(fragments: &mut Vec<TextFragment>, response: &Resourc
             layout: FragmentLayout::default(),
             color: [0.725, 0.790, 0.980, 1.0],
             href: None,
-        },
+        }),
     );
 }
 
 fn append_direct_resource_notice(
-    fragments: &mut Vec<TextFragment>,
+    fragments: &mut Vec<LayoutFragment>,
     response: &ResourceResponse,
     text_color: [f32; 4],
 ) {
@@ -228,7 +256,13 @@ fn append_direct_resource_notice(
 
     let visible_fragments = fragments
         .iter()
-        .filter(|fragment| fragment.px_size >= 15.0 && fragment.text.len() > 3)
+        .filter(|fragment| {
+            if let LayoutFragment::Text(t) = fragment {
+                t.px_size >= 15.0 && t.text.len() > 3
+            } else {
+                false
+            }
+        })
         .count();
     if visible_fragments >= 3 {
         return;
@@ -328,13 +362,13 @@ fn direct_resource_kind(response: &ResourceResponse) -> Option<&'static str> {
 }
 
 fn push_notice_fragment(
-    fragments: &mut Vec<TextFragment>,
+    fragments: &mut Vec<LayoutFragment>,
     text: &str,
     px_size: f32,
     is_bold: bool,
     color: [f32; 4],
 ) {
-    fragments.push(TextFragment {
+    fragments.push(LayoutFragment::Text(TextFragment {
         text: text.to_string(),
         px_size,
         is_bold,
@@ -344,10 +378,10 @@ fn push_notice_fragment(
         layout: FragmentLayout::default(),
         color,
         href: None,
-    });
+    }));
 }
 
-fn load_stylesheet_bundle(dom: &[DomNode], base_url: Option<&Url>) -> StylesheetBundle {
+async fn load_stylesheet_bundle(dom: &[DomNode], base_url: Option<&Url>) -> StylesheetBundle {
     let mut bundle = StylesheetBundle::default();
     let stylesheets = collect_stylesheets(dom, base_url);
     bundle.external_count = stylesheets.len();
@@ -357,13 +391,13 @@ fn load_stylesheet_bundle(dom: &[DomNode], base_url: Option<&Url>) -> Stylesheet
     let mut workers = Vec::new();
     for stylesheet in stylesheets.iter().take(32) {
         let url = stylesheet.url.clone();
-        workers.push(std::thread::spawn(move || {
-            crate::parsers::resource_loader::fetch_style(&url).ok()
+        workers.push(tokio::spawn(async move {
+            crate::parsers::resource_loader::fetch_style(&url).await.ok()
         }));
     }
 
     for worker in workers {
-        if let Ok(Some(response)) = worker.join() {
+        if let Ok(Some(response)) = worker.await {
             bundle.loaded_external += 1;
             bundle.blocks.push(response.body);
         }
@@ -372,14 +406,14 @@ fn load_stylesheet_bundle(dom: &[DomNode], base_url: Option<&Url>) -> Stylesheet
     bundle
 }
 
-fn append_stylesheet_summary(fragments: &mut Vec<TextFragment>, bundle: &StylesheetBundle) {
+fn append_stylesheet_summary(fragments: &mut Vec<LayoutFragment>, bundle: &StylesheetBundle) {
     if bundle.external_count == 0 && bundle.inline_count == 0 {
         return;
     }
 
     fragments.insert(
         0,
-        TextFragment {
+        LayoutFragment::Text(TextFragment {
             text: format!(
                 "CSS detectado: {} inline / {} externas / {} precargadas",
                 bundle.inline_count, bundle.external_count, bundle.loaded_external
@@ -392,7 +426,7 @@ fn append_stylesheet_summary(fragments: &mut Vec<TextFragment>, bundle: &Stylesh
             layout: FragmentLayout::default(),
             color: [0.725, 0.790, 0.980, 1.0],
             href: None,
-        },
+        }),
     );
 }
 
@@ -492,85 +526,153 @@ pub fn render_page(
         width: default_content_width,
     };
 
-    for fragment in &document.fragments {
-        let layout_box = resolve_fragment_layout(
-            &fragment.layout,
-            viewport_width,
-            default_content_x,
-            default_content_width,
-        );
-        if line_started && layout_box != active_box {
-            document_y += line_height.max(fragment.line_height);
-            cursor_x = layout_box.x;
-            line_height = 0.0;
-            line_started = false;
-            line_index += 1;
-        }
-        active_box = layout_box;
+    let mut render_boxes = Vec::new();
+    let mut active_blocks: Vec<(usize, ResolvedLayoutBox, f32, [f32; 4])> = Vec::new();
 
-        let color = if fragment.href.is_some() && fragment.color == TextStyleState::default().color
-        {
-            [0.478, 0.635, 0.968, 1.0]
-        } else {
-            fragment.color
-        };
-
-        let space_width = estimated_text_width(" ", fragment.px_size);
-        for word in fragment.text.split_whitespace() {
-            let word_width = estimated_text_width(word, fragment.px_size);
-            let mut leading_space = if line_started { space_width } else { 0.0 };
-            if line_started
-                && cursor_x + leading_space + word_width > layout_box.x + layout_box.width
-            {
-                document_y += line_height.max(fragment.line_height);
-                cursor_x = layout_box.x;
-                line_height = 0.0;
-                leading_space = 0.0;
-                line_index += 1;
-            }
-
-            let x = cursor_x + leading_space;
-            let active_line_height = line_height.max(fragment.line_height);
-            let screen_y = document_y - scroll_offset;
-            let line_bottom = screen_y + active_line_height;
-
-            if line_bottom >= CONTENT_TOP
-                && screen_y <= visible_bottom
-                && line_index < MAX_VISIBLE_LINES
-            {
-                if let Some(href) = &fragment.href {
-                    link_hitboxes.push(LinkHitbox {
-                        url: href.clone(),
-                        y_min: screen_y,
-                        y_max: line_bottom,
-                    });
+    for layout_frag in &document.fragments {
+        match layout_frag {
+            LayoutFragment::BlockStart {
+                id,
+                layout,
+                background_color,
+                is_block,
+            } => {
+                if *is_block && line_started {
+                    document_y += line_height;
+                    cursor_x = active_box.x;
+                    line_height = 0.0;
+                    line_started = false;
+                    line_index += 1;
                 }
 
-                text_requests.push(TextRequest {
-                    text: word.to_string(),
-                    px_size: fragment.px_size,
-                    is_bold: fragment.is_bold,
-                    pos_x: x,
-                    pos_y: screen_y,
-                    color,
-                });
+                let layout_box = resolve_fragment_layout(
+                    layout,
+                    viewport_width,
+                    default_content_x,
+                    default_content_width,
+                );
+
+                if let Some(color) = background_color {
+                    active_blocks.push((*id, layout_box, document_y, *color));
+                }
             }
+            LayoutFragment::BlockEnd {
+                id,
+                margin_after,
+                is_block,
+            } => {
+                if *is_block && line_started {
+                    document_y += line_height;
+                    cursor_x = active_box.x;
+                    line_height = 0.0;
+                    line_started = false;
+                    line_index += 1;
+                }
 
-            cursor_x = x + word_width;
-            line_height = active_line_height;
-            line_started = true;
-        }
+                if let Some(pos) = active_blocks.iter().position(|b| b.0 == *id) {
+                    let (_, layout_box, start_y, color) = active_blocks.remove(pos);
+                    let height = document_y - start_y;
+                    if height > 0.0 && color[3] > 0.0 {
+                        let screen_y = start_y - scroll_offset;
+                        let line_bottom = screen_y + height;
 
-        if fragment.line_break_after && line_started {
-            document_y += line_height.max(fragment.line_height);
-            cursor_x = active_box.x;
-            line_height = 0.0;
-            line_started = false;
-            line_index += 1;
-        }
+                        if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom {
+                            render_boxes.push(RenderBox {
+                                x: layout_box.x,
+                                y: screen_y,
+                                w: layout_box.width,
+                                h: height,
+                                color,
+                            });
+                        }
+                    }
+                }
 
-        if fragment.line_break_after {
-            document_y += fragment.margin_after;
+                if *is_block {
+                    document_y += margin_after;
+                }
+            }
+            LayoutFragment::Text(fragment) => {
+                let layout_box = resolve_fragment_layout(
+                    &fragment.layout,
+                    viewport_width,
+                    default_content_x,
+                    default_content_width,
+                );
+                if line_started && layout_box != active_box {
+                    document_y += line_height.max(fragment.line_height);
+                    cursor_x = layout_box.x;
+                    line_height = 0.0;
+                    line_started = false;
+                    line_index += 1;
+                }
+                active_box = layout_box;
+
+                let color = if fragment.href.is_some() && fragment.color == TextStyleState::default().color
+                {
+                    [0.478, 0.635, 0.968, 1.0]
+                } else {
+                    fragment.color
+                };
+
+                let space_width = estimated_text_width(" ", fragment.px_size);
+                for word in fragment.text.split_whitespace() {
+                    let word_width = estimated_text_width(word, fragment.px_size);
+                    let mut leading_space = if line_started { space_width } else { 0.0 };
+                    if line_started
+                        && cursor_x + leading_space + word_width > layout_box.x + layout_box.width
+                    {
+                        document_y += line_height.max(fragment.line_height);
+                        cursor_x = layout_box.x;
+                        line_height = 0.0;
+                        leading_space = 0.0;
+                        line_index += 1;
+                    }
+
+                    let x = cursor_x + leading_space;
+                    let active_line_height = line_height.max(fragment.line_height);
+                    let screen_y = document_y - scroll_offset;
+                    let line_bottom = screen_y + active_line_height;
+
+                    if line_bottom >= CONTENT_TOP
+                        && screen_y <= visible_bottom
+                        && line_index < MAX_VISIBLE_LINES
+                    {
+                        if let Some(href) = &fragment.href {
+                            link_hitboxes.push(LinkHitbox {
+                                url: href.clone(),
+                                y_min: screen_y,
+                                y_max: line_bottom,
+                            });
+                        }
+
+                        text_requests.push(TextRequest {
+                            text: word.to_string(),
+                            px_size: fragment.px_size,
+                            is_bold: fragment.is_bold,
+                            pos_x: x,
+                            pos_y: screen_y,
+                            color,
+                        });
+                    }
+
+                    cursor_x = x + word_width;
+                    line_height = active_line_height;
+                    line_started = true;
+                }
+
+                if fragment.line_break_after && line_started {
+                    document_y += line_height.max(fragment.line_height);
+                    cursor_x = active_box.x;
+                    line_height = 0.0;
+                    line_started = false;
+                    line_index += 1;
+                }
+
+                if fragment.line_break_after {
+                    document_y += fragment.margin_after;
+                }
+            }
         }
     }
 
@@ -581,6 +683,7 @@ pub fn render_page(
     let content_height = document_y + VIEWPORT_BOTTOM_PADDING;
     PageRender {
         atlas: RasterizedAtlas::with_options(&text_requests, text_options),
+        boxes: render_boxes,
         content_height,
     }
 }
@@ -717,7 +820,7 @@ fn compact_url_text(url: &str, viewport_width: f32) -> String {
 
 fn extract_text_from_dom(
     nodes: &[DomNode],
-    out: &mut Vec<TextFragment>,
+    out: &mut Vec<LayoutFragment>,
     css: &CssCascade,
     current_style: TextStyleState,
     current_href: Option<String>,
@@ -782,32 +885,51 @@ fn extract_text_from_dom(
                     new_href.as_deref(),
                     base_url,
                 ) {
-                    out.push(fragment);
+                    out.push(LayoutFragment::Text(fragment));
                     if is_void_or_external_element(tag) {
                         continue;
                     }
                 }
 
-                let fragments_before = out.len();
                 let should_break = element_breaks_line(tag, &next_style);
                 let element_margin_after = next_style.margin_after.max(block_margin_after(tag));
+                
+                let block_id = out.len();
+                if should_break {
+                    out.push(LayoutFragment::BlockStart {
+                        id: block_id,
+                        layout: next_style.layout.clone(),
+                        background_color: next_style.background_color,
+                        is_block: true,
+                    });
+                }
+
+                let fragments_before = out.len();
                 ancestors.push(CssElementContext::from_element(tag, attributes));
                 extract_text_from_dom(
                     children, out, css, next_style, new_href, base_url, ancestors,
                 );
                 ancestors.pop();
-                if should_break && out.len() > fragments_before {
-                    if let Some(last) = out.last_mut() {
-                        last.line_break_after = true;
-                        last.margin_after = last.margin_after.max(element_margin_after);
+
+                if should_break {
+                    if out.len() > fragments_before {
+                        if let Some(LayoutFragment::Text(last)) = out.last_mut() {
+                            last.line_break_after = true;
+                            last.margin_after = last.margin_after.max(element_margin_after);
+                        }
                     }
+                    out.push(LayoutFragment::BlockEnd {
+                        id: block_id,
+                        margin_after: element_margin_after,
+                        is_block: true,
+                    });
                 }
             }
             DomNode::Text(t) => {
                 let text = normalize_text(t.trim());
                 if text.len() > 2 {
                     let text = apply_text_transform(text, current_style.text_transform.as_deref());
-                    out.push(TextFragment {
+                    out.push(LayoutFragment::Text(TextFragment {
                         text,
                         px_size: current_style.px_size,
                         is_bold: current_style.is_bold,
@@ -817,7 +939,7 @@ fn extract_text_from_dom(
                         layout: current_style.layout.clone(),
                         color: current_style.color,
                         href: current_href.clone(),
-                    });
+                    }));
                 }
             }
         }
@@ -1219,22 +1341,24 @@ fn normalize_text(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn normalize_fragments(fragments: &mut Vec<TextFragment>) {
+fn normalize_fragments(fragments: &mut Vec<LayoutFragment>) {
     let mut cleaned = Vec::new();
     let mut previous_key = String::new();
 
     for mut fragment in fragments.drain(..) {
-        fragment.text = collapse_repeated_text(&normalize_text(&fragment.text));
-        if fragment.text.len() <= 2 || is_low_value_text(&fragment.text) {
-            continue;
-        }
+        if let LayoutFragment::Text(ref mut t) = fragment {
+            t.text = collapse_repeated_text(&normalize_text(&t.text));
+            if t.text.len() <= 2 || is_low_value_text(&t.text) {
+                continue;
+            }
 
-        let key = fragment.text.to_lowercase();
-        if key == previous_key {
-            continue;
-        }
+            let key = t.text.to_lowercase();
+            if key == previous_key {
+                continue;
+            }
 
-        previous_key = key;
+            previous_key = key;
+        }
         cleaned.push(fragment);
     }
 
@@ -1327,7 +1451,7 @@ fn should_skip_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> b
 
 fn apply_runtime_scripts(
     dom: &[DomNode],
-    fragments: &mut Vec<TextFragment>,
+    fragments: &mut Vec<LayoutFragment>,
     base_url: Option<&Url>,
 ) {
     let scripts = collect_scripts(dom, base_url);
@@ -1350,7 +1474,7 @@ fn apply_runtime_scripts(
     if let Some(title) = report.dom.title {
         fragments.insert(
             0,
-            TextFragment {
+            LayoutFragment::Text(TextFragment {
                 text: normalize_text(&title),
                 px_size: 24.0,
                 is_bold: true,
@@ -1360,7 +1484,7 @@ fn apply_runtime_scripts(
                 layout: FragmentLayout::default(),
                 color: [1.0, 1.0, 1.0, 1.0],
                 href: None,
-            },
+            }),
         );
     }
 
@@ -1369,7 +1493,7 @@ fn apply_runtime_scripts(
             break;
         }
 
-        fragments.push(TextFragment {
+        fragments.push(LayoutFragment::Text(TextFragment {
             text: normalize_text(&text),
             px_size: 16.0,
             is_bold: false,
@@ -1379,7 +1503,7 @@ fn apply_runtime_scripts(
             layout: FragmentLayout::default(),
             color: [1.0, 1.0, 1.0, 1.0],
             href: None,
-        });
+        }));
     }
 }
 
@@ -1412,14 +1536,14 @@ fn prefetch_external_scripts(scripts: &[ScriptSource]) {
     });
 }
 
-fn append_media_summary(fragments: &mut Vec<TextFragment>, media: &MediaReport) {
+fn append_media_summary(fragments: &mut Vec<LayoutFragment>, media: &MediaReport) {
     let Some(summary) = media.summary() else {
         return;
     };
 
     fragments.insert(
         0,
-        TextFragment {
+        LayoutFragment::Text(TextFragment {
             text: summary,
             px_size: 14.0,
             is_bold: true,
@@ -1427,9 +1551,9 @@ fn append_media_summary(fragments: &mut Vec<TextFragment>, media: &MediaReport) 
             margin_after: 8.0,
             line_break_after: true,
             layout: FragmentLayout::default(),
-            color: [0.725, 0.790, 0.980, 1.0],
+            color: [0.880, 0.584, 0.980, 1.0],
             href: None,
-        },
+        }),
     );
 }
 

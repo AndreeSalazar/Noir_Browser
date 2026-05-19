@@ -1,5 +1,5 @@
 use crate::browser::history::HistoryStore;
-use crate::browser::page::{render_page, PageDocument};
+use crate::browser::page::{render_page, PageDocument, RenderBox};
 use crate::parsers::css_engine::ComputedStyle;
 use crate::render::text::{RasterizedAtlas, TextRasterizationOptions};
 
@@ -18,6 +18,7 @@ pub struct BrowserState {
     link_hitboxes: Vec<LinkHitbox>,
     style: ComputedStyle,
     document: Option<PageDocument>,
+    pub layout_boxes: Vec<RenderBox>,
     scroll_offset: f32,
     content_height: f32,
 }
@@ -38,6 +39,7 @@ impl BrowserState {
             history_index: 0,
             history_store,
             link_hitboxes: Vec::new(),
+            layout_boxes: Vec::new(),
             style,
             document: None,
             scroll_offset: 0.0,
@@ -55,6 +57,7 @@ impl BrowserState {
         self.scroll_offset = 0.0;
         self.content_height = 0.0;
         self.link_hitboxes.clear();
+        self.layout_boxes.clear();
     }
 
     pub fn navigate_new(&mut self, url: &str) {
@@ -164,6 +167,7 @@ impl BrowserState {
             self.scroll_offset,
         );
         self.content_height = rendered.content_height;
+        self.layout_boxes = rendered.boxes;
         Some(rendered.atlas)
     }
 
@@ -198,6 +202,7 @@ impl BrowserState {
             self.scroll_offset,
         );
         self.content_height = rendered.content_height;
+        self.layout_boxes = rendered.boxes;
 
         let max_scroll = (self.content_height - viewport_height).max(0.0);
         if self.scroll_offset > max_scroll {
@@ -212,6 +217,7 @@ impl BrowserState {
                 self.scroll_offset,
             );
             self.content_height = rendered.content_height;
+            self.layout_boxes = rendered.boxes;
             rendered.atlas
         } else {
             rendered.atlas

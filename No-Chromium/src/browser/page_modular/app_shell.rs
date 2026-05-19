@@ -1,4 +1,4 @@
-use super::{normalize_text, FragmentLayout, TextFragment};
+use super::{normalize_text, FragmentLayout, LayoutFragment, TextFragment};
 use crate::parsers::dom_tree::DomNode;
 use crate::parsers::html_elements::HtmlTag;
 use serde_json::Value;
@@ -41,12 +41,18 @@ pub(super) fn append_app_shell_fallback(
     dom: &[DomNode],
     raw_html: &str,
     page_url: &str,
-    fragments: &mut Vec<TextFragment>,
+    fragments: &mut Vec<LayoutFragment>,
     text_color: [f32; 4],
 ) {
     let visible_fragments = fragments
         .iter()
-        .filter(|fragment| fragment.px_size >= 15.0 && fragment.text.len() > 3)
+        .filter(|fragment| {
+            if let LayoutFragment::Text(t) = fragment {
+                t.px_size >= 15.0 && t.text.len() > 3
+            } else {
+                false
+            }
+        })
         .count();
     if visible_fragments >= 3 {
         return;
@@ -180,7 +186,7 @@ pub(super) fn append_app_shell_fallback(
 }
 
 fn push_player_shell_fragments(
-    fragments: &mut Vec<TextFragment>,
+    fragments: &mut Vec<LayoutFragment>,
     player: PlayerShell,
     text_color: [f32; 4],
 ) {
@@ -250,8 +256,8 @@ fn push_player_shell_fragments(
     }
 }
 
-fn push_link_fragment(fragments: &mut Vec<TextFragment>, text: &str, href: &str) {
-    fragments.push(TextFragment {
+fn push_link_fragment(fragments: &mut Vec<LayoutFragment>, text: &str, href: &str) {
+    fragments.push(LayoutFragment::Text(TextFragment {
         text: text.to_string(),
         px_size: 15.0,
         is_bold: false,
@@ -264,7 +270,7 @@ fn push_link_fragment(fragments: &mut Vec<TextFragment>, text: &str, href: &str)
         },
         color: [0.478, 0.635, 0.968, 1.0],
         href: Some(href.to_string()),
-    });
+    }));
 }
 
 fn is_youtube_home_shell(page_url: &str, raw_html: &str) -> bool {
@@ -283,7 +289,7 @@ fn is_youtube_watch_shell(page_url: &str, raw_html: &str) -> bool {
     }) || raw_html.contains("ytInitialPlayerResponse")
 }
 
-fn push_video_card_fragment(fragments: &mut Vec<TextFragment>, video: VideoCard) {
+fn push_video_card_fragment(fragments: &mut Vec<LayoutFragment>, video: VideoCard) {
     let mut text = video.title;
     let mut details = Vec::new();
     if let Some(duration) = video.duration.filter(|value| !value.is_empty()) {
@@ -297,7 +303,7 @@ fn push_video_card_fragment(fragments: &mut Vec<TextFragment>, video: VideoCard)
         text.push_str(&details.join(" / "));
     }
 
-    fragments.push(TextFragment {
+    fragments.push(LayoutFragment::Text(TextFragment {
         text: normalize_text(&text),
         px_size: 15.0,
         is_bold: false,
@@ -310,11 +316,11 @@ fn push_video_card_fragment(fragments: &mut Vec<TextFragment>, video: VideoCard)
         },
         color: [0.478, 0.635, 0.968, 1.0],
         href: Some(video.url),
-    });
+    }));
 }
 
 fn push_fallback_fragment(
-    fragments: &mut Vec<TextFragment>,
+    fragments: &mut Vec<LayoutFragment>,
     text: &str,
     px_size: f32,
     is_bold: bool,
@@ -328,7 +334,7 @@ fn push_fallback_fragment(
         return;
     }
 
-    fragments.push(TextFragment {
+    fragments.push(LayoutFragment::Text(TextFragment {
         text,
         px_size,
         is_bold,
@@ -341,7 +347,7 @@ fn push_fallback_fragment(
         },
         color,
         href: None,
-    });
+    }));
 }
 
 fn collect_page_metadata(nodes: &[DomNode]) -> PageMetadata {

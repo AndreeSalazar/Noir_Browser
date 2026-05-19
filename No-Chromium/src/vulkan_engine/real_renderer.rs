@@ -75,6 +75,9 @@ impl RealRenderer {
                 frag_module,
             );
 
+            ctx.device.device.destroy_shader_module(vert_module, None);
+            ctx.device.device.destroy_shader_module(frag_module, None);
+
             // 3. Command Pool & Buffers
             let pool_info = vk::CommandPoolCreateInfo::builder()
                 .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
@@ -514,6 +517,7 @@ impl RealRenderer {
         &mut self,
         ctx: &VulkanContext,
         style: &crate::parsers::css_engine::ComputedStyle,
+        boxes: &[crate::browser::RenderBox],
         win_width: f32,
         win_height: f32,
     ) {
@@ -544,7 +548,7 @@ impl RealRenderer {
             let mut all_vertices =
                 crate::ui::ui_gen::generate_chrome_vertices(win_width, win_height);
             let dom_vertices = crate::layout::layout_gen::LayoutEngine::build_dom_vertices(
-                style, win_width, win_height,
+                boxes, win_width, win_height,
             );
             for v in &dom_vertices {
                 all_vertices.push(v.x);

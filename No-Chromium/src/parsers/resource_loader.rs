@@ -1,4 +1,4 @@
-use reqwest::blocking::Client;
+use reqwest::Client;
 use reqwest::header::{
     ACCEPT, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED, USER_AGENT,
 };
@@ -103,21 +103,21 @@ impl ResourceResponse {
     }
 }
 
-pub fn fetch_document(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
-    fetch_resource(url, ResourceType::Document)
+pub async fn fetch_document(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
+    fetch_resource(url, ResourceType::Document).await
 }
 
 #[allow(dead_code)]
-pub fn fetch_style(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
-    fetch_resource(url, ResourceType::Style)
+pub async fn fetch_style(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
+    fetch_resource(url, ResourceType::Style).await
 }
 
 #[allow(dead_code)]
-pub fn fetch_script(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
-    fetch_resource(url, ResourceType::Script)
+pub async fn fetch_script(url: &str) -> Result<ResourceResponse, Box<dyn Error>> {
+    fetch_resource(url, ResourceType::Script).await
 }
 
-pub fn fetch_resource(
+pub async fn fetch_resource(
     url: &str,
     resource_type: ResourceType,
 ) -> Result<ResourceResponse, Box<dyn Error>> {
@@ -137,7 +137,7 @@ pub fn fetch_resource(
         }
     }
 
-    let response = match request.send() {
+    let response = match request.send().await {
         Ok(response) => response,
         Err(error) => {
             if let Some(cached) = cached {
@@ -173,7 +173,7 @@ pub fn fetch_resource(
         }
     }
 
-    let body = response.text()?;
+    let body = response.text().await?;
     let body_bytes = body.len();
     let resource = ResourceResponse {
         requested_url: url.to_string(),

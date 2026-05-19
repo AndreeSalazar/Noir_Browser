@@ -58,69 +58,103 @@ pub struct UIBoundingBox {
     pub y_max: f32,
 }
 
-pub fn get_ui_hitboxes(width: f32, _height: f32) -> Vec<UIBoundingBox> {
-    vec![
-        UIBoundingBox {
-            button: UIButton::Back,
-            x_min: 12.0,
-            x_max: 42.0,
-            y_min: 43.0,
-            y_max: 65.0,
-        },
-        UIBoundingBox {
-            button: UIButton::Forward,
-            x_min: 48.0,
-            x_max: 78.0,
-            y_min: 43.0,
-            y_max: 65.0,
-        },
-        UIBoundingBox {
-            button: UIButton::Reload,
-            x_min: 84.0,
-            x_max: 114.0,
-            y_min: 43.0,
-            y_max: 65.0,
-        },
-        UIBoundingBox {
-            button: UIButton::Home,
-            x_min: 120.0,
-            x_max: 150.0,
-            y_min: 43.0,
-            y_max: 65.0,
-        },
-        UIBoundingBox {
-            button: UIButton::AddressBar,
-            x_min: 168.0,
-            x_max: (width - 150.0).max(288.0),
-            y_min: 43.0,
-            y_max: 65.0,
-        },
-        UIBoundingBox {
-            button: UIButton::Close,
-            x_min: width - 46.0,
-            x_max: width,
-            y_min: 0.0,
-            y_max: 36.0,
-        },
-        UIBoundingBox {
-            button: UIButton::Maximize,
-            x_min: width - 92.0,
-            x_max: width - 46.0,
-            y_min: 0.0,
-            y_max: 36.0,
-        },
-        UIBoundingBox {
-            button: UIButton::Minimize,
-            x_min: width - 138.0,
-            x_max: width - 92.0,
-            y_min: 0.0,
-            y_max: 36.0,
-        },
-    ]
+pub struct UILayout {
+    pub back_btn: UIBoundingBox,
+    pub forward_btn: UIBoundingBox,
+    pub reload_btn: UIBoundingBox,
+    pub home_btn: UIBoundingBox,
+    pub address_bar: UIBoundingBox,
+    pub minimize_btn: UIBoundingBox,
+    pub maximize_btn: UIBoundingBox,
+    pub close_btn: UIBoundingBox,
+}
+
+impl UILayout {
+    pub fn new(width: f32, _height: f32) -> Self {
+        let url_left = 168.0;
+        let url_right = (width - 150.0).max(url_left + 120.0);
+
+        Self {
+            back_btn: UIBoundingBox {
+                button: UIButton::Back,
+                x_min: 12.0,
+                x_max: 42.0,
+                y_min: 43.0,
+                y_max: 65.0,
+            },
+            forward_btn: UIBoundingBox {
+                button: UIButton::Forward,
+                x_min: 48.0,
+                x_max: 78.0,
+                y_min: 43.0,
+                y_max: 65.0,
+            },
+            reload_btn: UIBoundingBox {
+                button: UIButton::Reload,
+                x_min: 84.0,
+                x_max: 114.0,
+                y_min: 43.0,
+                y_max: 65.0,
+            },
+            home_btn: UIBoundingBox {
+                button: UIButton::Home,
+                x_min: 120.0,
+                x_max: 150.0,
+                y_min: 43.0,
+                y_max: 65.0,
+            },
+            address_bar: UIBoundingBox {
+                button: UIButton::AddressBar,
+                x_min: url_left,
+                x_max: url_right,
+                y_min: 43.0,
+                y_max: 65.0,
+            },
+            minimize_btn: UIBoundingBox {
+                button: UIButton::Minimize,
+                x_min: width - 138.0,
+                x_max: width - 92.0,
+                y_min: 0.0,
+                y_max: 36.0,
+            },
+            maximize_btn: UIBoundingBox {
+                button: UIButton::Maximize,
+                x_min: width - 92.0,
+                x_max: width - 46.0,
+                y_min: 0.0,
+                y_max: 36.0,
+            },
+            close_btn: UIBoundingBox {
+                button: UIButton::Close,
+                x_min: width - 46.0,
+                x_max: width,
+                y_min: 0.0,
+                y_max: 36.0,
+            },
+        }
+    }
+
+    pub fn get_hitboxes(&self) -> Vec<UIBoundingBox> {
+        vec![
+            self.back_btn,
+            self.forward_btn,
+            self.reload_btn,
+            self.home_btn,
+            self.address_bar,
+            self.minimize_btn,
+            self.maximize_btn,
+            self.close_btn,
+        ]
+    }
+}
+
+pub fn get_ui_hitboxes(width: f32, height: f32) -> Vec<UIBoundingBox> {
+    UILayout::new(width, height).get_hitboxes()
 }
 
 pub fn generate_chrome_vertices(width: f32, height: f32) -> Vec<f32> {
     let mut raw_data = Vec::new();
+    let layout = UILayout::new(width, height);
 
     let chrome = (0.070, 0.074, 0.105, 1.0);
     let toolbar = (0.095, 0.098, 0.142, 1.0);
@@ -152,16 +186,17 @@ pub fn generate_chrome_vertices(width: f32, height: f32) -> Vec<f32> {
         (1.0, 1.0, 1.0, 0.09),
     );
 
-    let url_left = 168.0;
-    let url_right = (width - 150.0).max(url_left + 120.0);
+    let url_w = layout.address_bar.x_max - layout.address_bar.x_min;
+    let url_h = layout.address_bar.y_max - layout.address_bar.y_min;
+
     push_pill_px(
         &mut raw_data,
         width,
         height,
-        url_left,
-        43.0,
-        url_right - url_left,
-        22.0,
+        layout.address_bar.x_min,
+        layout.address_bar.y_min,
+        url_w,
+        url_h,
         pill,
         8.0,
     );
@@ -169,9 +204,9 @@ pub fn generate_chrome_vertices(width: f32, height: f32) -> Vec<f32> {
         &mut raw_data,
         width,
         height,
-        url_left,
-        43.0,
-        url_right - url_left,
+        layout.address_bar.x_min,
+        layout.address_bar.y_min,
+        url_w,
         1.0,
         pill_edge,
     );
@@ -179,37 +214,42 @@ pub fn generate_chrome_vertices(width: f32, height: f32) -> Vec<f32> {
         &mut raw_data,
         width,
         height,
-        url_left,
-        64.0,
-        url_right - url_left,
+        layout.address_bar.x_min,
+        layout.address_bar.y_max - 1.0,
+        url_w,
         1.0,
         (0.0, 0.0, 0.0, 0.26),
     );
 
-    push_nav_button(&mut raw_data, width, height, 12.0, 43.0, subtle);
-    push_icon_back(&mut raw_data, width, height, 27.0, 54.0, bright);
+    push_nav_button(&mut raw_data, width, height, layout.back_btn.x_min, layout.back_btn.y_min, subtle);
+    push_icon_back(&mut raw_data, width, height, layout.back_btn.x_min + 15.0, layout.back_btn.y_min + 11.0, bright);
+
     push_nav_button(
         &mut raw_data,
         width,
         height,
-        48.0,
-        43.0,
+        layout.forward_btn.x_min,
+        layout.forward_btn.y_min,
         (0.420, 0.450, 0.540, 1.0),
     );
     push_icon_forward(
         &mut raw_data,
         width,
         height,
-        63.0,
-        54.0,
+        layout.forward_btn.x_min + 15.0,
+        layout.forward_btn.y_min + 11.0,
         (0.420, 0.450, 0.540, 1.0),
     );
-    push_nav_button(&mut raw_data, width, height, 84.0, 43.0, subtle);
-    push_icon_reload(&mut raw_data, width, height, 99.0, 54.0, bright);
-    push_nav_button(&mut raw_data, width, height, 120.0, 43.0, subtle);
-    push_icon_home(&mut raw_data, width, height, 135.0, 54.0, bright);
 
-    push_icon_lock(&mut raw_data, width, height, url_left + 16.0, 54.0, accent);
+    push_nav_button(&mut raw_data, width, height, layout.reload_btn.x_min, layout.reload_btn.y_min, subtle);
+    push_icon_reload(&mut raw_data, width, height, layout.reload_btn.x_min + 15.0, layout.reload_btn.y_min + 11.0, bright);
+
+    push_nav_button(&mut raw_data, width, height, layout.home_btn.x_min, layout.home_btn.y_min, subtle);
+    push_icon_home(&mut raw_data, width, height, layout.home_btn.x_min + 15.0, layout.home_btn.y_min + 11.0, bright);
+
+    push_icon_lock(&mut raw_data, width, height, layout.address_bar.x_min + 16.0, layout.address_bar.y_min + 11.0, accent);
+    
+    // Some icons are relative to the right edge of the window
     push_icon_globe(&mut raw_data, width, height, width - 130.0, 18.0, subtle);
     push_icon_shield(
         &mut raw_data,
@@ -224,17 +264,17 @@ pub fn generate_chrome_vertices(width: f32, height: f32) -> Vec<f32> {
         &mut raw_data,
         width,
         height,
-        width - 138.0,
+        layout.minimize_btn.x_min,
         UIButton::Minimize,
     );
     push_window_button(
         &mut raw_data,
         width,
         height,
-        width - 92.0,
+        layout.maximize_btn.x_min,
         UIButton::Maximize,
     );
-    push_window_button(&mut raw_data, width, height, width - 46.0, UIButton::Close);
+    push_window_button(&mut raw_data, width, height, layout.close_btn.x_min, UIButton::Close);
     raw_data
 }
 

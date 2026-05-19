@@ -31,48 +31,28 @@ impl LayoutEngine {
     }
 
     pub fn build_dom_vertices(
-        style: &ComputedStyle,
+        boxes: &[crate::browser::RenderBox],
         window_width: f32,
         window_height: f32,
     ) -> Vec<UIVertex> {
         let mut vertices = Vec::new();
 
-        // 1. Extraer propiedades CSS
-        let width = if let Some(w) = &style.width {
-            Self::parse_px_or_percent(w, window_width)
-        } else {
-            window_width
-        };
-        let height = if let Some(h) = &style.height {
-            Self::parse_px_or_percent(h, window_height)
-        } else {
-            window_height
-        };
-        let color_hex = if let Some(c) = &style.background_color {
-            c.clone()
-        } else {
-            "#ffffff".to_string()
-        };
-        let (r, g, b, a) = Self::parse_color(&color_hex);
+        for b in boxes {
+            let ndc_x = -1.0 + (b.x / window_width) * 2.0;
+            let ndc_y = -1.0 + (b.y / window_height) * 2.0;
+            let ndc_w = (b.w / window_width) * 2.0;
+            let ndc_h = (b.h / window_height) * 2.0;
 
-        // 2. Calcular coordenadas (Top-Left 0,0 default offset por ahora debajo del Top Bar 40px)
-        let px_x = 0.0;
-        let px_y = 40.0; // Debajo del Custom Chrome
+            let (r, g, b, a) = (b.color[0], b.color[1], b.color[2], b.color[3]);
 
-        // 3. Convertir a NDC (-1.0 a 1.0)
-        let ndc_x = -1.0 + (px_x / window_width) * 2.0;
-        let ndc_y = -1.0 + (px_y / window_height) * 2.0;
-        let ndc_w = (width / window_width) * 2.0;
-        let ndc_h = (height / window_height) * 2.0;
+            vertices.push(UIVertex::solid(ndc_x, ndc_y, r, g, b, a));
+            vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y, r, g, b, a));
+            vertices.push(UIVertex::solid(ndc_x, ndc_y + ndc_h, r, g, b, a));
 
-        // 4. Generar el Quad (Solid Color)
-        vertices.push(UIVertex::solid(ndc_x, ndc_y, r, g, b, a));
-        vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y, r, g, b, a));
-        vertices.push(UIVertex::solid(ndc_x, ndc_y + ndc_h, r, g, b, a));
-
-        vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y, r, g, b, a));
-        vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y + ndc_h, r, g, b, a));
-        vertices.push(UIVertex::solid(ndc_x, ndc_y + ndc_h, r, g, b, a));
+            vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y, r, g, b, a));
+            vertices.push(UIVertex::solid(ndc_x + ndc_w, ndc_y + ndc_h, r, g, b, a));
+            vertices.push(UIVertex::solid(ndc_x, ndc_y + ndc_h, r, g, b, a));
+        }
 
         vertices
     }
