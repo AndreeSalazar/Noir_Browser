@@ -559,6 +559,10 @@ impl RealRenderer {
                 all_vertices.push(v.a);
                 all_vertices.push(v.u);
                 all_vertices.push(v.v);
+                all_vertices.push(v.box_w);
+                all_vertices.push(v.box_h);
+                all_vertices.push(v.radius);
+                all_vertices.push(v.is_text);
             }
 
             // Text Quads (placed from Atlas)
@@ -644,10 +648,14 @@ impl RealRenderer {
                     all_vertices.push(v.a);
                     all_vertices.push(v.u);
                     all_vertices.push(v.v);
+                    all_vertices.push(v.box_w);
+                    all_vertices.push(v.box_h);
+                    all_vertices.push(v.radius);
+                    all_vertices.push(v.is_text);
                 }
             }
 
-            self.vertex_count = (all_vertices.len() / 8) as u32;
+            self.vertex_count = (all_vertices.len() / 12) as u32;
 
             // Destroy previous vertex buffer if it exists
             if self.vertex_buffer != vk::Buffer::null() {
