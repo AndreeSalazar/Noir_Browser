@@ -9,7 +9,7 @@ use winit::{
 use crate::browser::{load_page_document, BrowserState, PageDocument};
 use crate::render::quality::QualityProfile;
 use crate::render::text::{RasterizedAtlas, TextRequest};
-use crate::vulkan_engine::real_renderer::RealRenderer;
+use crate::vulkan_engine::renderer::renderer_2d::Renderer2D;
 use crate::vulkan_engine::context::VulkanContext;
 
 const INITIAL_URL: &str = "https://example.com";
@@ -35,7 +35,7 @@ pub fn run() {
     let mut browser = BrowserState::new(INITIAL_URL);
     let mut pending_atlas: Option<RasterizedAtlas> = None;
     let mut vk_ctx: Option<VulkanContext> = None;
-    let mut renderer: Option<RealRenderer> = None;
+    let mut renderer: Option<Renderer2D> = None;
     let mut cursor_pos = winit::dpi::PhysicalPosition::new(0.0, 0.0);
     let mut address_focused = false;
     let mut address_input = INITIAL_URL.to_string();
@@ -185,7 +185,7 @@ pub fn run() {
                             new_size.width as f32,
                         )
                     });
-                renderer = Some(RealRenderer::new(ctx, new_atlas, quality));
+                renderer = Some(Renderer2D::new(ctx, new_atlas, quality));
             }
             Event::WindowEvent {
                 event: WindowEvent::MouseWheel { delta, .. },
@@ -367,7 +367,7 @@ pub fn run() {
 fn ensure_gpu_ready(
     window: &Window,
     vk_ctx: &mut Option<VulkanContext>,
-    renderer: &mut Option<RealRenderer>,
+    renderer: &mut Option<Renderer2D>,
     pending_atlas: &mut Option<RasterizedAtlas>,
     quality: QualityProfile,
     current_url: &str,
@@ -384,7 +384,7 @@ fn ensure_gpu_ready(
         )
     });
     let ctx = VulkanContext::new(window);
-    let r = RealRenderer::new(&ctx, atlas, quality);
+    let r = Renderer2D::new(&ctx, atlas, quality);
     *vk_ctx = Some(ctx);
     *renderer = Some(r);
     window.request_redraw();
@@ -401,7 +401,7 @@ fn begin_navigation(
     browser: &mut BrowserState,
     rt: tokio::runtime::Handle,
     proxy: &EventLoopProxy<BrowserEvent>,
-    renderer: &mut Option<RealRenderer>,
+    renderer: &mut Option<Renderer2D>,
     pending_atlas: &mut Option<RasterizedAtlas>,
     vk_ctx: Option<&VulkanContext>,
     window: &Window,
@@ -415,7 +415,7 @@ fn begin_navigation(
 fn begin_pending_load(
     rt: tokio::runtime::Handle,
     proxy: &EventLoopProxy<BrowserEvent>,
-    renderer: &mut Option<RealRenderer>,
+    renderer: &mut Option<Renderer2D>,
     pending_atlas: &mut Option<RasterizedAtlas>,
     vk_ctx: Option<&VulkanContext>,
     window: &Window,
@@ -435,7 +435,7 @@ fn begin_pending_load(
 
 fn update_address_preview(
     browser: &mut BrowserState,
-    renderer: &mut Option<RealRenderer>,
+    renderer: &mut Option<Renderer2D>,
     pending_atlas: &mut Option<RasterizedAtlas>,
     vk_ctx: Option<&VulkanContext>,
     window: &Window,
@@ -462,7 +462,7 @@ fn update_address_preview(
 }
 
 fn apply_atlas(
-    renderer: &mut Option<RealRenderer>,
+    renderer: &mut Option<Renderer2D>,
     pending_atlas: &mut Option<RasterizedAtlas>,
     vk_ctx: Option<&VulkanContext>,
     atlas: RasterizedAtlas,
@@ -563,7 +563,7 @@ fn compact_url_text(url: &str, viewport_width: f32) -> String {
 }
 
 fn shutdown(
-    renderer: &mut Option<RealRenderer>,
+    renderer: &mut Option<Renderer2D>,
     vk_ctx: &mut Option<VulkanContext>,
     control_flow: &mut ControlFlow,
 ) {

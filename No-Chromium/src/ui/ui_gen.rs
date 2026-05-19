@@ -722,16 +722,16 @@ fn push_line_px(
 
 fn push_triangle_px(
     raw: &mut Vec<f32>,
-    width: f32,
-    height: f32,
+    _width: f32,
+    _height: f32,
     p0: (f32, f32),
     p1: (f32, f32),
     p2: (f32, f32),
     color: (f32, f32, f32, f32),
 ) {
     for p in [p0, p1, p2] {
-        let x = -1.0 + (p.0 / width) * 2.0;
-        let y = -1.0 + (p.1 / height) * 2.0;
+        let x = p.0;
+        let y = p.1;
         let v = UIVertex::solid(x, y, color.0, color.1, color.2, color.3);
         raw.push(v.x);
         raw.push(v.y);

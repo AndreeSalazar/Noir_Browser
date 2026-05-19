@@ -1,5 +1,4 @@
 // AUTO-GENERATED VULKAN LAYOUT ENGINE
-use crate::parsers::css_engine::ComputedStyle;
 use crate::ui::ui_gen::UIVertex;
 
 pub struct LayoutEngine;
@@ -32,26 +31,26 @@ impl LayoutEngine {
 
     pub fn build_dom_vertices(
         boxes: &[crate::browser::RenderBox],
-        window_width: f32,
-        window_height: f32,
+        _window_width: f32,
+        _window_height: f32,
     ) -> Vec<UIVertex> {
         let mut vertices = Vec::new();
 
         for b in boxes {
-            let ndc_x = -1.0 + (b.x / window_width) * 2.0;
-            let ndc_y = -1.0 + (b.y / window_height) * 2.0;
-            let ndc_w = (b.w / window_width) * 2.0;
-            let ndc_h = (b.h / window_height) * 2.0;
+            let x = b.x;
+            let y = b.y;
+            let w = b.w;
+            let h = b.h;
 
             let (r, g, b_col, a) = (b.color[0], b.color[1], b.color[2], b.color[3]);
 
-            vertices.push(UIVertex::solid_box(ndc_x, ndc_y, r, g, b_col, a, 0.0, 0.0, b.w, b.h, b.radius));
-            vertices.push(UIVertex::solid_box(ndc_x + ndc_w, ndc_y, r, g, b_col, a, b.w, 0.0, b.w, b.h, b.radius));
-            vertices.push(UIVertex::solid_box(ndc_x, ndc_y + ndc_h, r, g, b_col, a, 0.0, b.h, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(x, y, r, g, b_col, a, 0.0, 0.0, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(x + w, y, r, g, b_col, a, b.w, 0.0, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(x, y + h, r, g, b_col, a, 0.0, b.h, b.w, b.h, b.radius));
 
-            vertices.push(UIVertex::solid_box(ndc_x + ndc_w, ndc_y, r, g, b_col, a, b.w, 0.0, b.w, b.h, b.radius));
-            vertices.push(UIVertex::solid_box(ndc_x + ndc_w, ndc_y + ndc_h, r, g, b_col, a, b.w, b.h, b.w, b.h, b.radius));
-            vertices.push(UIVertex::solid_box(ndc_x, ndc_y + ndc_h, r, g, b_col, a, 0.0, b.h, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(x + w, y, r, g, b_col, a, b.w, 0.0, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(x + w, y + h, r, g, b_col, a, b.w, b.h, b.w, b.h, b.radius));
+            vertices.push(UIVertex::solid_box(x, y + h, r, g, b_col, a, 0.0, b.h, b.w, b.h, b.radius));
         }
 
         vertices

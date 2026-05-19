@@ -210,6 +210,3 @@ impl SwapchainManager {
         }
     }
 }
-
-// Custom Drop is tricky because destroy needs `Device`. So we'll rely on an explicit destroy method
-// which will be called by `VulkanContext`.

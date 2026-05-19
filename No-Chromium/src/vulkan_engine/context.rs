@@ -1,7 +1,7 @@
 use crate::vulkan_engine::core::device::VulkanDevice;
 use crate::vulkan_engine::core::instance::VulkanInstance;
 use crate::vulkan_engine::core::surface::VulkanSurface;
-use crate::vulkan_engine::swapchain::SwapchainManager;
+use crate::vulkan_engine::renderer::swapchain::SwapchainManager;
 
 pub struct VulkanContext {
     pub swapchain_manager: SwapchainManager,
