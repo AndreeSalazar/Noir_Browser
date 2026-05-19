@@ -65,6 +65,9 @@ pub enum UIButton {
     Close,
     Minimize,
     Maximize,
+    TabSelect(usize),
+    TabClose(usize),
+    NewTab,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -85,12 +88,56 @@ pub struct UILayout {
     pub minimize_btn: UIBoundingBox,
     pub maximize_btn: UIBoundingBox,
     pub close_btn: UIBoundingBox,
+    pub tabs: Vec<UIBoundingBox>,
+    pub new_tab_btn: Option<UIBoundingBox>,
 }
 
 impl UILayout {
-    pub fn new(width: f32, _height: f32) -> Self {
+    pub fn new(width: f32, _height: f32, tabs_count: usize) -> Self {
         let url_left = 168.0;
         let url_right = (width - 150.0).max(url_left + 120.0);
+
+        let mut tabs = Vec::new();
+        let mut new_tab_btn = None;
+
+        if tabs_count > 0 {
+            let tab_w = ((width - 290.0) / tabs_count as f32).min(160.0).max(40.0);
+            for i in 0..tabs_count {
+                let x_min = 12.0 + i as f32 * tab_w;
+                let x_max = x_min + tab_w;
+                
+                // Add tab select hitbox
+                tabs.push(UIBoundingBox {
+                    button: UIButton::TabSelect(i),
+                    x_min,
+                    x_max: if tab_w > 60.0 { x_max - 24.0 } else { x_max },
+                    y_min: 0.0,
+                    y_max: 36.0,
+                });
+
+                // Add close button hitbox if the tab is wide enough
+                if tab_w > 60.0 {
+                    tabs.push(UIBoundingBox {
+                        button: UIButton::TabClose(i),
+                        x_min: x_max - 24.0,
+                        x_max: x_max - 8.0,
+                        y_min: 10.0,
+                        y_max: 26.0,
+                    });
+                }
+            }
+
+            let new_tab_x = 12.0 + tabs_count as f32 * tab_w + 6.0;
+            if new_tab_x + 28.0 < width - 150.0 {
+                new_tab_btn = Some(UIBoundingBox {
+                    button: UIButton::NewTab,
+                    x_min: new_tab_x,
+                    x_max: new_tab_x + 28.0,
+                    y_min: 6.0,
+                    y_max: 30.0,
+                });
+            }
+        }
 
         Self {
             back_btn: UIBoundingBox {
@@ -149,11 +196,13 @@ impl UILayout {
                 y_min: 0.0,
                 y_max: 36.0,
             },
+            tabs,
+            new_tab_btn,
         }
     }
 
     pub fn get_hitboxes(&self) -> Vec<UIBoundingBox> {
-        vec![
+        let mut hitboxes = vec![
             self.back_btn,
             self.forward_btn,
             self.reload_btn,
@@ -162,17 +211,27 @@ impl UILayout {
             self.minimize_btn,
             self.maximize_btn,
             self.close_btn,
-        ]
+        ];
+        hitboxes.extend(self.tabs.iter().copied());
+        if let Some(nt) = self.new_tab_btn {
+            hitboxes.push(nt);
+        }
+        hitboxes
     }
 }
 
-pub fn get_ui_hitboxes(width: f32, height: f32) -> Vec<UIBoundingBox> {
-    UILayout::new(width, height).get_hitboxes()
+pub fn get_ui_hitboxes(width: f32, height: f32, tabs_count: usize) -> Vec<UIBoundingBox> {
+    UILayout::new(width, height, tabs_count).get_hitboxes()
 }
 
-pub fn generate_chrome_vertices(width: f32, height: f32) -> Vec<f32> {
+pub fn generate_chrome_vertices(
+    width: f32,
+    height: f32,
+    tabs_count: usize,
+    active_tab_index: usize,
+) -> Vec<f32> {
     let mut raw_data = Vec::new();
-    let layout = UILayout::new(width, height);
+    let layout = UILayout::new(width, height, tabs_count);
 
     let chrome = (0.070, 0.074, 0.105, 1.0);
     let toolbar = (0.095, 0.098, 0.142, 1.0);
@@ -183,6 +242,116 @@ pub fn generate_chrome_vertices(width: f32, height: f32) -> Vec<f32> {
     let accent = (0.260, 0.520, 0.980, 1.0);
 
     push_quad_px(&mut raw_data, width, height, 0.0, 0.0, width, 36.0, chrome);
+
+    // Render Tabs
+    if tabs_count > 0 {
+        let tab_w = ((width - 290.0) / tabs_count as f32).min(160.0).max(40.0);
+        for i in 0..tabs_count {
+            let x_min = 12.0 + i as f32 * tab_w;
+            let is_active = i == active_tab_index;
+
+            let tab_color = if is_active {
+                toolbar
+            } else {
+                (0.082, 0.086, 0.122, 0.60)
+            };
+
+            push_pill_px(
+                &mut raw_data,
+                width,
+                height,
+                x_min,
+                2.0,
+                tab_w - 4.0,
+                34.0,
+                tab_color,
+                6.0,
+            );
+
+            if is_active {
+                // Neon glowing accent bar under active tab
+                push_quad_px(
+                    &mut raw_data,
+                    width,
+                    height,
+                    x_min + 6.0,
+                    34.0,
+                    tab_w - 16.0,
+                    2.0,
+                    accent,
+                );
+                // Top highlight line
+                push_quad_px(
+                    &mut raw_data,
+                    width,
+                    height,
+                    x_min + 6.0,
+                    2.0,
+                    tab_w - 16.0,
+                    1.0,
+                    (1.0, 1.0, 1.0, 0.12),
+                );
+            }
+
+            // Draw "x" close button
+            if tab_w > 60.0 {
+                let close_x = x_min + tab_w - 20.0;
+                let close_y = 18.0;
+                let cross_color = if is_active { (0.75, 0.78, 0.88, 0.8) } else { (0.45, 0.48, 0.58, 0.6) };
+                push_line_px(
+                    &mut raw_data,
+                    width,
+                    height,
+                    close_x - 4.0,
+                    close_y - 4.0,
+                    close_x + 4.0,
+                    close_y + 4.0,
+                    1.4,
+                    cross_color,
+                );
+                push_line_px(
+                    &mut raw_data,
+                    width,
+                    height,
+                    close_x + 4.0,
+                    close_y - 4.0,
+                    close_x - 4.0,
+                    close_y + 4.0,
+                    1.4,
+                    cross_color,
+                );
+            }
+        }
+
+        // Draw "+" (NewTab) button
+        if let Some(nt) = layout.new_tab_btn {
+            let btn_color = (0.125, 0.132, 0.180, 0.82);
+            push_circle_fill(
+                &mut raw_data,
+                width,
+                height,
+                nt.x_min + 14.0,
+                nt.y_min + 12.0,
+                11.0,
+                btn_color,
+            );
+            push_circle_outline(
+                &mut raw_data,
+                width,
+                height,
+                nt.x_min + 14.0,
+                nt.y_min + 12.0,
+                11.0,
+                1.0,
+                (0.20, 0.22, 0.30, 0.50),
+            );
+            let plus_x = nt.x_min + 14.0;
+            let plus_y = nt.y_min + 12.0;
+            push_line_px(&mut raw_data, width, height, plus_x - 4.0, plus_y, plus_x + 4.0, plus_y, 1.6, subtle);
+            push_line_px(&mut raw_data, width, height, plus_x, plus_y - 4.0, plus_x, plus_y + 4.0, 1.6, subtle);
+        }
+    }
+
     push_quad_px(
         &mut raw_data,
         width,
@@ -267,7 +436,6 @@ pub fn generate_chrome_vertices(width: f32, height: f32) -> Vec<f32> {
 
     push_icon_lock(&mut raw_data, width, height, layout.address_bar.x_min + 16.0, layout.address_bar.y_min + 11.0, accent);
     
-    // Some icons are relative to the right edge of the window
     push_icon_globe(&mut raw_data, width, height, width - 130.0, 18.0, subtle);
     push_icon_shield(
         &mut raw_data,

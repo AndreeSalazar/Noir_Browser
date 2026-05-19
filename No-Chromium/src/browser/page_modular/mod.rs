@@ -122,6 +122,7 @@ impl TextStyleState {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct PageDocument {
     fragments: Vec<LayoutFragment>,
     media: MediaReport,
@@ -509,9 +510,42 @@ pub fn render_page(
     viewport_width: f32,
     viewport_height: f32,
     scroll_offset: f32,
+    tabs_info: &[(String, bool)],
 ) -> PageRender {
     let mut text_requests = Vec::new();
     link_hitboxes.clear();
+
+    // Render Tab Titles
+    let tabs_count = tabs_info.len();
+    if tabs_count > 0 {
+        let tab_w = ((viewport_width - 190.0) / tabs_count as f32).min(160.0).max(40.0);
+        for (i, (url, is_active)) in tabs_info.iter().enumerate() {
+            let x_min = 12.0 + i as f32 * tab_w;
+            let text_x = x_min + 12.0;
+            let title = clean_tab_title(url);
+            let max_chars = ((tab_w - 32.0).max(10.0) / 7.0) as usize;
+            let truncated_title: String = if title.chars().count() > max_chars {
+                title.chars().take(max_chars.saturating_sub(3)).collect::<String>() + "..."
+            } else {
+                title
+            };
+
+            let color = if *is_active {
+                [0.90, 0.92, 1.00, 1.0]
+            } else {
+                [0.55, 0.60, 0.70, 0.85]
+            };
+
+            text_requests.push(TextRequest {
+                text: truncated_title,
+                px_size: 13.0,
+                is_bold: *is_active,
+                pos_x: text_x,
+                pos_y: 20.0, // Vertically center within the 36px bar (baseline around 20px)
+                color,
+            });
+        }
+    }
 
     text_requests.push(TextRequest {
         text: compact_url_text(target_url, viewport_width),
@@ -967,8 +1001,8 @@ fn extract_text_from_dom(
                 }
             }
             DomNode::Text(t) => {
-                let text = normalize_text(t.trim());
-                if text.len() > 2 {
+                let text = normalize_text(t);
+                if !text.is_empty() {
                     let text = apply_text_transform(text, current_style.text_transform.as_deref());
                     out.push(LayoutFragment::Text(TextFragment {
                         text,
@@ -1391,7 +1425,7 @@ fn normalize_fragments(fragments: &mut Vec<LayoutFragment>) {
     for mut fragment in fragments.drain(..) {
         if let LayoutFragment::Text(ref mut t) = fragment {
             t.text = collapse_repeated_text(&normalize_text(&t.text));
-            if t.text.len() <= 2 || is_low_value_text(&t.text) {
+            if t.text.trim().is_empty() {
                 continue;
             }
 
@@ -1598,6 +1632,16 @@ fn append_media_summary(fragments: &mut Vec<LayoutFragment>, media: &MediaReport
             href: None,
         }),
     );
+}
+
+fn clean_tab_title(url: &str) -> String {
+    if let Ok(parsed) = url::Url::parse(url) {
+        if let Some(host) = parsed.host_str() {
+            let s = host.strip_prefix("www.").unwrap_or(host);
+            return s.to_string();
+        }
+    }
+    url.to_string()
 }
 
 #[cfg(test)]

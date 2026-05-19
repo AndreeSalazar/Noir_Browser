@@ -112,6 +112,79 @@ pub fn run() {
                 event: WindowEvent::KeyboardInput { input, .. },
                 ..
             } => {
+                if input.state == ElementState::Pressed {
+                    let ctrl = input.modifiers.ctrl();
+                    match input.virtual_keycode {
+                        Some(VirtualKeyCode::T) if ctrl => {
+                            address_focused = false;
+                            browser.open_tab(INITIAL_URL);
+                            address_input = INITIAL_URL.to_string();
+                            begin_navigation(
+                                &mut browser,
+                                rt.handle().clone(),
+                                &event_proxy,
+                                &mut renderer,
+                                &mut pending_atlas,
+                                vk_ctx.as_ref(),
+                                &window,
+                                quality,
+                                INITIAL_URL,
+                            );
+                            return;
+                        }
+                        Some(VirtualKeyCode::W) if ctrl => {
+                            address_focused = false;
+                            let i = browser.active_tab_index;
+                            browser.close_tab(i);
+                            address_input = browser.current_url().to_string();
+                            let current_url = browser.current_url().to_string();
+                            let atlas = if let Some(new_atlas) = browser.rerender_current_page(
+                                quality.text_rasterization_options(),
+                                window.inner_size().width as f32,
+                                window.inner_size().height as f32,
+                            ) {
+                                new_atlas
+                            } else {
+                                if browser.current_tab().document.is_none() {
+                                    spawn_page_load(rt.handle().clone(), event_proxy.clone(), current_url.clone());
+                                }
+                                loading_atlas(
+                                    &current_url,
+                                    quality.text_rasterization_options(),
+                                    window.inner_size().width as f32,
+                                )
+                            };
+                            apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), atlas);
+                            window.request_redraw();
+                            return;
+                        }
+                        Some(VirtualKeyCode::Tab) if ctrl => {
+                            address_focused = false;
+                            let next_idx = (browser.active_tab_index + 1) % browser.tabs.len();
+                            browser.switch_tab(next_idx);
+                            address_input = browser.current_url().to_string();
+                            let current_url = browser.current_url().to_string();
+                            let atlas = if let Some(new_atlas) = browser.rerender_current_page(
+                                quality.text_rasterization_options(),
+                                window.inner_size().width as f32,
+                                window.inner_size().height as f32,
+                            ) {
+                                new_atlas
+                            } else {
+                                loading_atlas(
+                                    &current_url,
+                                    quality.text_rasterization_options(),
+                                    window.inner_size().width as f32,
+                                )
+                            };
+                            apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), atlas);
+                            window.request_redraw();
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+
                 if address_focused && input.state == ElementState::Pressed {
                     match input.virtual_keycode {
                         Some(VirtualKeyCode::Back) => {
@@ -225,6 +298,7 @@ pub fn run() {
                 let hitboxes = crate::ui::ui_gen::get_ui_hitboxes(
                     win_size.width as f32,
                     win_size.height as f32,
+                    browser.tabs.len(),
                 );
                 let mut hit_button = false;
 
@@ -321,6 +395,67 @@ pub fn run() {
                                 let is_max = window.is_maximized();
                                 window.set_maximized(!is_max);
                             }
+                            crate::ui::ui_gen::UIButton::TabSelect(i) => {
+                                address_focused = false;
+                                browser.switch_tab(i);
+                                address_input = browser.current_url().to_string();
+                                let current_url = browser.current_url().to_string();
+                                let atlas = if let Some(new_atlas) = browser.rerender_current_page(
+                                    quality.text_rasterization_options(),
+                                    win_size.width as f32,
+                                    win_size.height as f32,
+                                ) {
+                                    new_atlas
+                                } else {
+                                    loading_atlas(
+                                        &current_url,
+                                        quality.text_rasterization_options(),
+                                        win_size.width as f32,
+                                    )
+                                };
+                                apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), atlas);
+                                window.request_redraw();
+                            }
+                            crate::ui::ui_gen::UIButton::TabClose(i) => {
+                                address_focused = false;
+                                browser.close_tab(i);
+                                address_input = browser.current_url().to_string();
+                                let current_url = browser.current_url().to_string();
+                                let atlas = if let Some(new_atlas) = browser.rerender_current_page(
+                                    quality.text_rasterization_options(),
+                                    win_size.width as f32,
+                                    win_size.height as f32,
+                                ) {
+                                    new_atlas
+                                } else {
+                                    if browser.current_tab().document.is_none() {
+                                        spawn_page_load(rt.handle().clone(), event_proxy.clone(), current_url.clone());
+                                    }
+                                    loading_atlas(
+                                        &current_url,
+                                        quality.text_rasterization_options(),
+                                        win_size.width as f32,
+                                    )
+                                };
+                                apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), atlas);
+                                window.request_redraw();
+                            }
+                            crate::ui::ui_gen::UIButton::NewTab => {
+                                address_focused = false;
+                                browser.open_tab(INITIAL_URL);
+                                address_input = INITIAL_URL.to_string();
+                                begin_navigation(
+                                    &mut browser,
+                                    rt.handle().clone(),
+                                    &event_proxy,
+                                    &mut renderer,
+                                    &mut pending_atlas,
+                                    vk_ctx.as_ref(),
+                                    &window,
+                                    quality,
+                                    INITIAL_URL,
+                                );
+                            }
                         }
                         break;
                     }
@@ -353,9 +488,11 @@ pub fn run() {
                     r.draw_frame(
                         ctx,
                         browser.style(),
-                        &browser.layout_boxes,
+                        browser.layout_boxes(),
                         win_size.width as f32,
                         win_size.height as f32,
+                        browser.tabs.len(),
+                        browser.active_tab_index,
                     );
                 }
             }

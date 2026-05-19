@@ -658,6 +658,8 @@ impl Renderer2D {
         boxes: &[crate::browser::RenderBox],
         win_width: f32,
         win_height: f32,
+        tabs_count: usize,
+        active_tab_index: usize,
     ) {
         unsafe {
             ctx.device.device
@@ -683,7 +685,12 @@ impl Renderer2D {
             // ==========================================
             // DYNAMIC LAYOUT ENGINE (DOM -> GPU VERTICES)
             // ==========================================
-            let mut all_vertices = crate::ui::ui_gen::generate_chrome_vertices(win_width, win_height);
+            let mut all_vertices = crate::ui::ui_gen::generate_chrome_vertices(
+                win_width,
+                win_height,
+                tabs_count,
+                active_tab_index,
+            );
             let dom_vertices = crate::layout::layout_gen::LayoutEngine::build_dom_vertices(
                 boxes, win_width, win_height,
             );

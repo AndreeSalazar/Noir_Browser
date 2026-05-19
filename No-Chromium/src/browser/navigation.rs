@@ -12,17 +12,38 @@ pub struct LinkHitbox {
     pub h: f32,
 }
 
-pub struct BrowserState {
-    current_url: String,
-    history: Vec<String>,
-    history_index: usize,
-    history_store: HistoryStore,
-    link_hitboxes: Vec<LinkHitbox>,
-    style: ComputedStyle,
-    document: Option<PageDocument>,
+#[derive(Debug, Clone)]
+pub struct Tab {
+    pub url: String,
+    pub history: Vec<String>,
+    pub history_index: usize,
+    pub document: Option<PageDocument>,
     pub layout_boxes: Vec<RenderBox>,
-    scroll_offset: f32,
-    content_height: f32,
+    pub link_hitboxes: Vec<LinkHitbox>,
+    pub scroll_offset: f32,
+    pub content_height: f32,
+}
+
+impl Tab {
+    pub fn new(url: &str) -> Self {
+        Self {
+            url: url.to_string(),
+            history: vec![url.to_string()],
+            history_index: 0,
+            document: None,
+            layout_boxes: Vec::new(),
+            link_hitboxes: Vec::new(),
+            scroll_offset: 0.0,
+            content_height: 0.0,
+        }
+    }
+}
+
+pub struct BrowserState {
+    pub tabs: Vec<Tab>,
+    pub active_tab_index: usize,
+    pub history_store: HistoryStore,
+    style: ComputedStyle,
 }
 
 impl BrowserState {
@@ -35,66 +56,74 @@ impl BrowserState {
         let mut history_store = HistoryStore::load();
         history_store.record_visit(initial_url);
 
+        let initial_tab = Tab::new(initial_url);
+
         Self {
-            current_url: initial_url.to_string(),
-            history: vec![initial_url.to_string()],
-            history_index: 0,
+            tabs: vec![initial_tab],
+            active_tab_index: 0,
             history_store,
-            link_hitboxes: Vec::new(),
-            layout_boxes: Vec::new(),
             style,
-            document: None,
-            scroll_offset: 0.0,
-            content_height: 0.0,
         }
     }
 
+    pub fn current_tab(&self) -> &Tab {
+        &self.tabs[self.active_tab_index]
+    }
+
+    pub fn current_tab_mut(&mut self) -> &mut Tab {
+        &mut self.tabs[self.active_tab_index]
+    }
+
     pub fn current_url(&self) -> &str {
-        &self.current_url
+        &self.current_tab().url
     }
 
     pub fn set_pending_url(&mut self, url: &str) {
-        self.current_url = url.to_string();
-        self.document = None;
-        self.scroll_offset = 0.0;
-        self.content_height = 0.0;
-        self.link_hitboxes.clear();
-        self.layout_boxes.clear();
+        let tab = self.current_tab_mut();
+        tab.url = url.to_string();
+        tab.document = None;
+        tab.scroll_offset = 0.0;
+        tab.content_height = 0.0;
+        tab.link_hitboxes.clear();
+        tab.layout_boxes.clear();
     }
 
     pub fn navigate_new(&mut self, url: &str) {
-        if self.history.get(self.history_index).map(String::as_str) != Some(url) {
-            self.history.truncate(self.history_index + 1);
-            self.history.push(url.to_string());
-            self.history_index = self.history.len() - 1;
+        let tab = self.current_tab_mut();
+        if tab.history.get(tab.history_index).map(String::as_str) != Some(url) {
+            tab.history.truncate(tab.history_index + 1);
+            tab.history.push(url.to_string());
+            tab.history_index = tab.history.len() - 1;
         }
         self.set_pending_url(url);
     }
 
     pub fn reload(&mut self) -> String {
-        let url = self.current_url.clone();
+        let url = self.current_url().to_string();
         self.set_pending_url(&url);
         url
     }
 
     pub fn go_back(&mut self) -> Option<String> {
-        if self.history_index == 0 {
+        let tab = self.current_tab_mut();
+        if tab.history_index == 0 {
             return None;
         }
 
-        self.history_index -= 1;
-        let url = self.history[self.history_index].clone();
+        tab.history_index -= 1;
+        let url = tab.history[tab.history_index].clone();
         self.set_pending_url(&url);
         Some(url)
     }
 
     pub fn go_forward(&mut self) -> Option<String> {
-        if self.history_index + 1 >= self.history.len() {
+        let tab = self.current_tab_mut();
+        if tab.history_index + 1 >= tab.history.len() {
             return None;
         }
 
-        self.history_index += 1;
-        let url = self.history[self.history_index].clone();
+        tab.history_index += 1;
+        let url = tab.history[tab.history_index].clone();
         self.set_pending_url(&url);
         Some(url)
     }
@@ -107,17 +136,21 @@ impl BrowserState {
         viewport_width: f32,
         viewport_height: f32,
     ) -> Option<RasterizedAtlas> {
-        if url != self.current_url {
+        if url != self.current_url() {
             return None;
         }
 
         self.style = document.computed_style();
-        self.document = Some(document);
-        if let Some(summary) = self.document.as_ref().and_then(PageDocument::media_summary) {
-            println!("[Media] {}", summary);
-        }
-        self.history_store.record_visit(&self.current_url);
-        self.scroll_offset = 0.0;
+        let tab_url = {
+            let tab = self.current_tab_mut();
+            tab.document = Some(document);
+            if let Some(summary) = tab.document.as_ref().and_then(PageDocument::media_summary) {
+                println!("[Media] {}", summary);
+            }
+            tab.scroll_offset = 0.0;
+            tab.url.clone()
+        };
+        self.history_store.record_visit(&tab_url);
         Some(self.render_current_page(text_options, viewport_width, viewport_height))
     }
 
@@ -128,11 +161,12 @@ impl BrowserState {
         viewport_width: f32,
         viewport_height: f32,
     ) -> Option<RasterizedAtlas> {
-        let max_scroll = (self.content_height - viewport_height).max(0.0);
-        let previous = self.scroll_offset;
-        self.scroll_offset = (self.scroll_offset + delta_y).clamp(0.0, max_scroll);
+        let tab = self.current_tab_mut();
+        let max_scroll = (tab.content_height - viewport_height).max(0.0);
+        let previous = tab.scroll_offset;
+        tab.scroll_offset = (tab.scroll_offset + delta_y).clamp(0.0, max_scroll);
 
-        if (self.scroll_offset - previous).abs() < f32::EPSILON {
+        if (tab.scroll_offset - previous).abs() < f32::EPSILON {
             return None;
         }
 
@@ -145,9 +179,10 @@ impl BrowserState {
         viewport_width: f32,
         viewport_height: f32,
     ) -> Option<RasterizedAtlas> {
-        self.document.as_ref()?;
-        let max_scroll = (self.content_height - viewport_height).max(0.0);
-        self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
+        let tab = self.current_tab_mut();
+        tab.document.as_ref()?;
+        let max_scroll = (tab.content_height - viewport_height).max(0.0);
+        tab.scroll_offset = tab.scroll_offset.clamp(0.0, max_scroll);
         Some(self.render_current_page(text_options, viewport_width, viewport_height))
     }
 
@@ -158,23 +193,30 @@ impl BrowserState {
         viewport_width: f32,
         viewport_height: f32,
     ) -> Option<RasterizedAtlas> {
-        let document = self.document.as_ref()?;
+        let tabs_info: Vec<(String, bool)> = self.tabs.iter().enumerate().map(|(i, tab)| {
+            (tab.url.clone(), i == self.active_tab_index)
+        }).collect();
+        let active_tab_index = self.active_tab_index;
+        let tab = &mut self.tabs[active_tab_index];
+        let document = tab.document.as_ref()?;
         let rendered = render_page(
             address_text,
             document,
-            &mut self.link_hitboxes,
+            &mut tab.link_hitboxes,
             text_options,
             viewport_width,
             viewport_height,
-            self.scroll_offset,
+            tab.scroll_offset,
+            &tabs_info,
         );
-        self.content_height = rendered.content_height;
-        self.layout_boxes = rendered.boxes;
+        tab.content_height = rendered.content_height;
+        tab.layout_boxes = rendered.boxes;
         Some(rendered.atlas)
     }
 
     pub fn link_at_pos(&self, x: f32, y: f32) -> Option<String> {
-        self.link_hitboxes
+        let tab = self.current_tab();
+        tab.link_hitboxes
             .iter()
             .find(|link| x >= link.x && x <= link.x + link.w && y >= link.y && y <= link.y + link.h)
             .map(|link| link.href.clone())
@@ -184,42 +226,93 @@ impl BrowserState {
         &self.style
     }
 
+    pub fn layout_boxes(&self) -> &[RenderBox] {
+        &self.current_tab().layout_boxes
+    }
+
+    pub fn open_tab(&mut self, url: &str) {
+        let new_tab = Tab::new(url);
+        self.tabs.push(new_tab);
+        self.active_tab_index = self.tabs.len() - 1;
+        self.style = ComputedStyle::default();
+    }
+
+    pub fn close_tab(&mut self, index: usize) -> bool {
+        if self.tabs.len() <= 1 {
+            self.tabs[0] = Tab::new("https://example.com");
+            self.active_tab_index = 0;
+            self.style = ComputedStyle::default();
+            return true;
+        }
+
+        self.tabs.remove(index);
+        if self.active_tab_index >= self.tabs.len() {
+            self.active_tab_index = self.tabs.len() - 1;
+        }
+        self.switch_tab(self.active_tab_index);
+        true
+    }
+
+    pub fn switch_tab(&mut self, index: usize) {
+        if index < self.tabs.len() {
+            self.active_tab_index = index;
+            if let Some(doc) = &self.tabs[index].document {
+                self.style = doc.computed_style();
+            } else {
+                let mut style = ComputedStyle::default();
+                style.background_color = Some("#1a1a1a".to_string());
+                style.width = Some("100%".to_string());
+                style.height = Some("100%".to_string());
+                self.style = style;
+            }
+        }
+    }
+
     fn render_current_page(
         &mut self,
         text_options: TextRasterizationOptions,
         viewport_width: f32,
         viewport_height: f32,
     ) -> RasterizedAtlas {
-        let document = self
+        let tabs_info: Vec<(String, bool)> = self.tabs.iter().enumerate().map(|(i, tab)| {
+            (tab.url.clone(), i == self.active_tab_index)
+        }).collect();
+        let active_url = self.current_url().to_string();
+        let active_tab_index = self.active_tab_index;
+        let tab = &mut self.tabs[active_tab_index];
+        let document = tab
             .document
             .as_ref()
             .expect("Browser document should be loaded before rendering");
         let rendered = render_page(
-            &self.current_url,
+            &active_url,
             document,
-            &mut self.link_hitboxes,
+            &mut tab.link_hitboxes,
             text_options,
             viewport_width,
             viewport_height,
-            self.scroll_offset,
+            tab.scroll_offset,
+            &tabs_info,
         );
-        self.content_height = rendered.content_height;
-        self.layout_boxes = rendered.boxes;
+        tab.content_height = rendered.content_height;
+        tab.layout_boxes = rendered.boxes;
 
-        let max_scroll = (self.content_height - viewport_height).max(0.0);
-        if self.scroll_offset > max_scroll {
-            self.scroll_offset = max_scroll;
+        let max_scroll = (tab.content_height - viewport_height).max(0.0);
+        if tab.scroll_offset > max_scroll {
+            tab.scroll_offset = max_scroll;
             let rendered = render_page(
-                &self.current_url,
+                &active_url,
                 document,
-                &mut self.link_hitboxes,
+                &mut tab.link_hitboxes,
                 text_options,
                 viewport_width,
                 viewport_height,
-                self.scroll_offset,
+                tab.scroll_offset,
+                &tabs_info,
             );
-            self.content_height = rendered.content_height;
-            self.layout_boxes = rendered.boxes;
+            let tab = &mut self.tabs[active_tab_index];
+            tab.content_height = rendered.content_height;
+            tab.layout_boxes = rendered.boxes;
             rendered.atlas
         } else {
             rendered.atlas
