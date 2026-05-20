@@ -1,5 +1,6 @@
 mod app;
 mod browser;
+mod js_engine;
 mod layout;
 mod media;
 mod parsers;

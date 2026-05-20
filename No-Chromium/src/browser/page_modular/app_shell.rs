@@ -549,17 +549,17 @@ fn push_player_shell_fragments(
         push_link_fragment(
             fragments,
             "[PLAY] Reproducir en Invidious (Ligero)",
-            &format!("https://inv.thepixora.com/watch?v={}", vid),
+            &format!("https://invidious.f5.si/watch?v={}", vid),
         );
         push_link_fragment(
             fragments,
             "[STREAM] Stream Directo (360p MP4)",
-            &format!("https://inv.thepixora.com/latest_version?id={}&itag=18&local=true", vid),
+            &format!("https://invidious.f5.si/latest_version?id={}&itag=18&local=true", vid),
         );
         push_link_fragment(
             fragments,
             "[STREAM] Stream Directo (720p MP4)",
-            &format!("https://inv.thepixora.com/latest_version?id={}&itag=22&local=true", vid),
+            &format!("https://invidious.f5.si/latest_version?id={}&itag=22&local=true", vid),
         );
         push_link_fragment(
             fragments,
