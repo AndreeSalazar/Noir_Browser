@@ -637,6 +637,7 @@ pub fn run() {
                         browser.active_tab_index,
                         window.scale_factor() as f32,
                     );
+                    window.request_redraw();
                 }
             }
             _ => (),

@@ -233,6 +233,12 @@ pub fn generate_chrome_vertices(
     active_tab_index: usize,
     scale_factor: f32,
 ) -> Vec<f32> {
+    use std::sync::OnceLock;
+    static START_TIME: OnceLock<std::time::Instant> = OnceLock::new();
+    let start = START_TIME.get_or_init(std::time::Instant::now);
+    let elapsed = start.elapsed().as_secs_f32();
+    let pulse = (elapsed * 3.5).sin() * 0.5 + 0.5; // range 0.0 to 1.0
+
     let mut raw_data = Vec::new();
     let layout = UILayout::new(width, height, tabs_count, scale_factor);
 
@@ -274,7 +280,10 @@ pub fn generate_chrome_vertices(
             );
 
             if is_active {
-                // Neon glowing accent bar under active tab
+                // Neon glowing accent bar under active tab with pulse animation
+                let active_alpha = 0.6 + pulse * 0.4;
+                let active_accent = (0.260, 0.520 + pulse * 0.15, 0.980, active_alpha);
+
                 push_quad_px(
                     &mut raw_data,
                     width,
@@ -283,7 +292,7 @@ pub fn generate_chrome_vertices(
                     34.0 * scale_factor,
                     tab_w - 16.0 * scale_factor,
                     2.0 * scale_factor,
-                    accent,
+                    active_accent,
                 );
                 // Top highlight line
                 push_quad_px(
@@ -392,6 +401,11 @@ pub fn generate_chrome_vertices(
         pill,
         8.0 * scale_factor,
     );
+    // Neon glowing address bar with pulse animation
+    let address_alpha = 0.6 + pulse * 0.35;
+    let address_color = (0.120, 0.650 + pulse * 0.15, 0.820 + pulse * 0.18, address_alpha);
+    let address_thickness = (1.2 + pulse * 0.8) * scale_factor;
+
     push_pill_outline(
         &mut raw_data,
         width,
@@ -400,8 +414,8 @@ pub fn generate_chrome_vertices(
         layout.address_bar.y_min,
         url_w,
         url_h,
-        1.5 * scale_factor,
-        (0.120, 0.650, 0.820, 0.85),
+        address_thickness,
+        address_color,
         8.0 * scale_factor,
     );
     push_icon_star(
