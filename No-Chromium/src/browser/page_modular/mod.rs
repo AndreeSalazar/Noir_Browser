@@ -2097,7 +2097,12 @@ fn intrinsic_element_fragment(
                     .get("placeholder")
                     .cloned()
                     .unwrap_or_else(|| {
-                        attributes.get("name").cloned().unwrap_or_else(|| "Search...".to_string())
+                        let name = attributes.get("name").cloned().unwrap_or_default();
+                        if name.is_empty() || name.len() <= 2 || name.to_lowercase() == "search" || name.to_lowercase() == "query" {
+                            "Buscar...".to_string()
+                        } else {
+                            name
+                        }
                     });
                 input_value = attributes.get("value").cloned().unwrap_or_default();
                 input_name = attributes.get("name").cloned().unwrap_or_default();
