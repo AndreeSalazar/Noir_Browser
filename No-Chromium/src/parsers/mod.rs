@@ -4,3 +4,8 @@ pub mod dom_tree;
 pub mod html_elements;
 pub mod resource_loader;
 pub mod style_collector;
+pub mod css_lexer;
+pub mod dom_native;
+pub mod html_lexer_legacy;
+pub mod js_lexer;
+pub mod webidl_bridge;

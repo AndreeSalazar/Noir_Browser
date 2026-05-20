@@ -18,7 +18,7 @@ use url::Url;
 mod app_shell;
 
 const MAX_TEXT_FRAGMENTS: usize = 2048;
-const MAX_VISIBLE_LINES: usize = 180;
+const MAX_VISIBLE_LINES: usize = 1500;
 const CONTENT_X: f32 = 40.0;
 const CONTENT_TOP: f32 = 78.0;
 const CONTENT_SIDE_PADDING: f32 = 80.0;
@@ -37,7 +37,7 @@ pub struct RenderBox {
 }
 
 #[derive(Clone, Debug)]
-enum LayoutFragment {
+pub enum LayoutFragment {
     Text(TextFragment),
     BlockStart {
         id: usize,
@@ -55,16 +55,22 @@ enum LayoutFragment {
 }
 
 #[derive(Clone, Debug)]
-struct TextFragment {
-    text: String,
-    px_size: f32,
-    is_bold: bool,
-    line_height: f32,
-    margin_after: f32,
-    line_break_after: bool,
-    layout: FragmentLayout,
-    color: [f32; 4],
-    href: Option<String>,
+pub struct TextFragment {
+    pub text: String,
+    pub px_size: f32,
+    pub is_bold: bool,
+    pub line_height: f32,
+    pub margin_after: f32,
+    pub line_break_after: bool,
+    pub layout: FragmentLayout,
+    pub color: [f32; 4],
+    pub href: Option<String>,
+    pub is_input: bool,
+    pub is_submit: bool,
+    pub input_name: String,
+    pub input_value: String,
+    pub input_placeholder: String,
+    pub form_action: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -124,12 +130,57 @@ impl TextStyleState {
 
 #[derive(Clone, Debug)]
 pub struct PageDocument {
-    fragments: Vec<LayoutFragment>,
-    media: MediaReport,
+    pub fragments: Vec<LayoutFragment>,
+    pub media: MediaReport,
     page_style: PageStyle,
 }
 
+impl TextFragment {
+    pub(crate) fn new_text(
+        text: String,
+        px_size: f32,
+        is_bold: bool,
+        line_height: f32,
+        margin_after: f32,
+        line_break_after: bool,
+        layout: FragmentLayout,
+        color: [f32; 4],
+        href: Option<String>,
+    ) -> Self {
+        Self {
+            text,
+            px_size,
+            is_bold,
+            line_height,
+            margin_after,
+            line_break_after,
+            layout,
+            color,
+            href,
+            is_input: false,
+            is_submit: false,
+            input_name: String::new(),
+            input_value: String::new(),
+            input_placeholder: String::new(),
+            form_action: None,
+        }
+    }
+}
+
 impl PageDocument {
+    pub fn set_input_value(&mut self, fragment_idx: usize, value: String) {
+        if let Some(LayoutFragment::Text(fragment)) = self.fragments.get_mut(fragment_idx) {
+            fragment.input_value = value;
+        }
+    }
+
+    pub fn get_input_value(&self, fragment_idx: usize) -> Option<String> {
+        if let Some(LayoutFragment::Text(fragment)) = self.fragments.get(fragment_idx) {
+            Some(fragment.input_value.clone())
+        } else {
+            None
+        }
+    }
     pub fn media_summary(&self) -> Option<String> {
         self.media.summary()
     }
@@ -187,6 +238,7 @@ pub async fn load_page_document(target_url: &str) -> PageDocument {
         None,
         base_url.as_ref(),
         &mut ancestors,
+        None,
     );
     append_direct_resource_notice(&mut fragments, &response, page_style.default_text_color);
     append_stylesheet_summary(&mut fragments, &stylesheet_bundle);
@@ -202,6 +254,16 @@ pub async fn load_page_document(target_url: &str) -> PageDocument {
     let media = discover_media(&dom, &response.final_url);
     append_media_summary(&mut fragments, &media);
     normalize_fragments(&mut fragments);
+
+    // Save fragments to a file for debugging
+    let mut log_content = String::new();
+    log_content.push_str(&format!("URL: {}\n", target_url));
+    log_content.push_str(&format!("Default Text Color: {:?}\n", page_style.default_text_color));
+    log_content.push_str(&format!("Default Background: {:?}\n", page_style.background_hex));
+    for (i, frag) in fragments.iter().enumerate() {
+        log_content.push_str(&format!("Frag {}: {:?}\n", i, frag));
+    }
+    let _ = std::fs::write("fragments_log.txt", log_content);
 
     PageDocument {
         fragments,
@@ -241,17 +303,17 @@ fn append_response_summary(fragments: &mut Vec<LayoutFragment>, response: &Resou
 
     fragments.insert(
         0,
-        LayoutFragment::Text(TextFragment {
-            text: summary,
-            px_size: 13.0,
-            is_bold: true,
-            line_height: 19.0,
-            margin_after: 6.0,
-            line_break_after: true,
-            layout: FragmentLayout::default(),
-            color: [0.725, 0.790, 0.980, 1.0],
-            href: None,
-        }),
+        LayoutFragment::Text(TextFragment::new_text(
+            summary,
+            13.0,
+            true,
+            19.0,
+            6.0,
+            true,
+            FragmentLayout::default(),
+            [0.725, 0.790, 0.980, 1.0],
+            None,
+        )),
     );
 }
 
@@ -378,17 +440,17 @@ fn push_notice_fragment(
     is_bold: bool,
     color: [f32; 4],
 ) {
-    fragments.push(LayoutFragment::Text(TextFragment {
-        text: text.to_string(),
+    fragments.push(LayoutFragment::Text(TextFragment::new_text(
+        text.to_string(),
         px_size,
         is_bold,
-        line_height: (px_size + 7.0).max(20.0),
-        margin_after: 6.0,
-        line_break_after: true,
-        layout: FragmentLayout::default(),
+        (px_size + 7.0).max(20.0),
+        6.0,
+        true,
+        FragmentLayout::default(),
         color,
-        href: None,
-    }));
+        None,
+    )));
 }
 
 async fn load_stylesheet_bundle(dom: &[DomNode], base_url: Option<&Url>) -> StylesheetBundle {
@@ -423,20 +485,20 @@ fn append_stylesheet_summary(fragments: &mut Vec<LayoutFragment>, bundle: &Style
 
     fragments.insert(
         0,
-        LayoutFragment::Text(TextFragment {
-            text: format!(
+        LayoutFragment::Text(TextFragment::new_text(
+            format!(
                 "CSS detectado: {} inline / {} externas / {} precargadas",
                 bundle.inline_count, bundle.external_count, bundle.loaded_external
             ),
-            px_size: 13.0,
-            is_bold: true,
-            line_height: 19.0,
-            margin_after: 6.0,
-            line_break_after: true,
-            layout: FragmentLayout::default(),
-            color: [0.725, 0.790, 0.980, 1.0],
-            href: None,
-        }),
+            13.0,
+            true,
+            19.0,
+            6.0,
+            true,
+            FragmentLayout::default(),
+            [0.725, 0.790, 0.980, 1.0],
+            None,
+        )),
     );
 }
 
@@ -502,6 +564,18 @@ fn rgba_to_hex(color: [f32; 4]) -> String {
     format!("#{r:02x}{g:02x}{b:02x}")
 }
 
+struct ActiveBlock {
+    id: usize,
+    layout: FragmentLayout,
+    layout_box: ResolvedLayoutBox,
+    start_y: f32,
+    color: [f32; 4],
+    radius: f32,
+    href: Option<String>,
+    is_block: bool,
+    start_cursor_x: f32,
+}
+
 pub fn render_page(
     target_url: &str,
     document: &PageDocument,
@@ -511,6 +585,7 @@ pub fn render_page(
     viewport_height: f32,
     scroll_offset: f32,
     tabs_info: &[(String, bool)],
+    focused_input_idx: Option<usize>,
 ) -> PageRender {
     let mut text_requests = Vec::new();
     link_hitboxes.clear();
@@ -572,9 +647,18 @@ pub fn render_page(
     };
 
     let mut render_boxes = Vec::new();
-    let mut active_blocks: Vec<(usize, ResolvedLayoutBox, f32, [f32; 4], f32, Option<String>)> = Vec::new();
+    let mut active_blocks: Vec<ActiveBlock> = Vec::new();
 
-    for layout_frag in &document.fragments {
+    let mut step_log = String::new();
+    for (frag_idx, layout_frag) in document.fragments.iter().enumerate() {
+        step_log.push_str(&format!(
+            "Step {}: {:?}\n  -> y={}, line_h={}, active_blocks={:?}\n",
+            frag_idx,
+            layout_frag,
+            document_y,
+            line_height,
+            active_blocks.iter().map(|b| (b.id, b.is_block, b.start_y)).collect::<Vec<_>>()
+        ));
         match layout_frag {
             LayoutFragment::BlockStart {
                 id,
@@ -584,26 +668,91 @@ pub fn render_page(
                 border_radius,
                 href,
             } => {
-                if *is_block && line_started {
-                    document_y += line_height;
-                    cursor_x = active_box.content_x;
-                    line_height = 0.0;
-                    line_started = false;
-                    line_index += 1;
-                }
+                if *is_block {
+                    if line_started {
+                        document_y += line_height;
+                        cursor_x = active_box.content_x;
+                        line_height = 0.0;
+                        line_started = false;
+                        line_index += 1;
+                    }
 
-                let layout_box = resolve_fragment_layout(
-                    layout,
-                    viewport_width,
-                    default_content_x,
-                    default_content_width,
-                );
+                    let layout_box = resolve_fragment_layout(
+                        layout,
+                        viewport_width,
+                        default_content_x,
+                        default_content_width,
+                    );
 
-                active_box = layout_box;
+                    active_box = layout_box;
 
-                if let Some(color) = background_color {
+                    let block_color = background_color.unwrap_or([0.0, 0.0, 0.0, 0.0]);
                     let radius = border_radius.unwrap_or(0.0);
-                    active_blocks.push((*id, layout_box, document_y, *color, radius, href.clone()));
+                    active_blocks.push(ActiveBlock {
+                        id: *id,
+                        layout: layout.clone(),
+                        layout_box,
+                        start_y: document_y,
+                        color: block_color,
+                        radius,
+                        href: href.clone(),
+                        is_block: true,
+                        start_cursor_x: cursor_x,
+                    });
+                } else {
+                    // Inline-block:
+                    let available = (viewport_width - CONTENT_SIDE_PADDING).max(320.0);
+                    let card_width = layout
+                        .width
+                        .as_deref()
+                        .and_then(|v| parse_layout_length(v, available))
+                        .unwrap_or(130.0);
+
+                    let margin_left = layout
+                        .margin_left
+                        .as_deref()
+                        .and_then(|v| parse_layout_length(v, available))
+                        .unwrap_or(0.0);
+                    let margin_right = layout
+                        .margin_right
+                        .as_deref()
+                        .and_then(|v| parse_layout_length(v, available))
+                        .unwrap_or(0.0);
+
+                    let total_card_space = card_width + margin_left + margin_right;
+
+                    let parent_is_inline = active_blocks.last().map(|b| !b.is_block).unwrap_or(false);
+                    if !parent_is_inline && line_started && cursor_x + total_card_space > default_content_x + default_content_width {
+                        document_y += line_height;
+                        cursor_x = default_content_x;
+                        line_height = 0.0;
+                        line_started = false;
+                        line_index += 1;
+                    }
+
+                    let layout_box = resolve_fragment_layout(
+                        layout,
+                        viewport_width,
+                        cursor_x,
+                        default_content_width,
+                    );
+
+                    active_box = layout_box;
+                    cursor_x = layout_box.content_x;
+
+                    let block_color = background_color.unwrap_or([0.0, 0.0, 0.0, 0.0]);
+                    let radius = border_radius.unwrap_or(0.0);
+                    active_blocks.push(ActiveBlock {
+                        id: *id,
+                        layout: layout.clone(),
+                        layout_box,
+                        start_y: document_y,
+                        color: block_color,
+                        radius,
+                        href: href.clone(),
+                        is_block: false,
+                        start_cursor_x: cursor_x,
+                    });
                 }
             }
             LayoutFragment::BlockEnd {
@@ -611,55 +760,147 @@ pub fn render_page(
                 margin_after,
                 is_block,
             } => {
-                if *is_block && line_started {
-                    document_y += line_height;
-                    cursor_x = active_box.content_x;
-                    line_height = 0.0;
-                    line_started = false;
-                    line_index += 1;
-                }
+                if *is_block {
+                    if line_started {
+                        document_y += line_height;
+                        cursor_x = active_box.content_x;
+                        line_height = 0.0;
+                        line_started = false;
+                        line_index += 1;
+                    }
 
-                if let Some(pos) = active_blocks.iter().position(|b| b.0 == *id) {
-                    let (_, layout_box, start_y, color, radius, href) = active_blocks.remove(pos);
-                    let height = document_y - start_y;
-                    if height > 0.0 && color[3] > 0.0 {
-                        let screen_y = start_y - scroll_offset;
-                        let line_bottom = screen_y + height;
+                    if let Some(pos) = active_blocks.iter().position(|b| b.id == *id) {
+                        let block = active_blocks.remove(pos);
+                        let height = document_y - block.start_y;
+                        if height > 0.0 && block.color[3] > 0.0 {
+                            let screen_y = block.start_y - scroll_offset;
+                            let line_bottom = screen_y + height;
 
-                        if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom {
-                            render_boxes.push(RenderBox {
-                                x: layout_box.box_x,
-                                y: screen_y,
-                                w: layout_box.box_width,
-                                h: height,
-                                color,
-                                radius,
-                                href: href.clone(),
-                            });
-                            if let Some(link) = href {
-                                link_hitboxes.push(LinkHitbox {
-                                    href: link,
-                                    x: layout_box.box_x,
-                                    y: screen_y,
-                                    w: layout_box.box_width,
-                                    h: height,
-                                });
+                            if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom {
+                                let draw_y = screen_y.max(CONTENT_TOP);
+                                let draw_h = (screen_y + height - draw_y).min(visible_bottom - draw_y).max(0.0);
+                                if draw_h > 0.0 {
+                                    render_boxes.push(RenderBox {
+                                        x: block.layout_box.box_x,
+                                        y: draw_y,
+                                        w: block.layout_box.box_width,
+                                        h: draw_h,
+                                        color: block.color,
+                                        radius: block.radius,
+                                        href: block.href.clone(),
+                                    });
+                                }
+                                if let Some(link) = &block.href {
+                                    let draw_y = screen_y.max(CONTENT_TOP);
+                                    let draw_h = (screen_y + height - draw_y).min(visible_bottom - draw_y).max(0.0);
+                                    if draw_h > 0.0 {
+                                        link_hitboxes.push(LinkHitbox {
+                                            href: link.clone(),
+                                            x: block.layout_box.box_x,
+                                            y: draw_y,
+                                            w: block.layout_box.box_width,
+                                            h: draw_h,
+                                            is_input: false,
+                                            is_submit: false,
+                                            fragment_idx: block.id,
+                                        });
+                                    }
+                                }
                             }
                         }
                     }
-                }
 
-                if *is_block {
                     document_y += margin_after;
+                } else {
+                    // Inline-block:
+                    if let Some(pos) = active_blocks.iter().position(|b| b.id == *id) {
+                        let block = active_blocks.remove(pos);
+
+                        let final_y = if line_started {
+                            document_y + line_height
+                        } else {
+                            document_y
+                        };
+
+                        let height = (final_y - block.start_y).max(40.0);
+                        if height > 0.0 && block.color[3] > 0.0 {
+                            let screen_y = block.start_y - scroll_offset;
+                            let line_bottom = screen_y + height;
+
+                            if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom {
+                                let draw_y = screen_y.max(CONTENT_TOP);
+                                let draw_h = (screen_y + height - draw_y).min(visible_bottom - draw_y).max(0.0);
+                                if draw_h > 0.0 {
+                                    render_boxes.push(RenderBox {
+                                        x: block.layout_box.box_x,
+                                        y: draw_y,
+                                        w: block.layout_box.box_width,
+                                        h: draw_h,
+                                        color: block.color,
+                                        radius: block.radius,
+                                        href: block.href.clone(),
+                                    });
+                                }
+                                if let Some(link) = &block.href {
+                                    let draw_y = screen_y.max(CONTENT_TOP);
+                                    let draw_h = (screen_y + height - draw_y).min(visible_bottom - draw_y).max(0.0);
+                                    if draw_h > 0.0 {
+                                        link_hitboxes.push(LinkHitbox {
+                                            href: link.clone(),
+                                            x: block.layout_box.box_x,
+                                            y: draw_y,
+                                            w: block.layout_box.box_width,
+                                            h: draw_h,
+                                            is_input: false,
+                                            is_submit: false,
+                                            fragment_idx: block.id,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+
+                        let available = (viewport_width - CONTENT_SIDE_PADDING).max(320.0);
+                        let margin_right = block.layout
+                            .margin_right
+                            .as_deref()
+                            .and_then(|v| parse_layout_length(v, available))
+                            .unwrap_or(0.0);
+
+                        cursor_x = block.layout_box.box_x + block.layout_box.box_width + margin_right;
+                        let line_height_on_current_line = if document_y > block.start_y {
+                            line_height.max(40.0)
+                        } else {
+                            height
+                        };
+                        line_height = line_height.max(line_height_on_current_line);
+                        line_started = true;
+
+                        if let Some(parent_block) = active_blocks.last() {
+                            active_box = parent_block.layout_box;
+                        } else {
+                            active_box = ResolvedLayoutBox {
+                                content_x: default_content_x,
+                                content_width: default_content_width,
+                                box_x: default_content_x,
+                                box_width: default_content_width,
+                            };
+                        }
+                    }
                 }
             }
             LayoutFragment::Text(fragment) => {
-                let layout_box = resolve_fragment_layout(
-                    &fragment.layout,
-                    viewport_width,
-                    default_content_x,
-                    default_content_width,
-                );
+                let layout_box = if let Some(active_block) = active_blocks.last() {
+                    active_block.layout_box
+                } else {
+                    resolve_fragment_layout(
+                        &fragment.layout,
+                        viewport_width,
+                        default_content_x,
+                        default_content_width,
+                    )
+                };
+
                 if line_started && layout_box != active_box {
                     document_y += line_height.max(fragment.line_height);
                     cursor_x = layout_box.content_x;
@@ -669,59 +910,247 @@ pub fn render_page(
                 }
                 active_box = layout_box;
 
-                let color = if fragment.href.is_some() && fragment.color == TextStyleState::default().color
-                {
-                    [0.478, 0.635, 0.968, 1.0]
-                } else {
-                    fragment.color
-                };
-
-                let space_width = estimated_text_width(" ", fragment.px_size);
-                for word in fragment.text.split_whitespace() {
-                    let word_width = estimated_text_width(word, fragment.px_size);
-                    let mut leading_space = if line_started { space_width } else { 0.0 };
-                    if line_started
-                        && cursor_x + leading_space + word_width > layout_box.content_x + layout_box.content_width
-                    {
-                        document_y += line_height.max(fragment.line_height);
-                        cursor_x = layout_box.content_x;
-                        line_height = 0.0;
-                        leading_space = 0.0;
-                        line_index += 1;
+                if fragment.is_input {
+                    let is_focused = focused_input_idx.is_some_and(|idx| idx == frag_idx);
+                    let mut text_to_draw = if !fragment.input_value.is_empty() {
+                        fragment.input_value.clone()
+                    } else {
+                        if !fragment.input_placeholder.is_empty() {
+                            fragment.input_placeholder.clone()
+                        } else {
+                            "Search...".to_string()
+                        }
+                    };
+                    
+                    if is_focused {
+                        text_to_draw.push('|');
                     }
 
-                    let x = cursor_x + leading_space;
-                    let active_line_height = line_height.max(fragment.line_height);
+                    let draw_color = if fragment.input_value.is_empty() {
+                        [0.55, 0.55, 0.55, 1.0]
+                    } else {
+                        [0.15, 0.15, 0.15, 1.0]
+                    };
+
+                    let active_line_height = line_height.max(fragment.line_height).max(32.0);
                     let screen_y = document_y - scroll_offset;
                     let line_bottom = screen_y + active_line_height;
 
-                    if line_bottom >= CONTENT_TOP
-                        && screen_y <= visible_bottom
-                        && line_index < MAX_VISIBLE_LINES
-                    {
-                        if let Some(href) = &fragment.href {
-                            link_hitboxes.push(LinkHitbox {
-                                href: href.clone(),
+                    if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom && line_index < MAX_VISIBLE_LINES {
+                        let box_y = screen_y - 4.0;
+                        let box_h = active_line_height + 8.0;
+                        let draw_y = box_y.max(CONTENT_TOP);
+                        let draw_h = (box_y + box_h - draw_y).min(visible_bottom - draw_y).max(0.0);
+                        if draw_h > 0.0 {
+                            render_boxes.push(RenderBox {
                                 x: layout_box.content_x,
-                                y: screen_y,
+                                y: draw_y,
                                 w: layout_box.content_width,
-                                h: active_line_height,
+                                h: draw_h,
+                                color: if is_focused { [0.26, 0.52, 0.96, 1.0] } else { [0.85, 0.85, 0.85, 1.0] },
+                                radius: 8.0,
+                                href: None,
                             });
                         }
 
-                        text_requests.push(TextRequest {
-                            text: word.to_string(),
-                            px_size: fragment.px_size,
-                            is_bold: fragment.is_bold,
-                            pos_x: x,
-                            pos_y: screen_y,
-                            color,
-                        });
+                        let inner_y = screen_y - 3.0;
+                        let inner_h = active_line_height + 6.0;
+                        let draw_inner_y = inner_y.max(CONTENT_TOP);
+                        let draw_inner_h = (inner_y + inner_h - draw_inner_y).min(visible_bottom - draw_inner_y).max(0.0);
+                        if draw_inner_h > 0.0 {
+                            render_boxes.push(RenderBox {
+                                x: layout_box.content_x + 1.0,
+                                y: draw_inner_y,
+                                w: layout_box.content_width - 2.0,
+                                h: draw_inner_h,
+                                color: [1.0, 1.0, 1.0, 1.0],
+                                radius: 7.0,
+                                href: None,
+                            });
+                        }
+
+                        let text_y = screen_y + (active_line_height - fragment.line_height) / 2.0;
+                        if text_y >= CONTENT_TOP && text_y <= visible_bottom {
+                            text_requests.push(TextRequest {
+                                text: text_to_draw,
+                                px_size: fragment.px_size,
+                                is_bold: false,
+                                pos_x: layout_box.content_x + 12.0,
+                                pos_y: text_y,
+                                color: draw_color,
+                            });
+                        }
+
+                        let draw_link_y = (screen_y - 4.0).max(CONTENT_TOP);
+                        let draw_link_h = (screen_y - 4.0 + active_line_height + 8.0 - draw_link_y).min(visible_bottom - draw_link_y).max(0.0);
+                        if draw_link_h > 0.0 {
+                            link_hitboxes.push(LinkHitbox {
+                                href: String::new(),
+                                x: layout_box.content_x,
+                                y: draw_link_y,
+                                w: layout_box.content_width,
+                                h: draw_link_h,
+                                is_input: true,
+                                is_submit: false,
+                                fragment_idx: frag_idx,
+                            });
+                        }
+                    } else {
+                        println!(
+                            "[Layout Debug] Skipped input field at y={} (line_bottom={}, visible_bottom={}, line_index={})",
+                            screen_y, line_bottom, visible_bottom, line_index
+                        );
                     }
 
-                    cursor_x = x + word_width;
+                    cursor_x += layout_box.content_width;
                     line_height = active_line_height;
                     line_started = true;
+                } else if fragment.is_submit {
+                    let active_line_height = line_height.max(fragment.line_height).max(32.0);
+                    let screen_y = document_y - scroll_offset;
+                    let line_bottom = screen_y + active_line_height;
+
+                    if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom && line_index < MAX_VISIBLE_LINES {
+                        let box_y = screen_y - 4.0;
+                        let box_h = active_line_height + 8.0;
+                        let draw_y = box_y.max(CONTENT_TOP);
+                        let draw_h = (box_y + box_h - draw_y).min(visible_bottom - draw_y).max(0.0);
+                        if draw_h > 0.0 {
+                            render_boxes.push(RenderBox {
+                                x: layout_box.content_x,
+                                y: draw_y,
+                                w: layout_box.content_width,
+                                h: draw_h,
+                                color: [0.96, 0.96, 0.98, 1.0],
+                                radius: 6.0,
+                                href: None,
+                            });
+                        }
+
+                        let border_y = screen_y - 4.0;
+                        let border_h = 1.0;
+                        let draw_border_y = border_y.max(CONTENT_TOP);
+                        let draw_border_h = (border_y + border_h - draw_border_y).min(visible_bottom - draw_border_y).max(0.0);
+                        if draw_border_h > 0.0 {
+                            render_boxes.push(RenderBox {
+                                x: layout_box.content_x,
+                                y: draw_border_y,
+                                w: layout_box.content_width,
+                                h: draw_border_h,
+                                color: [0.88, 0.88, 0.90, 1.0],
+                                radius: 0.0,
+                                href: None,
+                            });
+                        }
+
+                        let btn_text = fragment.text.clone();
+                        let text_w = estimated_text_width(&btn_text, fragment.px_size);
+                        let text_x = layout_box.content_x + (layout_box.content_width - text_w) / 2.0;
+
+                        let text_y = screen_y + (active_line_height - fragment.line_height) / 2.0;
+                        if text_y >= CONTENT_TOP && text_y <= visible_bottom {
+                            text_requests.push(TextRequest {
+                                text: btn_text,
+                                px_size: fragment.px_size,
+                                is_bold: true,
+                                pos_x: text_x.max(layout_box.content_x + 4.0),
+                                pos_y: text_y,
+                                color: [0.22, 0.22, 0.24, 1.0],
+                            });
+                        }
+
+                        let draw_link_y = (screen_y - 4.0).max(CONTENT_TOP);
+                        let draw_link_h = (screen_y - 4.0 + active_line_height + 8.0 - draw_link_y).min(visible_bottom - draw_link_y).max(0.0);
+                        if draw_link_h > 0.0 {
+                            link_hitboxes.push(LinkHitbox {
+                                href: String::new(),
+                                x: layout_box.content_x,
+                                y: draw_link_y,
+                                w: layout_box.content_width,
+                                h: draw_link_h,
+                                is_input: false,
+                                is_submit: true,
+                                fragment_idx: frag_idx,
+                            });
+                        }
+                    } else {
+                        println!(
+                            "[Layout Debug] Skipped submit button at y={} (line_bottom={}, visible_bottom={}, line_index={})",
+                            screen_y, line_bottom, visible_bottom, line_index
+                        );
+                    }
+
+                    cursor_x += layout_box.content_width;
+                    line_height = active_line_height;
+                    line_started = true;
+                } else {
+                    let color = if fragment.href.is_some() && fragment.color == TextStyleState::default().color {
+                        [0.478, 0.635, 0.968, 1.0]
+                    } else {
+                        fragment.color
+                    };
+
+                    let space_width = estimated_text_width(" ", fragment.px_size);
+                    for word in fragment.text.split_whitespace() {
+                        let word_width = estimated_text_width(word, fragment.px_size);
+                        let mut leading_space = if line_started { space_width } else { 0.0 };
+                        if line_started
+                            && cursor_x + leading_space + word_width > layout_box.content_x + layout_box.content_width
+                        {
+                            document_y += line_height.max(fragment.line_height);
+                            cursor_x = layout_box.content_x;
+                            line_height = 0.0;
+                            leading_space = 0.0;
+                            line_index += 1;
+                        }
+
+                        let x = cursor_x + leading_space;
+                        let active_line_height = line_height.max(fragment.line_height);
+                        let screen_y = document_y - scroll_offset;
+                        let line_bottom = screen_y + active_line_height;
+
+                        if line_bottom >= CONTENT_TOP
+                            && screen_y <= visible_bottom
+                            && line_index < MAX_VISIBLE_LINES
+                        {
+                            if let Some(href) = &fragment.href {
+                                let draw_y = screen_y.max(CONTENT_TOP);
+                                let draw_h = (screen_y + active_line_height - draw_y).min(visible_bottom - draw_y).max(0.0);
+                                if draw_h > 0.0 {
+                                    link_hitboxes.push(LinkHitbox {
+                                        href: href.clone(),
+                                        x: layout_box.content_x,
+                                        y: draw_y,
+                                        w: layout_box.content_width,
+                                        h: draw_h,
+                                        is_input: false,
+                                        is_submit: false,
+                                        fragment_idx: frag_idx,
+                                    });
+                                }
+                            }
+
+                            if screen_y >= CONTENT_TOP {
+                                text_requests.push(TextRequest {
+                                    text: word.to_string(),
+                                    px_size: fragment.px_size,
+                                    is_bold: fragment.is_bold,
+                                    pos_x: x,
+                                    pos_y: screen_y,
+                                    color,
+                                });
+                            }
+                        } else {
+                            println!(
+                                "[Layout Debug] Skipped word '{}' (px_size={}) at y={} (line_bottom={}, visible_bottom={}, line_index={})",
+                                word, fragment.px_size, screen_y, line_bottom, visible_bottom, line_index
+                            );
+                        }
+
+                        cursor_x = x + word_width;
+                        line_height = active_line_height;
+                        line_started = true;
+                    }
                 }
 
                 if fragment.line_break_after && line_started {
@@ -741,6 +1170,10 @@ pub fn render_page(
 
     if line_started {
         document_y += line_height;
+    }
+
+    if document.fragments.len() > 50 {
+        let _ = std::fs::write("layout_step_log.txt", step_log);
     }
 
     let content_height = document_y + VIEWPORT_BOTTOM_PADDING;
@@ -893,6 +1326,7 @@ fn extract_text_from_dom(
     current_href: Option<String>,
     base_url: Option<&Url>,
     ancestors: &mut Vec<CssElementContext>,
+    current_form_action: Option<String>,
 ) {
     for node in nodes {
         if out.len() >= MAX_TEXT_FRAGMENTS {
@@ -921,6 +1355,15 @@ fn extract_text_from_dom(
                     next_style.layout.max_width = Some("820px".to_string());
                 }
 
+                let mut form_action = current_form_action.clone();
+                if matches!(tag, HtmlTag::Form) {
+                    if let Some(action) = attributes.get("action") {
+                        form_action = resolve_url(base_url, action);
+                    } else {
+                        form_action = base_url.map(|u| u.to_string());
+                    }
+                }
+
                 match tag {
                     HtmlTag::A => {
                         next_style.margin_after = 0.0;
@@ -937,7 +1380,15 @@ fn extract_text_from_dom(
                     }
                     _ => {}
                 }
-                if !element_breaks_line(tag, &next_style) {
+                let is_block_element = element_breaks_line(tag, &next_style);
+                let has_custom_layout = next_style.background_color.is_some()
+                    || next_style.layout.width.is_some()
+                    || next_style.layout.padding_left.is_some()
+                    || next_style.layout.padding_right.is_some()
+                    || next_style.layout.border_radius.is_some()
+                    || next_style.display.as_deref().is_some_and(|d| d == "inline-block");
+
+                if !is_block_element && !has_custom_layout {
                     clear_inline_box_layout(&mut next_style.layout);
                 }
 
@@ -951,6 +1402,8 @@ fn extract_text_from_dom(
                     &next_style,
                     new_href.as_deref(),
                     base_url,
+                    form_action.as_deref(),
+                    children,
                 ) {
                     out.push(LayoutFragment::Text(fragment));
                     if is_void_or_external_element(tag) {
@@ -958,7 +1411,7 @@ fn extract_text_from_dom(
                     }
                 }
 
-                let should_break = element_breaks_line(tag, &next_style);
+                let should_create_block = is_block_element || has_custom_layout;
                 let element_margin_after = next_style.margin_after.max(block_margin_after(tag));
                 
                 let border_radius = next_style
@@ -968,12 +1421,12 @@ fn extract_text_from_dom(
                     .and_then(|val| parse_layout_length(val, 16.0));
 
                 let block_id = out.len();
-                if should_break {
+                if should_create_block {
                     out.push(LayoutFragment::BlockStart {
                         id: block_id,
                         layout: next_style.layout.clone(),
                         background_color: next_style.background_color,
-                        is_block: true,
+                        is_block: is_block_element,
                         border_radius,
                         href: new_href.clone(),
                     });
@@ -982,12 +1435,12 @@ fn extract_text_from_dom(
                 let fragments_before = out.len();
                 ancestors.push(CssElementContext::from_element(tag, attributes));
                 extract_text_from_dom(
-                    children, out, css, next_style, new_href, base_url, ancestors,
+                    children, out, css, next_style, new_href, base_url, ancestors, form_action,
                 );
                 ancestors.pop();
 
-                if should_break {
-                    if out.len() > fragments_before {
+                if should_create_block {
+                    if is_block_element && out.len() > fragments_before {
                         if let Some(LayoutFragment::Text(last)) = out.last_mut() {
                             last.line_break_after = true;
                             last.margin_after = last.margin_after.max(element_margin_after);
@@ -995,8 +1448,8 @@ fn extract_text_from_dom(
                     }
                     out.push(LayoutFragment::BlockEnd {
                         id: block_id,
-                        margin_after: element_margin_after,
-                        is_block: true,
+                        margin_after: if is_block_element { element_margin_after } else { 0.0 },
+                        is_block: is_block_element,
                     });
                 }
             }
@@ -1004,21 +1457,36 @@ fn extract_text_from_dom(
                 let text = normalize_text(t);
                 if !text.is_empty() {
                     let text = apply_text_transform(text, current_style.text_transform.as_deref());
-                    out.push(LayoutFragment::Text(TextFragment {
+                    out.push(LayoutFragment::Text(TextFragment::new_text(
                         text,
-                        px_size: current_style.px_size,
-                        is_bold: current_style.is_bold,
-                        line_height: current_style.line_height,
-                        margin_after: 0.0,
-                        line_break_after: false,
-                        layout: current_style.layout.clone(),
-                        color: current_style.color,
-                        href: current_href.clone(),
-                    }));
+                        current_style.px_size,
+                        current_style.is_bold,
+                        current_style.line_height,
+                        0.0,
+                        false,
+                        current_style.layout.clone(),
+                        current_style.color,
+                        current_href.clone(),
+                    )));
                 }
             }
         }
     }
+}
+
+fn get_element_text(nodes: &[DomNode]) -> String {
+    let mut text = String::new();
+    for node in nodes {
+        match node {
+            DomNode::Text(t) => {
+                text.push_str(t);
+            }
+            DomNode::Element { children, .. } => {
+                text.push_str(&get_element_text(children));
+            }
+        }
+    }
+    text
 }
 
 fn intrinsic_element_fragment(
@@ -1027,7 +1495,15 @@ fn intrinsic_element_fragment(
     style: &TextStyleState,
     inherited_href: Option<&str>,
     base_url: Option<&Url>,
+    form_action: Option<&str>,
+    children: &[DomNode],
 ) -> Option<TextFragment> {
+    let mut is_input = false;
+    let mut is_submit = false;
+    let mut input_name = String::new();
+    let mut input_value = String::new();
+    let mut input_placeholder = String::new();
+
     let (text, href, line_break_after) = match tag {
         HtmlTag::Img => {
             let label =
@@ -1067,16 +1543,39 @@ fn intrinsic_element_fragment(
             if input_type == "hidden" {
                 return None;
             }
-            let label = first_attribute(
-                attributes,
-                &["aria-label", "placeholder", "value", "name", "id"],
-            )
-            .unwrap_or_else(|| input_type.clone());
-            (
-                format!("Campo {input_type}: {label}"),
-                inherited_href.map(str::to_string),
-                false,
-            )
+
+            if input_type == "submit" || input_type == "button" {
+                is_submit = true;
+                let btn_text = attributes
+                    .get("value")
+                    .cloned()
+                    .unwrap_or_else(|| "Submit".to_string());
+                (btn_text, None, false)
+            } else {
+                is_input = true;
+                input_placeholder = attributes
+                    .get("placeholder")
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        attributes.get("name").cloned().unwrap_or_else(|| "Search...".to_string())
+                    });
+                input_value = attributes.get("value").cloned().unwrap_or_default();
+                input_name = attributes.get("name").cloned().unwrap_or_default();
+                (input_value.clone(), None, false)
+            }
+        }
+        HtmlTag::Button => {
+            is_submit = true;
+            let btn_text = get_element_text(children);
+            let btn_text = if btn_text.trim().is_empty() {
+                attributes
+                    .get("value")
+                    .cloned()
+                    .unwrap_or_else(|| "Submit".to_string())
+            } else {
+                btn_text.trim().to_string()
+            };
+            (btn_text, None, false)
         }
         HtmlTag::Textarea | HtmlTag::Select => {
             let kind = if matches!(tag, HtmlTag::Textarea) {
@@ -1114,6 +1613,12 @@ fn intrinsic_element_fragment(
         layout: style.layout.clone(),
         color: soften_auxiliary_color(style.color),
         href,
+        is_input,
+        is_submit,
+        input_name,
+        input_value,
+        input_placeholder,
+        form_action: form_action.map(str::to_string),
     })
 }
 
@@ -1122,6 +1627,7 @@ fn is_void_or_external_element(tag: &HtmlTag) -> bool {
         tag,
         HtmlTag::Img
             | HtmlTag::Input
+            | HtmlTag::Button
             | HtmlTag::Iframe
             | HtmlTag::Embed
             | HtmlTag::Object
@@ -1255,6 +1761,14 @@ fn apply_css_declarations(
 
     if let Some(color) = declarations.color.as_deref().and_then(parse_color) {
         style.color = color;
+    }
+    if let Some(bg_color) = declarations
+        .background_color
+        .as_deref()
+        .or(declarations.background.as_deref())
+        .and_then(first_css_color)
+    {
+        style.background_color = Some(bg_color);
     }
     if let Some(px_size) = declarations
         .font_size
@@ -1425,12 +1939,12 @@ fn normalize_fragments(fragments: &mut Vec<LayoutFragment>) {
     for mut fragment in fragments.drain(..) {
         if let LayoutFragment::Text(ref mut t) = fragment {
             t.text = collapse_repeated_text(&normalize_text(&t.text));
-            if t.text.trim().is_empty() {
+            if t.text.trim().is_empty() && !t.is_input {
                 continue;
             }
 
             let key = t.text.to_lowercase();
-            if key == previous_key {
+            if !key.is_empty() && key == previous_key && !t.is_input {
                 continue;
             }
 
@@ -1551,17 +2065,17 @@ fn apply_runtime_scripts(
     if let Some(title) = report.dom.title {
         fragments.insert(
             0,
-            LayoutFragment::Text(TextFragment {
-                text: normalize_text(&title),
-                px_size: 24.0,
-                is_bold: true,
-                line_height: 32.0,
-                margin_after: 4.0,
-                line_break_after: true,
-                layout: FragmentLayout::default(),
-                color: [1.0, 1.0, 1.0, 1.0],
-                href: None,
-            }),
+            LayoutFragment::Text(TextFragment::new_text(
+                normalize_text(&title),
+                24.0,
+                true,
+                32.0,
+                4.0,
+                true,
+                FragmentLayout::default(),
+                [1.0, 1.0, 1.0, 1.0],
+                None,
+            )),
         );
     }
 
@@ -1570,17 +2084,17 @@ fn apply_runtime_scripts(
             break;
         }
 
-        fragments.push(LayoutFragment::Text(TextFragment {
-            text: normalize_text(&text),
-            px_size: 16.0,
-            is_bold: false,
-            line_height: 22.0,
-            margin_after: 6.0,
-            line_break_after: true,
-            layout: FragmentLayout::default(),
-            color: [1.0, 1.0, 1.0, 1.0],
-            href: None,
-        }));
+        fragments.push(LayoutFragment::Text(TextFragment::new_text(
+            normalize_text(&text),
+            16.0,
+            false,
+            22.0,
+            6.0,
+            true,
+            FragmentLayout::default(),
+            [1.0, 1.0, 1.0, 1.0],
+            None,
+        )));
     }
 }
 
@@ -1620,17 +2134,17 @@ fn append_media_summary(fragments: &mut Vec<LayoutFragment>, media: &MediaReport
 
     fragments.insert(
         0,
-        LayoutFragment::Text(TextFragment {
-            text: summary,
-            px_size: 14.0,
-            is_bold: true,
-            line_height: 20.0,
-            margin_after: 8.0,
-            line_break_after: true,
-            layout: FragmentLayout::default(),
-            color: [0.880, 0.584, 0.980, 1.0],
-            href: None,
-        }),
+        LayoutFragment::Text(TextFragment::new_text(
+            summary,
+            14.0,
+            true,
+            20.0,
+            8.0,
+            true,
+            FragmentLayout::default(),
+            [0.880, 0.584, 0.980, 1.0],
+            None,
+        )),
     );
 }
 
@@ -1680,6 +2194,8 @@ mod tests {
             &TextStyleState::default(),
             None,
             base_url.as_ref(),
+            None,
+            &[],
         )
         .expect("image should produce a visible fragment");
 
@@ -1689,4 +2205,42 @@ mod tests {
             Some("https://example.com/thumb.jpg")
         );
     }
+
+    #[test]
+    fn test_parse_google_fragments() {
+        use std::fs;
+        let path = "profile/cache/resources/document/d655b91da1ed77a4.body";
+        if let Ok(html) = fs::read_to_string(path) {
+            let dom = crate::parsers::dom_tree::parse_html(&html);
+            let base_url = Url::parse("https://www.google.com/").ok();
+            
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let stylesheet_bundle = rt.block_on(load_stylesheet_bundle(&dom, base_url.as_ref()));
+            let css = CssCascade::from_blocks(&stylesheet_bundle.blocks);
+            
+            let mut fragments = Vec::new();
+            let mut ancestors = Vec::new();
+            extract_text_from_dom(
+                &dom,
+                &mut fragments,
+                &css,
+                TextStyleState::default_with_color([0.0, 0.0, 0.0, 1.0]),
+                None,
+                base_url.as_ref(),
+                &mut ancestors,
+                None,
+            );
+            
+            normalize_fragments(&mut fragments);
+            let has_input = fragments.iter().any(|f| {
+                if let LayoutFragment::Text(ref t) = f {
+                    t.is_input
+                } else {
+                    false
+                }
+            });
+            assert!(has_input, "Normalized fragments MUST contain the input box!");
+        }
+    }
 }
+

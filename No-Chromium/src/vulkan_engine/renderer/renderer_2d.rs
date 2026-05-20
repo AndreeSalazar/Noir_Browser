@@ -686,16 +686,10 @@ impl Renderer2D {
             // ==========================================
             // DYNAMIC LAYOUT ENGINE (DOM -> GPU VERTICES)
             // ==========================================
-            let mut all_vertices = crate::ui::ui_gen::generate_chrome_vertices(
-                win_width,
-                win_height,
-                tabs_count,
-                active_tab_index,
-                scale_factor,
-            );
             let dom_vertices = crate::layout::layout_gen::LayoutEngine::build_dom_vertices(
                 boxes, win_width, win_height,
             );
+            let mut all_vertices = Vec::with_capacity(dom_vertices.len() * 12 + 1024);
             for v in &dom_vertices {
                 all_vertices.push(v.x);
                 all_vertices.push(v.y);
@@ -710,6 +704,14 @@ impl Renderer2D {
                 all_vertices.push(v.radius);
                 all_vertices.push(v.is_text);
             }
+            let chrome_vertices = crate::ui::ui_gen::generate_chrome_vertices(
+                win_width,
+                win_height,
+                tabs_count,
+                active_tab_index,
+                scale_factor,
+            );
+            all_vertices.extend_from_slice(&chrome_vertices);
 
             // Text Quads (placed from Atlas using raw pixel coordinates)
             for tq in &self.text_quads {

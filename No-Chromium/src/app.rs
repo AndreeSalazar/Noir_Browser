@@ -6,13 +6,13 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::browser::{load_page_document, BrowserState, PageDocument};
+use crate::browser::{load_page_document, BrowserState, PageDocument, PageClickResult};
 use crate::render::quality::QualityProfile;
 use crate::render::text::{RasterizedAtlas, TextRequest};
 use crate::vulkan_engine::renderer::renderer_2d::Renderer2D;
 use crate::vulkan_engine::context::VulkanContext;
 
-const INITIAL_URL: &str = "noir://newtab";
+const INITIAL_URL: &str = "https://www.google.com";
 
 enum BrowserEvent {
     PageLoaded { url: String, document: PageDocument },
@@ -106,6 +106,19 @@ pub fn run() {
                         quality,
                         &address_input,
                     );
+                } else if !ch.is_control() {
+                    if browser.handle_page_char(ch) {
+                        let current_url = browser.current_url().to_string();
+                        let atlas = browser.rerender_current_page(
+                            quality.text_rasterization_options(),
+                            window.inner_size().width as f32,
+                            window.inner_size().height as f32,
+                        ).unwrap_or_else(|| {
+                            loading_atlas(&current_url, quality.text_rasterization_options(), window.inner_size().width as f32)
+                        });
+                        apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), atlas);
+                        window.request_redraw();
+                    }
                 }
             }
             Event::WindowEvent {
@@ -228,6 +241,55 @@ pub fn run() {
                                 quality,
                                 &address_input,
                             );
+                        }
+                        _ => {}
+                    }
+                } else if input.state == ElementState::Pressed {
+                    match input.virtual_keycode {
+                        Some(VirtualKeyCode::Back) => {
+                            if browser.handle_page_backspace() {
+                                let current_url = browser.current_url().to_string();
+                                let atlas = browser.rerender_current_page(
+                                    quality.text_rasterization_options(),
+                                    window.inner_size().width as f32,
+                                    window.inner_size().height as f32,
+                                ).unwrap_or_else(|| {
+                                    loading_atlas(&current_url, quality.text_rasterization_options(), window.inner_size().width as f32)
+                                });
+                                apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), atlas);
+                                window.request_redraw();
+                            }
+                        }
+                        Some(VirtualKeyCode::Return) => {
+                            if let Some(submit_url) = browser.handle_page_return() {
+                                println!("[Browser] Form submitted via Enter to {}", submit_url);
+                                address_input = submit_url.clone();
+                                begin_navigation(
+                                    &mut browser,
+                                    rt.handle().clone(),
+                                    &event_proxy,
+                                    &mut renderer,
+                                    &mut pending_atlas,
+                                    vk_ctx.as_ref(),
+                                    &window,
+                                    quality,
+                                    &submit_url,
+                                );
+                            }
+                        }
+                        Some(VirtualKeyCode::Escape) => {
+                            // Blur the focused input
+                            browser.current_tab_mut().focused_input_idx = None;
+                            let current_url = browser.current_url().to_string();
+                            let atlas = browser.rerender_current_page(
+                                quality.text_rasterization_options(),
+                                window.inner_size().width as f32,
+                                window.inner_size().height as f32,
+                                ).unwrap_or_else(|| {
+                                    loading_atlas(&current_url, quality.text_rasterization_options(), window.inner_size().width as f32)
+                                });
+                            apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), atlas);
+                            window.request_redraw();
                         }
                         _ => {}
                     }
@@ -465,22 +527,54 @@ pub fn run() {
 
                 if !hit_button {
                     address_focused = false;
-                    if let Some(url) = browser.link_at_pos(cursor_pos.x as f32, cursor_pos.y as f32) {
-                        println!("[Browser] Navigating to {}", url);
-                        address_input = url.clone();
-                        begin_navigation(
-                            &mut browser,
-                            rt.handle().clone(),
-                            &event_proxy,
-                            &mut renderer,
-                            &mut pending_atlas,
-                            vk_ctx.as_ref(),
-                            &window,
-                            quality,
-                            &url,
-                        );
-                    } else if cursor_pos.y < (36.0 * window.scale_factor()) {
-                        let _ = window.drag_window();
+                    let click_res = browser.handle_page_click(cursor_pos.x as f32, cursor_pos.y as f32);
+                    match click_res {
+                        PageClickResult::Navigate(url) => {
+                            println!("[Browser] Navigating to {}", url);
+                            address_input = url.clone();
+                            begin_navigation(
+                                &mut browser,
+                                rt.handle().clone(),
+                                &event_proxy,
+                                &mut renderer,
+                                &mut pending_atlas,
+                                vk_ctx.as_ref(),
+                                &window,
+                                quality,
+                                &url,
+                            );
+                        }
+                        PageClickResult::Submit(submit_url) => {
+                            println!("[Browser] Submitting form to {}", submit_url);
+                            address_input = submit_url.clone();
+                            begin_navigation(
+                                &mut browser,
+                                rt.handle().clone(),
+                                &event_proxy,
+                                &mut renderer,
+                                &mut pending_atlas,
+                                vk_ctx.as_ref(),
+                                &window,
+                                quality,
+                                &submit_url,
+                            );
+                        }
+                        PageClickResult::InputFocused | PageClickResult::None => {
+                            let current_url = browser.current_url().to_string();
+                            let atlas = browser.rerender_current_page(
+                                quality.text_rasterization_options(),
+                                win_size.width as f32,
+                                win_size.height as f32,
+                            ).unwrap_or_else(|| {
+                                loading_atlas(&current_url, quality.text_rasterization_options(), win_size.width as f32)
+                            });
+                            apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), atlas);
+                            window.request_redraw();
+
+                            if matches!(click_res, PageClickResult::None) && cursor_pos.y < (36.0 * window.scale_factor()) {
+                                let _ = window.drag_window();
+                            }
+                        }
                     }
                 }
             }

@@ -242,9 +242,267 @@ pub enum CssProperty {
     Custom(String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CssToken {
     Selector(String),
     Property(CssProperty),
     Value(String),
+}
+
+impl CssProperty {
+    pub fn from_str(name: &str) -> Self {
+        match name.to_ascii_lowercase().as_str() {
+            "align-content" => Self::AlignContent,
+            "align-items" => Self::AlignItems,
+            "align-self" => Self::AlignSelf,
+            "all" => Self::All,
+            "animation" => Self::Animation,
+            "animation-delay" => Self::AnimationDelay,
+            "animation-direction" => Self::AnimationDirection,
+            "animation-duration" => Self::AnimationDuration,
+            "animation-fill-mode" => Self::AnimationFillMode,
+            "animation-iteration-count" => Self::AnimationIterationCount,
+            "animation-name" => Self::AnimationName,
+            "animation-play-state" => Self::AnimationPlayState,
+            "animation-timing-function" => Self::AnimationTimingFunction,
+            "backface-visibility" => Self::BackfaceVisibility,
+            "background" => Self::Background,
+            "background-attachment" => Self::BackgroundAttachment,
+            "background-blend-mode" => Self::BackgroundBlendMode,
+            "background-clip" => Self::BackgroundClip,
+            "background-color" => Self::BackgroundColor,
+            "background-image" => Self::BackgroundImage,
+            "background-origin" => Self::BackgroundOrigin,
+            "background-position" => Self::BackgroundPosition,
+            "background-repeat" => Self::BackgroundRepeat,
+            "background-size" => Self::BackgroundSize,
+            "border" => Self::Border,
+            "border-bottom" => Self::BorderBottom,
+            "border-bottom-color" => Self::BorderBottomColor,
+            "border-bottom-left-radius" => Self::BorderBottomLeftRadius,
+            "border-bottom-right-radius" => Self::BorderBottomRightRadius,
+            "border-bottom-style" => Self::BorderBottomStyle,
+            "border-bottom-width" => Self::BorderBottomWidth,
+            "border-collapse" => Self::BorderCollapse,
+            "border-color" => Self::BorderColor,
+            "border-image" => Self::BorderImage,
+            "border-image-outset" => Self::BorderImageOutset,
+            "border-image-repeat" => Self::BorderImageRepeat,
+            "border-image-slice" => Self::BorderImageSlice,
+            "border-image-source" => Self::BorderImageSource,
+            "border-image-width" => Self::BorderImageWidth,
+            "border-left" => Self::BorderLeft,
+            "border-left-color" => Self::BorderLeftColor,
+            "border-left-style" => Self::BorderLeftStyle,
+            "border-left-width" => Self::BorderLeftWidth,
+            "border-radius" => Self::BorderRadius,
+            "border-right" => Self::BorderRight,
+            "border-right-color" => Self::BorderRightColor,
+            "border-right-style" => Self::BorderRightStyle,
+            "border-right-width" => Self::BorderRightWidth,
+            "border-spacing" => Self::BorderSpacing,
+            "border-style" => Self::BorderStyle,
+            "border-top" => Self::BorderTop,
+            "border-top-color" => Self::BorderTopColor,
+            "border-top-left-radius" => Self::BorderTopLeftRadius,
+            "border-top-right-radius" => Self::BorderTopRightRadius,
+            "border-top-style" => Self::BorderTopStyle,
+            "border-top-width" => Self::BorderTopWidth,
+            "border-width" => Self::BorderWidth,
+            "bottom" => Self::Bottom,
+            "box-decoration-break" => Self::BoxDecorationBreak,
+            "box-shadow" => Self::BoxShadow,
+            "box-sizing" => Self::BoxSizing,
+            "break-after" => Self::BreakAfter,
+            "break-before" => Self::BreakBefore,
+            "break-inside" => Self::BreakInside,
+            "caption-side" => Self::CaptionSide,
+            "caret-color" => Self::CaretColor,
+            "clear" => Self::Clear,
+            "clip" => Self::Clip,
+            "clip-path" => Self::ClipPath,
+            "color" => Self::Color,
+            "column-count" => Self::ColumnCount,
+            "column-fill" => Self::ColumnFill,
+            "column-gap" => Self::ColumnGap,
+            "column-rule" => Self::ColumnRule,
+            "column-rule-color" => Self::ColumnRuleColor,
+            "column-rule-style" => Self::ColumnRuleStyle,
+            "column-rule-width" => Self::ColumnRuleWidth,
+            "column-span" => Self::ColumnSpan,
+            "column-width" => Self::ColumnWidth,
+            "columns" => Self::Columns,
+            "content" => Self::Content,
+            "counter-increment" => Self::CounterIncrement,
+            "counter-reset" => Self::CounterReset,
+            "cursor" => Self::Cursor,
+            "direction" => Self::Direction,
+            "display" => Self::Display,
+            "empty-cells" => Self::EmptyCells,
+            "filter" => Self::Filter,
+            "flex" => Self::Flex,
+            "flex-basis" => Self::FlexBasis,
+            "flex-direction" => Self::FlexDirection,
+            "flex-flow" => Self::FlexFlow,
+            "flex-grow" => Self::FlexGrow,
+            "flex-shrink" => Self::FlexShrink,
+            "flex-wrap" => Self::FlexWrap,
+            "float" => Self::Float,
+            "font" => Self::Font,
+            "font-family" => Self::FontFamily,
+            "font-feature-settings" => Self::FontFeatureSettings,
+            "font-kerning" => Self::FontKerning,
+            "font-language-override" => Self::FontLanguageOverride,
+            "font-size" => Self::FontSize,
+            "font-size-adjust" => Self::FontSizeAdjust,
+            "font-stretch" => Self::FontStretch,
+            "font-style" => Self::FontStyle,
+            "font-weight" => Self::FontWeight,
+            "gap" => Self::Gap,
+            "grid" => Self::Grid,
+            "grid-area" => Self::GridArea,
+            "grid-auto-columns" => Self::GridAutoColumns,
+            "grid-auto-flow" => Self::GridAutoFlow,
+            "grid-auto-rows" => Self::GridAutoRows,
+            "grid-column" => Self::GridColumn,
+            "grid-column-end" => Self::GridColumnEnd,
+            "grid-column-gap" => Self::GridColumnGap,
+            "grid-column-start" => Self::GridColumnStart,
+            "grid-gap" => Self::GridGap,
+            "grid-row" => Self::GridRow,
+            "grid-row-end" => Self::GridRowEnd,
+            "grid-row-gap" => Self::GridRowGap,
+            "grid-row-start" => Self::GridRowStart,
+            "grid-template" => Self::GridTemplate,
+            "grid-template-areas" => Self::GridTemplateAreas,
+            "grid-template-columns" => Self::GridTemplateColumns,
+            "grid-template-rows" => Self::GridTemplateRows,
+            "height" => Self::Height,
+            "justify-content" => Self::JustifyContent,
+            "justify-items" => Self::JustifyItems,
+            "justify-self" => Self::JustifySelf,
+            "left" => Self::Left,
+            "letter-spacing" => Self::LetterSpacing,
+            "line-break" => Self::LineBreak,
+            "line-height" => Self::LineHeight,
+            "list-style" => Self::ListStyle,
+            "margin" => Self::Margin,
+            "margin-bottom" => Self::MarginBottom,
+            "margin-left" => Self::MarginLeft,
+            "margin-right" => Self::MarginRight,
+            "margin-top" => Self::MarginTop,
+            "max-height" => Self::MaxHeight,
+            "max-width" => Self::MaxWidth,
+            "min-height" => Self::MinHeight,
+            "min-width" => Self::MinWidth,
+            "opacity" => Self::Opacity,
+            "order" => Self::Order,
+            "outline" => Self::Outline,
+            "overflow" => Self::Overflow,
+            "padding" => Self::Padding,
+            "padding-bottom" => Self::PaddingBottom,
+            "padding-left" => Self::PaddingLeft,
+            "padding-right" => Self::PaddingRight,
+            "padding-top" => Self::PaddingTop,
+            "position" => Self::Position,
+            "right" => Self::Right,
+            "row-gap" => Self::RowGap,
+            "text-align" => Self::TextAlign,
+            "text-decoration" => Self::TextDecoration,
+            "text-overflow" => Self::TextOverflow,
+            "text-transform" => Self::TextTransform,
+            "top" => Self::Top,
+            "transform" => Self::Transform,
+            "transition" => Self::Transition,
+            "user-select" => Self::UserSelect,
+            "vertical-align" => Self::VerticalAlign,
+            "visibility" => Self::Visibility,
+            "white-space" => Self::WhiteSpace,
+            "width" => Self::Width,
+            "word-break" => Self::WordBreak,
+            "word-wrap" => Self::WordWrap,
+            "writing-mode" => Self::WritingMode,
+            "z-index" => Self::ZIndex,
+            other => Self::Custom(other.to_string()),
+        }
+    }
+}
+
+pub fn tokenize_css(css: &str) -> Vec<CssToken> {
+    let mut tokens = Vec::new();
+    let mut clean_css = String::new();
+    
+    // Remove comments
+    let mut in_comment = false;
+    let mut chars = css.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if in_comment {
+            if ch == '*' && chars.peek() == Some(&'/') {
+                chars.next();
+                in_comment = false;
+            }
+        } else if ch == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            in_comment = true;
+        } else {
+            clean_css.push(ch);
+        }
+    }
+
+    for block in clean_css.split('}') {
+        let Some((selector_part, declarations_part)) = block.split_once('{') else {
+            continue;
+        };
+
+        let selector = selector_part.trim().to_string();
+        if selector.is_empty() || selector.starts_with('@') {
+            continue;
+        }
+
+        tokens.push(CssToken::Selector(selector));
+
+        for decl in declarations_part.split(';') {
+            let Some((prop_part, val_part)) = decl.split_once(':') else {
+                continue;
+            };
+
+            let prop_name = prop_part.trim();
+            let val = val_part.trim().to_string();
+            if prop_name.is_empty() || val.is_empty() {
+                continue;
+            }
+
+            let property = CssProperty::from_str(prop_name);
+            tokens.push(CssToken::Property(property));
+            tokens.push(CssToken::Value(val));
+        }
+    }
+
+    tokens
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tokenize_css_basic() {
+        let css = "
+            /* Un comentario de prueba */
+            div.container {
+                background-color: #ffffff;
+                width: 100px;
+                unsupported-property: none;
+            }
+        ";
+        let tokens = tokenize_css(css);
+        assert_eq!(tokens.len(), 7);
+        assert_eq!(tokens[0], CssToken::Selector("div.container".to_string()));
+        assert_eq!(tokens[1], CssToken::Property(CssProperty::BackgroundColor));
+        assert_eq!(tokens[2], CssToken::Value("#ffffff".to_string()));
+        assert_eq!(tokens[3], CssToken::Property(CssProperty::Width));
+        assert_eq!(tokens[4], CssToken::Value("100px".to_string()));
+        assert_eq!(tokens[5], CssToken::Property(CssProperty::Custom("unsupported-property".to_string())));
+        assert_eq!(tokens[6], CssToken::Value("none".to_string()));
+    }
 }

@@ -10,6 +10,9 @@ pub struct LinkHitbox {
     pub y: f32,
     pub w: f32,
     pub h: f32,
+    pub is_input: bool,
+    pub is_submit: bool,
+    pub fragment_idx: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -22,6 +25,7 @@ pub struct Tab {
     pub link_hitboxes: Vec<LinkHitbox>,
     pub scroll_offset: f32,
     pub content_height: f32,
+    pub focused_input_idx: Option<usize>,
 }
 
 impl Tab {
@@ -35,6 +39,7 @@ impl Tab {
             link_hitboxes: Vec::new(),
             scroll_offset: 0.0,
             content_height: 0.0,
+            focused_input_idx: None,
         }
     }
 }
@@ -86,6 +91,7 @@ impl BrowserState {
         tab.content_height = 0.0;
         tab.link_hitboxes.clear();
         tab.layout_boxes.clear();
+        tab.focused_input_idx = None;
     }
 
     pub fn navigate_new(&mut self, url: &str) {
@@ -208,19 +214,13 @@ impl BrowserState {
             viewport_height,
             tab.scroll_offset,
             &tabs_info,
+            tab.focused_input_idx,
         );
         tab.content_height = rendered.content_height;
         tab.layout_boxes = rendered.boxes;
         Some(rendered.atlas)
     }
 
-    pub fn link_at_pos(&self, x: f32, y: f32) -> Option<String> {
-        let tab = self.current_tab();
-        tab.link_hitboxes
-            .iter()
-            .find(|link| x >= link.x && x <= link.x + link.w && y >= link.y && y <= link.y + link.h)
-            .map(|link| link.href.clone())
-    }
 
     pub fn style(&self) -> &ComputedStyle {
         &self.style
@@ -293,6 +293,7 @@ impl BrowserState {
             viewport_height,
             tab.scroll_offset,
             &tabs_info,
+            tab.focused_input_idx,
         );
         tab.content_height = rendered.content_height;
         tab.layout_boxes = rendered.boxes;
@@ -309,6 +310,7 @@ impl BrowserState {
                 viewport_height,
                 tab.scroll_offset,
                 &tabs_info,
+                tab.focused_input_idx,
             );
             let tab = &mut self.tabs[active_tab_index];
             tab.content_height = rendered.content_height;
@@ -318,4 +320,120 @@ impl BrowserState {
             rendered.atlas
         }
     }
+
+    pub fn handle_page_char(&mut self, ch: char) -> bool {
+        let tab = self.current_tab_mut();
+        if let Some(focused_idx) = tab.focused_input_idx {
+            if let Some(doc) = tab.document.as_mut() {
+                if let Some(mut current_val) = doc.get_input_value(focused_idx) {
+                    current_val.push(ch);
+                    doc.set_input_value(focused_idx, current_val);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn handle_page_backspace(&mut self) -> bool {
+        let tab = self.current_tab_mut();
+        if let Some(focused_idx) = tab.focused_input_idx {
+            if let Some(doc) = tab.document.as_mut() {
+                if let Some(mut current_val) = doc.get_input_value(focused_idx) {
+                    current_val.pop();
+                    doc.set_input_value(focused_idx, current_val);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn handle_page_return(&mut self) -> Option<String> {
+        let tab = self.current_tab_mut();
+        if let Some(focused_idx) = tab.focused_input_idx {
+            // Submit form for the focused input
+            tab.focused_input_idx = None;
+            return self.submit_form_at(focused_idx);
+        }
+        None
+    }
+
+    pub fn handle_page_click(&mut self, x: f32, y: f32) -> PageClickResult {
+        let tab = self.current_tab_mut();
+        
+        let mut hit = None;
+        for link in &tab.link_hitboxes {
+            if x >= link.x && x <= link.x + link.w && y >= link.y && y <= link.y + link.h {
+                hit = Some(link.clone());
+                break;
+            }
+        }
+
+        if let Some(link) = hit {
+            if link.is_input {
+                tab.focused_input_idx = Some(link.fragment_idx);
+                PageClickResult::InputFocused
+            } else if link.is_submit {
+                tab.focused_input_idx = None;
+                if let Some(submit_url) = self.submit_form_at(link.fragment_idx) {
+                    PageClickResult::Submit(submit_url)
+                } else {
+                    PageClickResult::None
+                }
+            } else {
+                tab.focused_input_idx = None;
+                PageClickResult::Navigate(link.href.clone())
+            }
+        } else {
+            tab.focused_input_idx = None;
+            PageClickResult::None
+        }
+    }
+
+    pub fn submit_form_at(&self, element_idx: usize) -> Option<String> {
+        let tab = self.current_tab();
+        let doc = tab.document.as_ref()?;
+        
+        let mut form_action = None;
+        if let Some(super::page::LayoutFragment::Text(frag)) = doc.fragments.get(element_idx) {
+            form_action = frag.form_action.clone();
+        }
+
+        let action_url_str = form_action?;
+        let mut params = Vec::new();
+
+        for frag in &doc.fragments {
+            if let super::page::LayoutFragment::Text(f) = frag {
+                if f.is_input && f.form_action.as_ref() == Some(&action_url_str) && !f.input_name.is_empty() {
+                    params.push((f.input_name.clone(), f.input_value.clone()));
+                }
+            }
+        }
+
+        if let Ok(mut url) = url::Url::parse(&action_url_str) {
+            let mut query = url.query_pairs().into_owned().collect::<Vec<_>>();
+            for (k, v) in params {
+                query.push((k, v));
+            }
+            url.set_query(None);
+            {
+                let mut serializer = url.query_pairs_mut();
+                for (k, v) in query {
+                    serializer.append_pair(&k, &v);
+                }
+            }
+            Some(url.to_string())
+        } else {
+            Some(action_url_str)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PageClickResult {
+    Navigate(String),
+    InputFocused,
+    Submit(String),
+    None,
 }

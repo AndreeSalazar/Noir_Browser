@@ -257,20 +257,20 @@ fn push_player_shell_fragments(
 }
 
 fn push_link_fragment(fragments: &mut Vec<LayoutFragment>, text: &str, href: &str) {
-    fragments.push(LayoutFragment::Text(TextFragment {
-        text: text.to_string(),
-        px_size: 15.0,
-        is_bold: false,
-        line_height: 22.0,
-        margin_after: 4.0,
-        line_break_after: true,
-        layout: FragmentLayout {
+    fragments.push(LayoutFragment::Text(TextFragment::new_text(
+        text.to_string(),
+        15.0,
+        false,
+        22.0,
+        4.0,
+        true,
+        FragmentLayout {
             max_width: Some("860px".to_string()),
             ..FragmentLayout::default()
         },
-        color: [0.478, 0.635, 0.968, 1.0],
-        href: Some(href.to_string()),
-    }));
+        [0.478, 0.635, 0.968, 1.0],
+        Some(href.to_string()),
+    )));
 }
 
 fn is_youtube_home_shell(page_url: &str, raw_html: &str) -> bool {
@@ -303,20 +303,20 @@ fn push_video_card_fragment(fragments: &mut Vec<LayoutFragment>, video: VideoCar
         text.push_str(&details.join(" / "));
     }
 
-    fragments.push(LayoutFragment::Text(TextFragment {
-        text: normalize_text(&text),
-        px_size: 15.0,
-        is_bold: false,
-        line_height: 22.0,
-        margin_after: 5.0,
-        line_break_after: true,
-        layout: FragmentLayout {
+    fragments.push(LayoutFragment::Text(TextFragment::new_text(
+        normalize_text(&text),
+        15.0,
+        false,
+        22.0,
+        5.0,
+        true,
+        FragmentLayout {
             max_width: Some("920px".to_string()),
             ..FragmentLayout::default()
         },
-        color: [0.478, 0.635, 0.968, 1.0],
-        href: Some(video.url),
-    }));
+        [0.478, 0.635, 0.968, 1.0],
+        Some(video.url),
+    )));
 }
 
 fn push_fallback_fragment(
@@ -334,20 +334,20 @@ fn push_fallback_fragment(
         return;
     }
 
-    fragments.push(LayoutFragment::Text(TextFragment {
+    fragments.push(LayoutFragment::Text(TextFragment::new_text(
         text,
         px_size,
         is_bold,
         line_height,
         margin_after,
         line_break_after,
-        layout: FragmentLayout {
+        FragmentLayout {
             max_width: Some("860px".to_string()),
             ..FragmentLayout::default()
         },
         color,
-        href: None,
-    }));
+        None,
+    )));
 }
 
 fn collect_page_metadata(nodes: &[DomNode]) -> PageMetadata {
