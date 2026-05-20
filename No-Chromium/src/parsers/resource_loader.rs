@@ -117,10 +117,150 @@ pub async fn fetch_script(url: &str) -> Result<ResourceResponse, Box<dyn Error>>
     fetch_resource(url, ResourceType::Script).await
 }
 
+fn get_newtab_html() -> String {
+    r#"<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body {
+    background-color: #0b0c10;
+    color: #c5c6c7;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .container {
+    max-width: 800px;
+    margin-top: 80px;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+  .logo {
+    color: #66fcf1;
+    font-size: 42px;
+    font-weight: bold;
+    margin-bottom: 5px;
+    text-align: center;
+  }
+  .subtitle {
+    color: #45a29e;
+    font-size: 15px;
+    margin-bottom: 45px;
+    text-align: center;
+  }
+  .search-container {
+    margin-bottom: 50px;
+    text-align: center;
+  }
+  .search-bar {
+    background-color: #1f2833;
+    padding: 12px 20px;
+    border-radius: 24px;
+    color: #c5c6c7;
+    font-size: 15px;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: left;
+  }
+  .search-placeholder {
+    color: #45a29e;
+  }
+  .grid-container {
+    margin-top: 30px;
+    text-align: center;
+  }
+  .shortcut-card {
+    display: inline-block;
+    background-color: #1f2833;
+    padding: 18px 12px;
+    border-radius: 12px;
+    width: 130px;
+    margin: 10px;
+    text-align: center;
+    text-decoration: none;
+    color: #66fcf1;
+  }
+  .shortcut-title {
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 14px;
+    margin-top: 4px;
+  }
+  .shortcut-desc {
+    color: #888888;
+    font-size: 10px;
+    margin-top: 2px;
+  }
+  .footer-text {
+    margin-top: 100px;
+    color: #45a29e;
+    font-size: 11px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="logo">NOIR BROWSER</h1>
+    <p class="subtitle">Sovereign High-Performance Vulkan Engine</p>
+    
+    <div class="search-container">
+      <div class="search-bar">
+        <span class="search-placeholder">Search the web or enter address...</span>
+      </div>
+    </div>
+    
+    <div class="grid-container">
+      <a class="shortcut-card" href="https://www.google.com">
+        <div class="shortcut-title">Google</div>
+        <div class="shortcut-desc">Search Engine</div>
+      </a>
+      
+      <a class="shortcut-card" href="https://www.youtube.com">
+        <div class="shortcut-title">YouTube</div>
+        <div class="shortcut-desc">Videos</div>
+      </a>
+      
+      <a class="shortcut-card" href="https://github.com">
+        <div class="shortcut-title">GitHub</div>
+        <div class="shortcut-desc">Repository</div>
+      </a>
+
+      <a class="shortcut-card" href="https://www.rust-lang.org">
+        <div class="shortcut-title">Rust Lang</div>
+        <div class="shortcut-desc">Programming</div>
+      </a>
+    </div>
+    
+    <p class="footer-text">Powered by pure Vulkan, gpu-allocator, & Rust</p>
+  </div>
+</body>
+</html>
+"#.to_string()
+}
+
 pub async fn fetch_resource(
     url: &str,
     resource_type: ResourceType,
 ) -> Result<ResourceResponse, Box<dyn Error>> {
+    if url == "noir://newtab" || url.starts_with("noir:") {
+        let body = get_newtab_html();
+        let body_bytes = body.len();
+        return Ok(ResourceResponse {
+            requested_url: url.to_string(),
+            final_url: url.to_string(),
+            resource_type,
+            status: 200,
+            content_type: Some("text/html".to_string()),
+            body,
+            body_bytes,
+            cache_status: CacheStatus::Network,
+        });
+    }
+
     let cache_key = cache_key(url, resource_type);
     let cached = CachedResource::load(&cache_key, resource_type);
     let mut request = client()

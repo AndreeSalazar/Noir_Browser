@@ -660,6 +660,7 @@ impl Renderer2D {
         win_height: f32,
         tabs_count: usize,
         active_tab_index: usize,
+        scale_factor: f32,
     ) {
         unsafe {
             ctx.device.device
@@ -690,6 +691,7 @@ impl Renderer2D {
                 win_height,
                 tabs_count,
                 active_tab_index,
+                scale_factor,
             );
             let dom_vertices = crate::layout::layout_gen::LayoutEngine::build_dom_vertices(
                 boxes, win_width, win_height,

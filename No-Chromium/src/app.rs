@@ -12,7 +12,7 @@ use crate::render::text::{RasterizedAtlas, TextRequest};
 use crate::vulkan_engine::renderer::renderer_2d::Renderer2D;
 use crate::vulkan_engine::context::VulkanContext;
 
-const INITIAL_URL: &str = "https://example.com";
+const INITIAL_URL: &str = "noir://newtab";
 
 enum BrowserEvent {
     PageLoaded { url: String, document: PageDocument },
@@ -295,10 +295,12 @@ pub fn run() {
                 ..
             } => {
                 let win_size = window.inner_size();
+                let scale_factor = window.scale_factor() as f32;
                 let hitboxes = crate::ui::ui_gen::get_ui_hitboxes(
                     win_size.width as f32,
                     win_size.height as f32,
                     browser.tabs.len(),
+                    scale_factor,
                 );
                 let mut hit_button = false;
 
@@ -477,7 +479,7 @@ pub fn run() {
                             quality,
                             &url,
                         );
-                    } else if cursor_pos.y < 40.0 {
+                    } else if cursor_pos.y < (36.0 * window.scale_factor()) {
                         let _ = window.drag_window();
                     }
                 }
@@ -493,6 +495,7 @@ pub fn run() {
                         win_size.height as f32,
                         browser.tabs.len(),
                         browser.active_tab_index,
+                        window.scale_factor() as f32,
                     );
                 }
             }
