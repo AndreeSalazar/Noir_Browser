@@ -35,6 +35,11 @@ fn visit_node(handle: &Handle) -> Option<DomNode> {
             let tag_name = name.local.as_ref();
             let tag = map_tag_name(tag_name);
 
+            // Skip script and noscript elements completely so their styles don't break our CSS renderer
+            if matches!(tag, HtmlTag::Noscript | HtmlTag::Script) {
+                return None;
+            }
+
             let mut attributes = HashMap::new();
             for attr in attrs.borrow().iter() {
                 attributes.insert(attr.name.local.to_string(), attr.value.to_string());

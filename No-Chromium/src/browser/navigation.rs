@@ -24,6 +24,7 @@ pub struct Tab {
     pub layout_boxes: Vec<RenderBox>,
     pub link_hitboxes: Vec<LinkHitbox>,
     pub scroll_offset: f32,
+    pub target_scroll_offset: f32,
     pub content_height: f32,
     pub focused_input_idx: Option<usize>,
 }
@@ -38,6 +39,7 @@ impl Tab {
             layout_boxes: Vec::new(),
             link_hitboxes: Vec::new(),
             scroll_offset: 0.0,
+            target_scroll_offset: 0.0,
             content_height: 0.0,
             focused_input_idx: None,
         }
@@ -88,6 +90,7 @@ impl BrowserState {
         tab.url = url.to_string();
         tab.document = None;
         tab.scroll_offset = 0.0;
+        tab.target_scroll_offset = 0.0;
         tab.content_height = 0.0;
         tab.link_hitboxes.clear();
         tab.layout_boxes.clear();
@@ -154,6 +157,7 @@ impl BrowserState {
                 println!("[Media] {}", summary);
             }
             tab.scroll_offset = 0.0;
+            tab.target_scroll_offset = 0.0;
             tab.url.clone()
         };
         self.history_store.record_visit(&tab_url);
@@ -163,20 +167,31 @@ impl BrowserState {
     pub fn scroll_by(
         &mut self,
         delta_y: f32,
+        viewport_height: f32,
+    ) {
+        let tab = self.current_tab_mut();
+        let max_scroll = (tab.content_height - viewport_height).max(0.0);
+        tab.target_scroll_offset = (tab.target_scroll_offset + delta_y).clamp(0.0, max_scroll);
+    }
+
+    pub fn update_scroll_physics(
+        &mut self,
         text_options: TextRasterizationOptions,
         viewport_width: f32,
         viewport_height: f32,
     ) -> Option<RasterizedAtlas> {
         let tab = self.current_tab_mut();
-        let max_scroll = (tab.content_height - viewport_height).max(0.0);
-        let previous = tab.scroll_offset;
-        tab.scroll_offset = (tab.scroll_offset + delta_y).clamp(0.0, max_scroll);
-
-        if (tab.scroll_offset - previous).abs() < f32::EPSILON {
+        if tab.document.is_none() {
             return None;
         }
-
-        Some(self.render_current_page(text_options, viewport_width, viewport_height))
+        let diff = tab.target_scroll_offset - tab.scroll_offset;
+        if diff.abs() > 0.5 {
+            tab.scroll_offset += diff * 0.15; // Smooth interpolation factor
+            Some(self.render_current_page(text_options, viewport_width, viewport_height))
+        } else {
+            tab.scroll_offset = tab.target_scroll_offset;
+            None
+        }
     }
 
     pub fn rerender_current_page(
@@ -189,6 +204,7 @@ impl BrowserState {
         tab.document.as_ref()?;
         let max_scroll = (tab.content_height - viewport_height).max(0.0);
         tab.scroll_offset = tab.scroll_offset.clamp(0.0, max_scroll);
+        tab.target_scroll_offset = tab.scroll_offset;
         Some(self.render_current_page(text_options, viewport_width, viewport_height))
     }
 
@@ -301,6 +317,7 @@ impl BrowserState {
         let max_scroll = (tab.content_height - viewport_height).max(0.0);
         if tab.scroll_offset > max_scroll {
             tab.scroll_offset = max_scroll;
+            tab.target_scroll_offset = max_scroll;
             let rendered = render_page(
                 &active_url,
                 document,

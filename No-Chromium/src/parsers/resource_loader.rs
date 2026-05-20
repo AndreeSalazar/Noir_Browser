@@ -443,6 +443,7 @@ fn client() -> &'static Client {
             .pool_max_idle_per_host(64)
             .tcp_nodelay(true)
             .redirect(reqwest::redirect::Policy::limited(10))
+            .user_agent("Noir/1.0 (Vulkan; Rust) compatible; Googlebot/2.1; +https://github.com/AndreeSalazar/Noir_Browser")
             .build()
             .expect("No-Chromium HTTP client should initialize")
     })

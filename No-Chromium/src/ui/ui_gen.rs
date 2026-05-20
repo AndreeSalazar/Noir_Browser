@@ -232,6 +232,7 @@ pub fn generate_chrome_vertices(
     tabs_count: usize,
     active_tab_index: usize,
     scale_factor: f32,
+    hovered_button: Option<UIButton>,
 ) -> Vec<f32> {
     use std::sync::OnceLock;
     static START_TIME: OnceLock<std::time::Instant> = OnceLock::new();
@@ -261,8 +262,11 @@ pub fn generate_chrome_vertices(
             let x_min = 12.0 * scale_factor + i as f32 * tab_w;
             let is_active = i == active_tab_index;
 
+            let is_hovered = hovered_button == Some(UIButton::TabSelect(i));
             let tab_color = if is_active {
                 toolbar
+            } else if is_hovered {
+                (0.12, 0.13, 0.18, 0.8)
             } else {
                 (0.082, 0.086, 0.122, 0.60)
             };
@@ -311,7 +315,12 @@ pub fn generate_chrome_vertices(
             if tab_w > 60.0 * scale_factor {
                 let close_x = x_min + tab_w - 20.0 * scale_factor;
                 let close_y = 18.0 * scale_factor;
-                let cross_color = if is_active { (0.75, 0.78, 0.88, 0.8) } else { (0.45, 0.48, 0.58, 0.6) };
+                let is_close_hovered = hovered_button == Some(UIButton::TabClose(i));
+                let cross_color = if is_close_hovered { (0.95, 0.35, 0.40, 1.0) } else if is_active { (0.75, 0.78, 0.88, 0.8) } else { (0.45, 0.48, 0.58, 0.6) };
+                
+                if is_close_hovered {
+                    push_pill_px(&mut raw_data, width, height, close_x - 10.0 * scale_factor, close_y - 10.0 * scale_factor, 20.0 * scale_factor, 20.0 * scale_factor, (0.9, 0.2, 0.2, 0.15), 10.0 * scale_factor);
+                }
                 push_line_px(
                     &mut raw_data,
                     width,
@@ -339,7 +348,8 @@ pub fn generate_chrome_vertices(
 
         // Draw "+" (NewTab) button
         if let Some(nt) = layout.new_tab_btn {
-            let btn_color = (0.125, 0.132, 0.180, 0.82);
+            let is_nt_hovered = hovered_button == Some(UIButton::NewTab);
+            let btn_color = if is_nt_hovered { (0.16, 0.18, 0.25, 0.9) } else { (0.125, 0.132, 0.180, 0.82) };
             push_circle_fill(
                 &mut raw_data,
                 width,
@@ -428,32 +438,24 @@ pub fn generate_chrome_vertices(
         scale_factor,
     );
 
-    push_nav_button(&mut raw_data, width, height, layout.back_btn.x_min, layout.back_btn.y_min, subtle, scale_factor);
+    let back_hover = hovered_button == Some(UIButton::Back);
+    let back_bg = if back_hover { (0.2, 0.22, 0.3, 0.8) } else { (0.125, 0.132, 0.180, 0.82) };
+    push_nav_button(&mut raw_data, width, height, layout.back_btn.x_min, layout.back_btn.y_min, back_bg, scale_factor);
     push_icon_back(&mut raw_data, width, height, layout.back_btn.x_min + 15.0 * scale_factor, layout.back_btn.y_min + 11.0 * scale_factor, bright, scale_factor);
 
-    push_nav_button(
-        &mut raw_data,
-        width,
-        height,
-        layout.forward_btn.x_min,
-        layout.forward_btn.y_min,
-        (0.420, 0.450, 0.540, 1.0),
-        scale_factor,
-    );
-    push_icon_forward(
-        &mut raw_data,
-        width,
-        height,
-        layout.forward_btn.x_min + 15.0 * scale_factor,
-        layout.forward_btn.y_min + 11.0 * scale_factor,
-        (0.420, 0.450, 0.540, 1.0),
-        scale_factor,
-    );
+    let fwd_hover = hovered_button == Some(UIButton::Forward);
+    let fwd_bg = if fwd_hover { (0.2, 0.22, 0.3, 0.8) } else { (0.125, 0.132, 0.180, 0.82) };
+    push_nav_button(&mut raw_data, width, height, layout.forward_btn.x_min, layout.forward_btn.y_min, fwd_bg, scale_factor);
+    push_icon_forward(&mut raw_data, width, height, layout.forward_btn.x_min + 15.0 * scale_factor, layout.forward_btn.y_min + 11.0 * scale_factor, (0.420, 0.450, 0.540, 1.0), scale_factor);
 
-    push_nav_button(&mut raw_data, width, height, layout.reload_btn.x_min, layout.reload_btn.y_min, subtle, scale_factor);
+    let reload_hover = hovered_button == Some(UIButton::Reload);
+    let reload_bg = if reload_hover { (0.2, 0.22, 0.3, 0.8) } else { (0.125, 0.132, 0.180, 0.82) };
+    push_nav_button(&mut raw_data, width, height, layout.reload_btn.x_min, layout.reload_btn.y_min, reload_bg, scale_factor);
     push_icon_reload(&mut raw_data, width, height, layout.reload_btn.x_min + 15.0 * scale_factor, layout.reload_btn.y_min + 11.0 * scale_factor, bright, scale_factor);
 
-    push_nav_button(&mut raw_data, width, height, layout.home_btn.x_min, layout.home_btn.y_min, subtle, scale_factor);
+    let home_hover = hovered_button == Some(UIButton::Home);
+    let home_bg = if home_hover { (0.2, 0.22, 0.3, 0.8) } else { (0.125, 0.132, 0.180, 0.82) };
+    push_nav_button(&mut raw_data, width, height, layout.home_btn.x_min, layout.home_btn.y_min, home_bg, scale_factor);
     push_icon_home(&mut raw_data, width, height, layout.home_btn.x_min + 15.0 * scale_factor, layout.home_btn.y_min + 11.0 * scale_factor, bright, scale_factor);
 
     push_icon_lock(&mut raw_data, width, height, layout.address_bar.x_min + 16.0 * scale_factor, layout.address_bar.y_min + 11.0 * scale_factor, accent, scale_factor);
@@ -506,7 +508,7 @@ fn push_nav_button(
         y,
         30.0 * scale_factor,
         22.0 * scale_factor,
-        (0.125, 0.132, 0.180, 0.82),
+        color,
         7.0 * scale_factor,
     );
     push_quad_px(raw, width, height, x, y, 30.0 * scale_factor, 1.0 * scale_factor, (1.0, 1.0, 1.0, 0.08));

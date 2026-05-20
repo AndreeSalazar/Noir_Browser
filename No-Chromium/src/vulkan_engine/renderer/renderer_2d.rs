@@ -661,6 +661,7 @@ impl Renderer2D {
         tabs_count: usize,
         active_tab_index: usize,
         scale_factor: f32,
+        hovered_button: Option<crate::ui::ui_gen::UIButton>,
     ) {
         unsafe {
             ctx.device.device
@@ -710,6 +711,7 @@ impl Renderer2D {
                 tabs_count,
                 active_tab_index,
                 scale_factor,
+                hovered_button,
             );
             all_vertices.extend_from_slice(&chrome_vertices);
 

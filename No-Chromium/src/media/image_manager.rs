@@ -48,12 +48,17 @@ pub async fn fetch_image_bytes(url: &str) -> Result<Vec<u8>, Box<dyn Error + Sen
 
     println!("[Image Cache] Downloading from network: {}", url);
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()?;
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(30))
+        .pool_idle_timeout(std::time::Duration::from_secs(60))
+        .tcp_nodelay(true)
+        .build()
+        .unwrap_or_default();
     
+    let user_agent = "Noir/1.0 (Vulkan; Rust) compatible; Googlebot/2.1; +https://github.com/AndreeSalazar/Noir_Browser";
     let bytes = client
         .get(url)
-        .header(reqwest::header::USER_AGENT, "No-Chromium/0.1 Sovereign Rust Vulkan Browser")
+        .header(reqwest::header::USER_AGENT, user_agent)
         .send()
         .await?
         .bytes()

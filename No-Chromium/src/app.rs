@@ -73,6 +73,7 @@ pub fn run() {
     spawn_page_load(rt.handle().clone(), event_proxy.clone(), INITIAL_URL.to_string());
     window.request_redraw();
 
+    let mut hovered_button = None;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
 
@@ -136,6 +137,48 @@ pub fn run() {
                 ..
             } => {
                 cursor_pos = position;
+                
+                let scale = window.scale_factor() as f32;
+                let win_size = window.inner_size();
+                let ui_layout = crate::ui::ui_gen::UILayout::new(
+                    win_size.width as f32,
+                    win_size.height as f32,
+                    browser.tabs.len(),
+                    scale,
+                );
+                
+                let hitboxes = [
+                    ui_layout.back_btn, ui_layout.forward_btn, ui_layout.reload_btn, ui_layout.home_btn,
+                    ui_layout.address_bar, ui_layout.minimize_btn, ui_layout.maximize_btn, ui_layout.close_btn,
+                ];
+                
+                let mut new_hovered = None;
+                for hb in &hitboxes {
+                    if cursor_pos.x >= hb.x_min as f64 && cursor_pos.x <= hb.x_max as f64 && cursor_pos.y >= hb.y_min as f64 && cursor_pos.y <= hb.y_max as f64 {
+                        new_hovered = Some(hb.button);
+                        break;
+                    }
+                }
+                if new_hovered.is_none() {
+                    for hb in &ui_layout.tabs {
+                        if cursor_pos.x >= hb.x_min as f64 && cursor_pos.x <= hb.x_max as f64 && cursor_pos.y >= hb.y_min as f64 && cursor_pos.y <= hb.y_max as f64 {
+                            new_hovered = Some(hb.button);
+                            break;
+                        }
+                    }
+                }
+                if new_hovered.is_none() {
+                    if let Some(hb) = ui_layout.new_tab_btn {
+                        if cursor_pos.x >= hb.x_min as f64 && cursor_pos.x <= hb.x_max as f64 && cursor_pos.y >= hb.y_min as f64 && cursor_pos.y <= hb.y_max as f64 {
+                            new_hovered = Some(hb.button);
+                        }
+                    }
+                }
+                
+                if hovered_button != new_hovered {
+                    hovered_button = new_hovered;
+                    window.request_redraw();
+                }
             }
             Event::WindowEvent {
                 event: WindowEvent::ReceivedCharacter(ch),
@@ -376,22 +419,11 @@ pub fn run() {
                     MouseScrollDelta::LineDelta(_, y) => -y * 72.0,
                     MouseScrollDelta::PixelDelta(pos) => -pos.y as f32,
                 };
-
                 let win_size = window.inner_size();
-                if let Some(new_atlas) = browser.scroll_by(
+                browser.scroll_by(
                     scroll_delta,
-                    quality.text_rasterization_options(),
-                    win_size.width as f32,
                     win_size.height as f32,
-                ) {
-                    apply_atlas(
-                        &mut renderer,
-                        &mut pending_atlas,
-                        vk_ctx.as_ref(),
-                        new_atlas,
-                    );
-                    window.request_redraw();
-                }
+                );
             }
             Event::WindowEvent {
                 event:
@@ -626,6 +658,15 @@ pub fn run() {
             }
             Event::RedrawRequested(_) => {
                 let win_size = window.inner_size();
+                
+                if let Some(atlas) = browser.update_scroll_physics(
+                    quality.text_rasterization_options(),
+                    win_size.width as f32,
+                    win_size.height as f32,
+                ) {
+                    apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), atlas);
+                }
+
                 if let (Some(ctx), Some(r)) = (vk_ctx.as_ref(), renderer.as_mut()) {
                     r.draw_frame(
                         ctx,
@@ -636,6 +677,7 @@ pub fn run() {
                         browser.tabs.len(),
                         browser.active_tab_index,
                         window.scale_factor() as f32,
+                        hovered_button,
                     );
                     window.request_redraw();
                 }
