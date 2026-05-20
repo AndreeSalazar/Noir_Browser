@@ -18,6 +18,22 @@ struct VideoCard {
     url: String,
     subtitle: Option<String>,
     duration: Option<String>,
+    thumbnail_url: Option<String>,
+}
+
+fn thumbnail_from_url(url: &str) -> Option<String> {
+    if let Some(pos) = url.find("v=") {
+        let id_part = &url[pos + 2..];
+        let end = id_part.find('&').unwrap_or(id_part.len());
+        let video_id = &id_part[..end];
+        if video_id.len() >= 6 {
+            if video_id == "zF34dRivLOw" {
+                return Some("https://www.rust-lang.org/static/images/rust-logo-blk.png".to_string());
+            }
+            return Some(format!("https://i.ytimg.com/vi/{}/mqdefault.jpg", video_id));
+        }
+    }
+    None
 }
 
 #[derive(Clone, Debug)]
@@ -95,9 +111,40 @@ pub(super) fn append_app_shell_fallback(
     let video_cards = extract_embedded_video_cards(raw_html, 12);
     let has_video_cards = !video_cards.is_empty();
     if has_video_cards {
+        // Render YouTube logo image!
+        let yt_logo_url = "https://upload.wikimedia.org/wikipedia/commons/3/34/YouTube_logo_%282017%29.png";
+        if let Some(proxy) = crate::app::get_event_proxy() {
+            crate::media::image_manager::spawn_image_decode_task(yt_logo_url.to_string(), proxy);
+        }
+        fragments.push(LayoutFragment::Text(TextFragment {
+            text: String::new(),
+            px_size: 14.0,
+            is_bold: false,
+            line_height: 28.0,
+            margin_after: 8.0,
+            line_break_after: true,
+            layout: FragmentLayout {
+                margin_left: Some("0px".to_string()),
+                margin_right: Some("auto".to_string()),
+                ..FragmentLayout::default()
+            },
+            color: [1.0, 1.0, 1.0, 1.0],
+            href: None,
+            is_input: false,
+            is_submit: false,
+            input_name: String::new(),
+            input_value: String::new(),
+            input_placeholder: String::new(),
+            form_action: None,
+            is_image: true,
+            image_url: Some(yt_logo_url.to_string()),
+            image_width: Some(120.0),
+            image_height: Some(27.0),
+        }));
+
         push_fallback_fragment(
             fragments,
-            "\u{1F4FA} YOUTUBE PREMIUM LITE",
+            "YOUTUBE PREMIUM LITE",
             22.0,
             true,
             30.0,
@@ -121,10 +168,41 @@ pub(super) fn append_app_shell_fallback(
                     .map(|(_, v)| v)
             });
 
+        // Render YouTube logo image!
+        let yt_logo_url = "https://upload.wikimedia.org/wikipedia/commons/3/34/YouTube_logo_%282017%29.png";
+        if let Some(proxy) = crate::app::get_event_proxy() {
+            crate::media::image_manager::spawn_image_decode_task(yt_logo_url.to_string(), proxy);
+        }
+        fragments.push(LayoutFragment::Text(TextFragment {
+            text: String::new(),
+            px_size: 14.0,
+            is_bold: false,
+            line_height: 28.0,
+            margin_after: 8.0,
+            line_break_after: true,
+            layout: FragmentLayout {
+                margin_left: Some("0px".to_string()),
+                margin_right: Some("auto".to_string()),
+                ..FragmentLayout::default()
+            },
+            color: [1.0, 1.0, 1.0, 1.0],
+            href: None,
+            is_input: false,
+            is_submit: false,
+            input_name: String::new(),
+            input_value: String::new(),
+            input_placeholder: String::new(),
+            form_action: None,
+            is_image: true,
+            image_url: Some(yt_logo_url.to_string()),
+            image_width: Some(120.0),
+            image_height: Some(27.0),
+        }));
+
         let title_str = if let Some(ref q) = query_param {
-            format!("\u{1F50D} Resultados: \"{}\" — YouTube Premium Lite", q)
+            format!("Resultados de Búsqueda: \"{}\" — YouTube Premium Lite", q)
         } else {
-            "\u{1F4FA} YOUTUBE PREMIUM LITE — Recomendados".to_string()
+            "YOUTUBE PREMIUM LITE — Recomendados".to_string()
         };
 
         push_fallback_fragment(
@@ -142,25 +220,25 @@ pub(super) fn append_app_shell_fallback(
 
         let generated_videos = if query_lower.contains("rust") || query_lower.contains("program") || query_lower.contains("code") || query_lower.contains("dev") {
             vec![
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Curso de Programacion en Rust desde Cero para Principiantes".to_string(),
                     url: "https://www.youtube.com/watch?v=zF34dRivLOw".to_string(),
                     subtitle: Some("freeCodeCamp.org / Rust Tutorial".to_string()),
                     duration: Some("2:08:44".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Aprende Rust en 30 Minutos - Explicado Facil".to_string(),
                     url: "https://www.youtube.com/watch?v=br3GIIQGefQ".to_string(),
                     subtitle: Some("TrishDev / Rust Basico".to_string()),
                     duration: Some("31:40".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Por que Rust es el Futuro del Software y Productividad".to_string(),
                     url: "https://www.youtube.com/watch?v=A3AdN7U24iU".to_string(),
                     subtitle: Some("TechFuture / Analisis".to_string()),
                     duration: Some("14:15".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Implementacion de un Motor Grafico Vulkan en Rust".to_string(),
                     url: "https://www.youtube.com/watch?v=2K_Mv1sL0sQ".to_string(),
                     subtitle: Some("EngineDev / Vulkan Rust".to_string()),
@@ -169,25 +247,25 @@ pub(super) fn append_app_shell_fallback(
             ]
         } else if query_lower.contains("music") || query_lower.contains("musica") || query_lower.contains("lofi") || query_lower.contains("chill") {
             vec![
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Rick Astley - Never Gonna Give You Up (Official Music Video)".to_string(),
                     url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".to_string(),
                     subtitle: Some("Rick Astley / Classic Pop".to_string()),
                     duration: Some("3:32".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Lofi hip hop radio - beats to study/relax to (Lofi Girl)".to_string(),
                     url: "https://www.youtube.com/watch?v=5qap5aO4i9A".to_string(),
                     subtitle: Some("Lofi Girl / Chill beats".to_string()),
                     duration: Some("Live".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Synthwave Retro Beats Mix para Programar en el Espacio".to_string(),
                     url: "https://www.youtube.com/watch?v=4xDzrJKXOOY".to_string(),
                     subtitle: Some("Lofi Records / Synthwave".to_string()),
                     duration: Some("1:05:30".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Chill Instrumental Beats for Deep Work & Coding".to_string(),
                     url: "https://www.youtube.com/watch?v=tntOCGkgt98".to_string(),
                     subtitle: Some("BeatsPlanet / Focus".to_string()),
@@ -196,25 +274,25 @@ pub(super) fn append_app_shell_fallback(
             ]
         } else if query_lower.contains("game") || query_lower.contains("juego") || query_lower.contains("gaming") || query_lower.contains("play") {
             vec![
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "GTA 6 - Official Gameplay Trailer 1 (Analisis Completo)".to_string(),
                     url: "https://www.youtube.com/watch?v=QdBZY2fkU-0".to_string(),
                     subtitle: Some("Rockstar Games / GTA News".to_string()),
                     duration: Some("1:30".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Elden Ring - Gameplay Reveal & Lore de Jefes Secretos".to_string(),
                     url: "https://www.youtube.com/watch?v=E3Huy2cdIH0".to_string(),
                     subtitle: Some("Bandai Namco / Lore".to_string()),
                     duration: Some("3:10".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Minecraft: 100 Dias Sobreviviendo en Modo Extremo".to_string(),
                     url: "https://www.youtube.com/watch?v=d_k8kO5m8tU".to_string(),
                     subtitle: Some("GamerPlus / Survival".to_string()),
                     duration: Some("45:30".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Jugador Profesional vence a Dark Souls usando una Alfombra de Baile".to_string(),
                     url: "https://www.youtube.com/watch?v=t88J8Ew5_wE".to_string(),
                     subtitle: Some("SpeedRunHub / Challenge".to_string()),
@@ -223,25 +301,25 @@ pub(super) fn append_app_shell_fallback(
             ]
         } else if let Some(ref q) = query_param {
             vec![
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: format!("{} - Curso Completo y Practico para Principiantes", q),
                     url: "https://www.youtube.com/watch?v=zF34dRivLOw".to_string(),
                     subtitle: Some("Quick Academy / Tutorial".to_string()),
                     duration: Some("45:15".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: format!("Por que {} esta cambiando la tecnologia en 2026", q),
                     url: "https://www.youtube.com/watch?v=A3AdN7U24iU".to_string(),
                     subtitle: Some("Future Tech / Reporte".to_string()),
                     duration: Some("18:40".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: format!("{} vs Competidor: Comparativa Definitiva", q),
                     url: "https://www.youtube.com/watch?v=br3GIIQGefQ".to_string(),
                     subtitle: Some("Review Hub / Analisis".to_string()),
                     duration: Some("22:10".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: format!("Rick Astley - {} (Special Tribute Mix)", q),
                     url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".to_string(),
                     subtitle: Some("Rick Astley / Official Music".to_string()),
@@ -250,31 +328,31 @@ pub(super) fn append_app_shell_fallback(
             ]
         } else {
             vec![
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Lofi hip hop radio - beats to study/relax to (Lofi Girl)".to_string(),
                     url: "https://www.youtube.com/watch?v=5qap5aO4i9A".to_string(),
                     subtitle: Some("Lofi Girl / Chill beats".to_string()),
                     duration: Some("Live".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Curso de Programacion en Rust desde Cero para Principiantes".to_string(),
                     url: "https://www.youtube.com/watch?v=zF34dRivLOw".to_string(),
                     subtitle: Some("freeCodeCamp.org / Rust Tutorial".to_string()),
                     duration: Some("2:08:44".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Rick Astley - Never Gonna Give You Up (Official Music Video)".to_string(),
                     url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".to_string(),
                     subtitle: Some("Rick Astley / Classic Pop".to_string()),
                     duration: Some("3:32".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Vulkan Game Engine Tutorial - Introduction to API".to_string(),
                     url: "https://www.youtube.com/watch?v=Y9U9IE0gVHA".to_string(),
                     subtitle: Some("Overload Dev / Vulkan".to_string()),
                     duration: Some("18:24".to_string()),
                 },
-                VideoCard {
+                VideoCard { thumbnail_url: None,
                     title: "Synthwave Retro Beats Mix para Programar".to_string(),
                     url: "https://www.youtube.com/watch?v=4xDzrJKXOOY".to_string(),
                     subtitle: Some("Lofi Records / Synthwave".to_string()),
@@ -283,7 +361,8 @@ pub(super) fn append_app_shell_fallback(
             ]
         };
 
-        for video in generated_videos {
+        for mut video in generated_videos {
+            video.thumbnail_url = thumbnail_from_url(&video.url);
             push_video_card_fragment(fragments, video);
         }
         added += 1;
@@ -343,7 +422,7 @@ fn push_player_shell_fragments(
     // Premium header
     push_fallback_fragment(
         fragments,
-        "\u{1F3AC} REPRODUCTOR NOIR",
+        "[ REPRODUCTOR NOIR ]",
         22.0,
         true,
         30.0,
@@ -372,7 +451,7 @@ fn push_player_shell_fragments(
         details.push(author.clone());
     }
     if let Some(ref duration) = player.duration {
-        details.push(format!("\u{23F1} {}", duration));
+        details.push(duration.clone());
     }
     if let Some(ref views) = player.views {
         details.push(format!("{} vistas", views));
@@ -383,7 +462,7 @@ fn push_player_shell_fragments(
     if !details.is_empty() {
         push_fallback_fragment(
             fragments,
-            &details.join("  \u{2022}  "),
+            &details.join("   "),
             15.0,
             false,
             22.0,
@@ -393,33 +472,66 @@ fn push_player_shell_fragments(
         );
     }
 
+    // Video preview image (large thumbnail)
+    if let Some(ref vid) = player.video_id {
+        let thumb_url = format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", vid);
+        if let Some(proxy) = crate::app::get_event_proxy() {
+            crate::media::image_manager::spawn_image_decode_task(thumb_url.clone(), proxy);
+        }
+        fragments.push(LayoutFragment::Text(TextFragment {
+            text: String::new(),
+            px_size: 14.0,
+            is_bold: false,
+            line_height: 270.0,
+            margin_after: 12.0,
+            line_break_after: true,
+            layout: FragmentLayout {
+                margin_left: Some("0px".to_string()),
+                margin_right: Some("auto".to_string()),
+                ..FragmentLayout::default()
+            },
+            color: [1.0, 1.0, 1.0, 1.0],
+            href: None,
+            is_input: false,
+            is_submit: false,
+            input_name: String::new(),
+            input_value: String::new(),
+            input_placeholder: String::new(),
+            form_action: None,
+            is_image: true,
+            image_url: Some(thumb_url),
+            image_width: Some(480.0),
+            image_height: Some(270.0),
+        }));
+    }
+
     // Invidious streaming links (bypass signature cipher)
     if let Some(ref vid) = player.video_id {
         push_link_fragment(
             fragments,
-            "\u{25B6} Reproducir en Invidious (Ligero)",
+            "[PLAY] Reproducir en Invidious (Ligero)",
             &format!("https://invidious.f5.si/watch?v={}", vid),
         );
         push_link_fragment(
             fragments,
-            "\u{21E9} Stream Directo (360p MP4)",
+            "[STREAM] Stream Directo (360p MP4)",
             &format!("https://invidious.f5.si/latest_version?id={}&itag=18&local=true", vid),
         );
         push_link_fragment(
             fragments,
-            "\u{21E9} Stream Directo (720p MP4)",
+            "[STREAM] Stream Directo (720p MP4)",
             &format!("https://invidious.f5.si/latest_version?id={}&itag=22&local=true", vid),
         );
         push_link_fragment(
             fragments,
-            "\u{21BB} Servidor Alternativo",
+            "[MIRROR] Servidor Alternativo",
             &format!("https://inv.thepixora.com/watch?v={}", vid),
         );
     } else if !player.direct_streams.is_empty() {
         for stream in &player.direct_streams {
             push_link_fragment(
                 fragments,
-                &format!("\u{25B6} Stream directo {}", stream.label),
+                &format!("[PLAY] Stream directo {}", stream.label),
                 &stream.url,
             );
         }
@@ -479,6 +591,33 @@ fn is_youtube_watch_shell(page_url: &str, raw_html: &str) -> bool {
 }
 
 fn push_video_card_fragment(fragments: &mut Vec<LayoutFragment>, video: VideoCard) {
+    if let Some(ref url) = video.thumbnail_url {
+        if let Some(proxy) = crate::app::get_event_proxy() {
+            crate::media::image_manager::spawn_image_decode_task(url.clone(), proxy);
+        }
+        fragments.push(LayoutFragment::Text(TextFragment {
+            text: String::new(),
+            px_size: 14.0,
+            is_bold: false,
+            line_height: 110.0,
+            margin_after: 6.0,
+            line_break_after: true,
+            layout: FragmentLayout::default(),
+            color: [1.0, 1.0, 1.0, 1.0],
+            href: Some(video.url.clone()),
+            is_input: false,
+            is_submit: false,
+            input_name: String::new(),
+            input_value: String::new(),
+            input_placeholder: String::new(),
+            form_action: None,
+            is_image: true,
+            image_url: Some(url.clone()),
+            image_width: Some(200.0),
+            image_height: Some(110.0),
+        }));
+    }
+
     // YouTube Red clickable title
     fragments.push(LayoutFragment::Text(TextFragment::new_text(
         normalize_text(&video.title),
@@ -498,14 +637,14 @@ fn push_video_card_fragment(fragments: &mut Vec<LayoutFragment>, video: VideoCar
     // Grey subtitle line: duration / channel
     let mut details = Vec::new();
     if let Some(duration) = video.duration.filter(|value| !value.is_empty()) {
-        details.push(format!("\u{23F1} {}", duration));
+        details.push(duration);
     }
     if let Some(subtitle) = video.subtitle.filter(|value| !value.is_empty()) {
         details.push(subtitle);
     }
     if !details.is_empty() {
         fragments.push(LayoutFragment::Text(TextFragment::new_text(
-            normalize_text(&details.join("  \u{2022}  ")),
+            normalize_text(&details.join("  •  ")),
             13.0,
             false,
             19.0,
@@ -832,12 +971,17 @@ fn video_card_from_renderer(renderer: &Value) -> Option<VideoCard> {
         .or_else(|| renderer.get("thumbnailOverlayTimeStatusRenderer"))
         .and_then(text_from_json_text);
 
+    let url = format!("https://www.youtube.com/watch?v={video_id}");
+    let thumbnail_url = thumbnail_from_url(&url);
+
     Some(VideoCard {
         title,
-        url: format!("https://www.youtube.com/watch?v={video_id}"),
+        url,
         subtitle,
         duration,
+        thumbnail_url,
     })
+
 }
 
 fn text_from_json_text(value: &Value) -> Option<String> {

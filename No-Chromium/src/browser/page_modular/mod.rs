@@ -2542,16 +2542,16 @@ fn normalize_fragments(fragments: &mut Vec<LayoutFragment>) {
     for mut fragment in fragments.drain(..) {
         if let LayoutFragment::Text(ref mut t) = fragment {
             t.text = collapse_repeated_text(&normalize_text(&t.text));
-            if t.text.trim().is_empty() && !t.is_input {
+            if t.text.trim().is_empty() && !t.is_input && !t.is_image {
                 continue;
             }
 
             let key = t.text.to_lowercase();
-            if !key.is_empty() && key == previous_key && !t.is_input {
+            if !t.is_image && !key.is_empty() && key == previous_key && !t.is_input {
                 continue;
             }
 
-            previous_key = key;
+            previous_key = if t.is_image { String::new() } else { key };
         }
         cleaned.push(fragment);
     }
@@ -2597,8 +2597,17 @@ fn should_skip_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> b
         return true;
     }
 
+    if let Some(id) = attributes.get("id").map(|s| s.to_ascii_lowercase()) {
+        if id.contains("skeleton") || id.contains("loading") {
+            return true;
+        }
+    }
 
-
+    if let Some(class) = attributes.get("class").map(|s| s.to_ascii_lowercase()) {
+        if class.contains("skeleton") || class.contains("loading") {
+            return true;
+        }
+    }
     if let Some(style) = attributes
         .get("style")
         .map(|value| value.to_ascii_lowercase())
