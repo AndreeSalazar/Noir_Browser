@@ -18,3 +18,4 @@ html5ever = "0.39.0"
 markup5ever_rcdom = "0.39.0"
 reqwest = { version = "0.13.3", features = ["rustls"] }
 url = "2.5"
+image = { version = "0.24", default-features = false, features = ["png", "jpeg", "webp"] }

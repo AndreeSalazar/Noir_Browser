@@ -45,6 +45,17 @@ pub struct TextRequest {
 }
 
 #[derive(Clone, Debug)]
+pub struct AtlasImageRequest {
+    pub rgba: std::sync::Arc<Vec<u8>>,
+    pub width: u32,
+    pub height: u32,
+    pub pos_x: f32,
+    pub pos_y: f32,
+    pub dest_w: f32,
+    pub dest_h: f32,
+}
+
+#[derive(Clone, Debug)]
 pub struct TextQuad {
     pub x: f32,
     pub y: f32,
@@ -92,13 +103,18 @@ static GLYPH_CACHE: OnceLock<Mutex<HashMap<GlyphCacheKey, CachedGlyph>>> = OnceL
 impl RasterizedAtlas {
     #[allow(dead_code)]
     pub fn new(requests: &[TextRequest]) -> Self {
-        Self::with_options(requests, TextRasterizationOptions::sharp_lcd())
+        Self::with_options(requests, &[], TextRasterizationOptions::sharp_lcd())
     }
 
-    pub fn with_options(requests: &[TextRequest], options: TextRasterizationOptions) -> Self {
+    pub fn with_options(
+        requests: &[TextRequest],
+        image_requests: &[AtlasImageRequest],
+        options: TextRasterizationOptions,
+    ) -> Self {
         println!(
-            "[*] Rasterizando Atlas de Texto en CPU con {} peticiones",
-            requests.len()
+            "[*] Rasterizando Atlas de Texto en CPU con {} peticiones y {} imágenes",
+            requests.len(),
+            image_requests.len()
         );
         let font_pair = load_font_pair();
         let font_reg = &font_pair.regular;
@@ -110,6 +126,8 @@ impl RasterizedAtlas {
             rgba: Vec<u8>,
             screen_x: f32,
             screen_y: f32,
+            dest_w: f32,
+            dest_h: f32,
             color: [f32; 4],
         }
 
@@ -238,10 +256,32 @@ impl RasterizedAtlas {
                 rgba: line_rgba,
                 screen_x: req.pos_x - padding as f32,
                 screen_y: req.pos_y - padding as f32,
+                dest_w: padded_w as f32,
+                dest_h: padded_h as f32,
                 color: req.color,
             });
 
             total_atlas_h += padded_h + 2; // minimum 2px padding between lines
+        }
+
+        for img_req in image_requests {
+            if img_req.width == 0 || img_req.height == 0 || img_req.rgba.len() != (img_req.width * img_req.height * 4) as usize {
+                continue;
+            }
+            if img_req.width > max_atlas_w {
+                max_atlas_w = img_req.width;
+            }
+            pre_rasters.push(PreRaster {
+                width: img_req.width,
+                height: img_req.height,
+                rgba: (*img_req.rgba).clone(),
+                screen_x: img_req.pos_x,
+                screen_y: img_req.pos_y,
+                dest_w: img_req.dest_w,
+                dest_h: img_req.dest_h,
+                color: [1.0, 1.0, 1.0, 1.0],
+            });
+            total_atlas_h += img_req.height + 2;
         }
 
         if max_atlas_w == 0 {
@@ -277,8 +317,8 @@ impl RasterizedAtlas {
             quads.push(TextQuad {
                 x: pr.screen_x,
                 y: pr.screen_y,
-                w: pr.width as f32,
-                h: pr.height as f32,
+                w: pr.dest_w,
+                h: pr.dest_h,
                 u0: px as f32 / max_atlas_w as f32,
                 v0: py as f32 / total_atlas_h as f32,
                 u1: (px + pr.width) as f32 / max_atlas_w as f32,
@@ -495,6 +535,7 @@ mod tests {
                 pos_y: 80.0,
                 color: [1.0, 1.0, 1.0, 1.0],
             }],
+            &[],
             TextRasterizationOptions::sharp_lcd(),
         );
 

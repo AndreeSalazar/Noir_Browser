@@ -14,8 +14,20 @@ use crate::vulkan_engine::context::VulkanContext;
 
 const INITIAL_URL: &str = "https://www.google.com";
 
-enum BrowserEvent {
+#[derive(Clone, Debug)]
+pub enum BrowserEvent {
     PageLoaded { url: String, document: PageDocument },
+    ImageLoaded { url: String },
+}
+
+static EVENT_PROXY: std::sync::OnceLock<winit::event_loop::EventLoopProxy<BrowserEvent>> = std::sync::OnceLock::new();
+
+pub fn get_event_proxy() -> Option<winit::event_loop::EventLoopProxy<BrowserEvent>> {
+    EVENT_PROXY.get().cloned()
+}
+
+pub fn set_event_proxy(proxy: winit::event_loop::EventLoopProxy<BrowserEvent>) {
+    let _ = EVENT_PROXY.set(proxy);
 }
 
 pub fn run() {
@@ -40,7 +52,12 @@ pub fn run() {
     let mut address_focused = false;
     let mut address_input = INITIAL_URL.to_string();
     let event_proxy = event_loop.create_proxy();
+    set_event_proxy(event_proxy.clone());
     let rt = tokio::runtime::Runtime::new().unwrap();
+
+    // Trigger startup pre-caching of images
+    crate::media::image_manager::pre_cache_resources(event_proxy.clone());
+
     spawn_page_load(rt.handle().clone(), event_proxy.clone(), INITIAL_URL.to_string());
     window.request_redraw();
 
@@ -70,6 +87,23 @@ pub fn run() {
                     if !address_focused {
                         address_input = browser.current_url().to_string();
                     }
+                    apply_atlas(
+                        &mut renderer,
+                        &mut pending_atlas,
+                        vk_ctx.as_ref(),
+                        new_atlas,
+                    );
+                    window.request_redraw();
+                }
+            }
+            Event::UserEvent(BrowserEvent::ImageLoaded { url }) => {
+                println!("[App Loop] Image loaded and decoded: {}", url);
+                let win_size = window.inner_size();
+                if let Some(new_atlas) = browser.rerender_current_page(
+                    quality.text_rasterization_options(),
+                    win_size.width as f32,
+                    win_size.height as f32,
+                ) {
                     apply_atlas(
                         &mut renderer,
                         &mut pending_atlas,
@@ -732,6 +766,7 @@ fn loading_atlas(
                 color: [1.0, 1.0, 1.0, 1.0],
             },
         ],
+        &[],
         text_options,
     )
 }

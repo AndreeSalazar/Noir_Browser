@@ -10,7 +10,7 @@ use crate::parsers::resource_loader::{
 use crate::parsers::style_collector::{
     collect_inline_styles, collect_stylesheets, StylesheetBundle,
 };
-use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest};
+use crate::render::text::{RasterizedAtlas, TextRasterizationOptions, TextRequest, AtlasImageRequest};
 use crate::runtime::{collect_scripts, BrowserRuntime, ScriptSource};
 use std::collections::HashMap;
 use url::Url;
@@ -71,6 +71,8 @@ pub struct TextFragment {
     pub input_value: String,
     pub input_placeholder: String,
     pub form_action: Option<String>,
+    pub is_image: bool,
+    pub image_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -163,6 +165,8 @@ impl TextFragment {
             input_value: String::new(),
             input_placeholder: String::new(),
             form_action: None,
+            is_image: false,
+            image_url: None,
         }
     }
 }
@@ -588,6 +592,7 @@ pub fn render_page(
     focused_input_idx: Option<usize>,
 ) -> PageRender {
     let mut text_requests = Vec::new();
+    let mut image_requests = Vec::new();
     link_hitboxes.clear();
 
     // Render Tab Titles
@@ -1083,6 +1088,120 @@ pub fn render_page(
                     cursor_x += layout_box.content_width;
                     line_height = active_line_height;
                     line_started = true;
+                } else if fragment.is_image {
+                    let image_url = fragment.image_url.as_ref().map(|s| s.as_str()).unwrap_or("");
+                    let cached_image = {
+                        let cache = crate::media::image_manager::get_image_cache().lock().unwrap();
+                        cache.get(image_url).cloned()
+                    };
+
+                    let (dest_w, dest_h, is_loaded) = if let Some(ref img) = cached_image {
+                        let img_w = img.width as f32;
+                        let img_h = img.height as f32;
+                        let max_w = layout_box.content_width;
+                        let mut dw = img_w;
+                        let mut dh = img_h;
+                        if dw > max_w {
+                            let aspect = dw / dh;
+                            dw = max_w;
+                            dh = dw / aspect;
+                        }
+                        (dw, dh, true)
+                    } else {
+                        // Placeholder size
+                        (140.0, 90.0, false)
+                    };
+
+                    if line_started && cursor_x + dest_w > layout_box.content_x + layout_box.content_width {
+                        document_y += line_height.max(dest_h);
+                        cursor_x = layout_box.content_x;
+                        line_height = 0.0;
+                        line_started = false;
+                        line_index += 1;
+                    }
+
+                    let active_line_height = line_height.max(dest_h);
+                    let screen_y = document_y - scroll_offset;
+                    let line_bottom = screen_y + active_line_height;
+
+                    if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom && line_index < MAX_VISIBLE_LINES {
+                        if is_loaded {
+                            if let Some(ref img) = cached_image {
+                                // Draw actual image by registering an AtlasImageRequest
+                                image_requests.push(AtlasImageRequest {
+                                    rgba: std::sync::Arc::new(img.rgba.clone()),
+                                    width: img.width,
+                                    height: img.height,
+                                    pos_x: cursor_x,
+                                    pos_y: screen_y,
+                                    dest_w,
+                                    dest_h,
+                                });
+                            }
+                        } else {
+                            // Draw placeholder
+                            let box_y = screen_y;
+                            let box_h = dest_h;
+                            let draw_y = box_y.max(CONTENT_TOP);
+                            let draw_h = (box_y + box_h - draw_y).min(visible_bottom - draw_y).max(0.0);
+                            if draw_h > 0.0 {
+                                // Light gray elegant rounded box
+                                render_boxes.push(RenderBox {
+                                    x: cursor_x,
+                                    y: draw_y,
+                                    w: dest_w,
+                                    h: draw_h,
+                                    color: [0.93, 0.94, 0.96, 1.0],
+                                    radius: 6.0,
+                                    href: fragment.href.clone(),
+                                });
+                            }
+
+                            // Centered "Alt" text inside placeholder
+                            let alt_text = if !fragment.text.is_empty() {
+                                fragment.text.clone()
+                            } else {
+                                "Cargando...".to_string()
+                            };
+
+                            let text_w = estimated_text_width(&alt_text, 11.0);
+                            let text_x = cursor_x + (dest_w - text_w) / 2.0;
+                            let text_y = screen_y + (dest_h - 14.0) / 2.0;
+
+                            if text_y >= CONTENT_TOP && text_y <= visible_bottom {
+                                text_requests.push(TextRequest {
+                                    text: alt_text,
+                                    px_size: 11.0,
+                                    is_bold: false,
+                                    pos_x: text_x.max(cursor_x + 4.0),
+                                    pos_y: text_y,
+                                    color: [0.55, 0.58, 0.62, 1.0],
+                                });
+                            }
+                        }
+
+                        // Support link wrapping for images
+                        if let Some(href) = &fragment.href {
+                            let draw_y = screen_y.max(CONTENT_TOP);
+                            let draw_h = (screen_y + active_line_height - draw_y).min(visible_bottom - draw_y).max(0.0);
+                            if draw_h > 0.0 {
+                                link_hitboxes.push(LinkHitbox {
+                                    href: href.clone(),
+                                    x: cursor_x,
+                                    y: draw_y,
+                                    w: dest_w,
+                                    h: draw_h,
+                                    is_input: false,
+                                    is_submit: false,
+                                    fragment_idx: frag_idx,
+                                });
+                            }
+                        }
+                    }
+
+                    cursor_x += dest_w;
+                    line_height = active_line_height;
+                    line_started = true;
                 } else {
                     let color = if fragment.href.is_some() && fragment.color == TextStyleState::default().color {
                         [0.478, 0.635, 0.968, 1.0]
@@ -1178,7 +1297,7 @@ pub fn render_page(
 
     let content_height = document_y + VIEWPORT_BOTTOM_PADDING;
     PageRender {
-        atlas: RasterizedAtlas::with_options(&text_requests, text_options),
+        atlas: RasterizedAtlas::with_options(&text_requests, &image_requests, text_options),
         boxes: render_boxes,
         content_height,
     }
@@ -1603,6 +1722,18 @@ fn intrinsic_element_fragment(
         _ => return None,
     };
 
+    let (is_image, image_url) = if matches!(tag, HtmlTag::Img) {
+        let url = first_resolved_attribute(attributes, base_url, &["src", "data-src"]);
+        if let Some(ref u) = url {
+            if let Some(proxy) = crate::app::get_event_proxy() {
+                crate::media::image_manager::spawn_image_decode_task(u.clone(), proxy);
+            }
+        }
+        (true, url)
+    } else {
+        (false, None)
+    };
+
     Some(TextFragment {
         text,
         px_size: style.px_size.max(13.0),
@@ -1619,6 +1750,8 @@ fn intrinsic_element_fragment(
         input_value,
         input_placeholder,
         form_action: form_action.map(str::to_string),
+        is_image,
+        image_url,
     })
 }
 
