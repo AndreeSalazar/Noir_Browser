@@ -96,7 +96,10 @@ pub(super) fn append_app_shell_fallback(
         return;
     }
 
-    let is_youtube = page_url.contains("youtube.com") || page_url.contains("google.com/sorry"); // allow fallback if redirected
+    let is_youtube = page_url.contains("youtube.com") 
+        || page_url.contains("google.com/sorry")
+        || page_url.contains("invidious")
+        || page_url.contains("f5.si");
     let visible_fragments = fragments
         .iter()
         .filter(|fragment| {
@@ -138,7 +141,7 @@ pub(super) fn append_app_shell_fallback(
         added += 1;
     }
 
-    if let Some(player) = extract_embedded_player_shell(raw_html) {
+    if let Some(player) = extract_embedded_player_shell(raw_html, page_url) {
         push_player_shell_fragments(fragments, player, text_color);
         added += 1;
     }
@@ -538,7 +541,11 @@ fn push_player_shell_fragments(
             input_placeholder: String::new(),
             form_action: None,
             is_image: true,
-            image_url: Some(thumb_url),
+            image_url: Some(if crate::media::player::is_any_video_playing() {
+                "video://stream".to_string()
+            } else {
+                thumb_url
+            }),
             image_width: Some(480.0),
             image_height: Some(270.0),
         }));
@@ -611,7 +618,7 @@ fn push_link_fragment(fragments: &mut Vec<LayoutFragment>, text: &str, href: &st
 fn is_youtube_home_shell(page_url: &str, _raw_html: &str) -> bool {
     if let Ok(url) = Url::parse(page_url) {
         if let Some(host) = url.host_str() {
-            if host.contains("youtube.com") {
+            if host.contains("youtube.com") || host.contains("invidious") || host.contains("f5.si") {
                 let path = url.path();
                 return (path == "/" || path.is_empty() || path.starts_with("/feed") || path.starts_with("/results"))
                     && !url.query().unwrap_or("").contains("v=");
@@ -624,7 +631,7 @@ fn is_youtube_home_shell(page_url: &str, _raw_html: &str) -> bool {
 fn is_youtube_watch_shell(page_url: &str, raw_html: &str) -> bool {
     Url::parse(page_url).ok().is_some_and(|url| {
         url.host_str()
-            .is_some_and(|host| host.contains("youtube.com"))
+            .is_some_and(|host| host.contains("youtube.com") || host.contains("invidious") || host.contains("f5.si"))
             && url.path().contains("watch")
     }) || raw_html.contains("ytInitialPlayerResponse")
 }
@@ -835,7 +842,114 @@ fn extract_embedded_video_cards(raw_html: &str, limit: usize) -> Vec<VideoCard> 
     videos
 }
 
-fn extract_embedded_player_shell(raw_html: &str) -> Option<PlayerShell> {
+fn extract_embedded_player_shell(raw_html: &str, page_url: &str) -> Option<PlayerShell> {
+    if page_url.contains("invidious") || page_url.contains("f5.si") {
+        let mut video_id = None;
+        if let Ok(url) = Url::parse(page_url) {
+            if let Some(query) = url.query() {
+                for (key, val) in url::form_urlencoded::parse(query.as_bytes()) {
+                    if key == "v" {
+                        video_id = Some(val.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if let Some(vid) = video_id {
+            // Extract title from <title> tag
+            let mut title = None;
+            if let Some(pos) = raw_html.find("<title>") {
+                let start = pos + 7;
+                if let Some(end) = raw_html[start..].find("</title>") {
+                    let raw_title = &raw_html[start..start + end];
+                    title = Some(raw_title.replace(" - Invidious", "").trim().to_string());
+                }
+            }
+            
+            // Extract streams from <source> tags
+            let mut direct_streams = Vec::new();
+            let mut search_pos = 0;
+            while let Some(pos) = raw_html[search_pos..].find("<source") {
+                let source_start = search_pos + pos;
+                if let Some(tag_end) = raw_html[source_start..].find('>') {
+                    let source_tag = &raw_html[source_start..source_start + tag_end];
+                    if let Some(src_pos) = source_tag.find("src=\"") {
+                        let src_start = src_pos + 5;
+                        if let Some(src_end) = source_tag[src_start..].find('"') {
+                            let src_val = &source_tag[src_start..src_start + src_end];
+                            let unescaped_src = src_val.replace("&amp;", "&");
+                            
+                            // Resolve relative URL
+                            let url = if unescaped_src.starts_with('/') {
+                                if let Ok(base) = Url::parse(page_url) {
+                                    if let Ok(joined) = base.join(&unescaped_src) {
+                                        joined.to_string()
+                                    } else {
+                                        format!("https://invidious.f5.si{}", unescaped_src)
+                                    }
+                                } else {
+                                    format!("https://invidious.f5.si{}", unescaped_src)
+                                }
+                            } else {
+                                unescaped_src
+                            };
+                            
+                            let mut label = "Stream".to_string();
+                            if let Some(type_pos) = source_tag.find("type=\"") {
+                                let type_start = type_pos + 6;
+                                if let Some(type_end) = source_tag[type_start..].find('"') {
+                                    label = source_tag[type_start..type_start + type_end].to_string();
+                                }
+                            }
+                            
+                            if url.contains("itag=") {
+                                if let Some(itag_pos) = url.find("itag=") {
+                                    let itag_start = itag_pos + 5;
+                                    let itag_end = url[itag_start..].find('&').unwrap_or(url[itag_start..].len());
+                                    let itag = &url[itag_start..itag_start + itag_end];
+                                    let quality = match itag {
+                                        "18" => "360p",
+                                        "22" => "720p",
+                                        "37" => "1080p",
+                                        "43" => "360p WebM",
+                                        "44" => "480p WebM",
+                                        "45" => "720p WebM",
+                                        "46" => "1080p WebM",
+                                        _ => itag,
+                                    };
+                                    label = format!("{} ({})", label, quality);
+                                }
+                            }
+                            
+                            if !direct_streams.iter().any(|stream: &StreamLink| stream.url == url) {
+                                direct_streams.push(StreamLink {
+                                    label,
+                                    url,
+                                });
+                            }
+                        }
+                    }
+                    search_pos = source_start + tag_end + 1;
+                } else {
+                    break;
+                }
+            }
+            
+            return Some(PlayerShell {
+                title,
+                author: None,
+                duration: None,
+                views: None,
+                status: Some("Invidious".to_string()),
+                video_id: Some(vid),
+                direct_streams,
+                protected_formats: 0,
+            });
+        }
+        return None;
+    }
+
     let json = extract_assigned_json(raw_html, "ytInitialPlayerResponse")?;
     let value = serde_json::from_str::<Value>(&json).ok()?;
     let details = value.get("videoDetails");

@@ -337,7 +337,7 @@ pub async fn fetch_resource(
                 "[JS Engine] Challenge {:?} detected on {} (HTTP {})",
                 challenge_type, url, status
             );
-            match crate::js_engine::challenge::solve_challenge(&body, url) {
+            match crate::js_engine::challenge::solve_challenge(&body, url).await {
                 Ok(solved_cookie) => {
                     println!("[JS Engine] Challenge solved successfully! Token: {}", solved_cookie);
                     // Re-try the request with the solved cookie/token

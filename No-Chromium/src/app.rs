@@ -67,6 +67,11 @@ pub fn run() {
     set_runtime_handle(rt.handle().clone());
     let _enter_guard = rt.enter();
 
+    // Initialize native audio device
+    if let Some(audio_handle) = crate::media::audio::init_audio_device() {
+        crate::media::audio::set_audio_handle(audio_handle);
+    }
+
     // Trigger startup pre-caching of images
     crate::media::image_manager::pre_cache_resources(event_proxy.clone());
 
@@ -110,7 +115,9 @@ pub fn run() {
                 }
             }
             Event::UserEvent(BrowserEvent::ImageLoaded { url }) => {
-                println!("[App Loop] Image loaded and decoded: {}", url);
+                if url != "video://stream" {
+                    println!("[App Loop] Image loaded and decoded: {}", url);
+                }
                 let win_size = window.inner_size();
                 if let Some(new_atlas) = browser.rerender_current_page(
                     quality.text_rasterization_options(),
@@ -608,19 +615,37 @@ pub fn run() {
                     let click_res = browser.handle_page_click(cursor_pos.x as f32, cursor_pos.y as f32);
                     match click_res {
                         PageClickResult::Navigate(url) => {
-                            println!("[Browser] Navigating to {}", url);
-                            address_input = url.clone();
-                            begin_navigation(
-                                &mut browser,
-                                rt.handle().clone(),
-                                &event_proxy,
-                                &mut renderer,
-                                &mut pending_atlas,
-                                vk_ctx.as_ref(),
-                                &window,
-                                quality,
-                                &url,
-                            );
+                            if url.contains("latest_version") || url.contains("itag=") || url.contains("googlevideo.com") || url.ends_with(".mp4") || url.contains(".m3u8") {
+                                println!("[Browser] Intercepted video stream URL: {}", url);
+                                crate::media::player::play_stream(
+                                    url.clone(),
+                                    "Direct Stream".to_string(),
+                                    "stream".to_string(),
+                                );
+                                let win_size = window.inner_size();
+                                if let Some(new_atlas) = browser.rerender_current_page(
+                                    quality.text_rasterization_options(),
+                                    win_size.width as f32,
+                                    win_size.height as f32,
+                                ) {
+                                    apply_atlas(&mut renderer, &mut pending_atlas, vk_ctx.as_ref(), new_atlas);
+                                    window.request_redraw();
+                                }
+                            } else {
+                                println!("[Browser] Navigating to {}", url);
+                                address_input = url.clone();
+                                begin_navigation(
+                                    &mut browser,
+                                    rt.handle().clone(),
+                                    &event_proxy,
+                                    &mut renderer,
+                                    &mut pending_atlas,
+                                    vk_ctx.as_ref(),
+                                    &window,
+                                    quality,
+                                    &url,
+                                );
+                            }
                         }
                         PageClickResult::Submit(submit_url) => {
                             println!("[Browser] Submitting form to {}", submit_url);
@@ -745,6 +770,9 @@ fn begin_pending_load(
     quality: QualityProfile,
     url: &str,
 ) {
+    // Stop any active video playing on new page load
+    crate::media::player::stop_active_playback();
+
     let win_size = window.inner_size();
     let loading = loading_atlas(
         url,

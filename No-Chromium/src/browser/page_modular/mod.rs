@@ -2929,5 +2929,44 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_parse_invidious_fragments() {
+        let html = r#"
+        <!DOCTYPE html>
+        <html>
+        <head><title>Never Gonna Give You Up - Invidious</title></head>
+        <body>
+            <video id="player_html5" controls>
+                <source src="/latest_version?id=Sqap5aO4i9A&amp;itag=18&amp;local=true" type="video/mp4">
+                <source src="/latest_version?id=Sqap5aO4i9A&amp;itag=22&amp;local=true" type="video/mp4">
+            </video>
+        </body>
+        </html>
+        "#;
+        let dom = crate::parsers::dom_tree::parse_html(html);
+        let mut fragments = Vec::new();
+        let page_style = PageStyle {
+            background_hex: "#1a1a2e".to_string(),
+            default_text_color: [1.0, 1.0, 1.0, 1.0],
+        };
+        
+        app_shell::append_app_shell_fallback(
+            &dom,
+            html,
+            "https://invidious.f5.si/watch?v=Sqap5aO4i9A",
+            &mut fragments,
+            page_style.default_text_color,
+        );
+        
+        let has_play_links = fragments.iter().any(|f| {
+            if let LayoutFragment::Text(ref t) = f {
+                t.text.contains("Stream directo") || t.text.contains("[PLAY]") || t.text.contains("[STREAM]")
+            } else {
+                false
+            }
+        });
+        assert!(has_play_links, "Invidious shell fallback MUST contain PLAY/STREAM links!");
+    }
 }
 
