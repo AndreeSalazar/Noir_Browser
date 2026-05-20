@@ -53,6 +53,10 @@ pub struct AtlasImageRequest {
     pub pos_y: f32,
     pub dest_w: f32,
     pub dest_h: f32,
+    pub crop_top: f32,
+    pub crop_bottom: f32,
+    pub crop_left: f32,
+    pub crop_right: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -129,6 +133,10 @@ impl RasterizedAtlas {
             dest_w: f32,
             dest_h: f32,
             color: [f32; 4],
+            crop_top: f32,
+            crop_bottom: f32,
+            crop_left: f32,
+            crop_right: f32,
         }
 
         struct PositionedGlyph {
@@ -259,6 +267,10 @@ impl RasterizedAtlas {
                 dest_w: padded_w as f32,
                 dest_h: padded_h as f32,
                 color: req.color,
+                crop_top: 0.0,
+                crop_bottom: 0.0,
+                crop_left: 0.0,
+                crop_right: 0.0,
             });
 
             total_atlas_h += padded_h + 2; // minimum 2px padding between lines
@@ -280,6 +292,10 @@ impl RasterizedAtlas {
                 dest_w: img_req.dest_w,
                 dest_h: img_req.dest_h,
                 color: [1.0, 1.0, 1.0, 1.0],
+                crop_top: img_req.crop_top,
+                crop_bottom: img_req.crop_bottom,
+                crop_left: img_req.crop_left,
+                crop_right: img_req.crop_right,
             });
             total_atlas_h += img_req.height + 2;
         }
@@ -314,15 +330,36 @@ impl RasterizedAtlas {
                 }
             }
 
+            let crop_t = pr.crop_top;
+            let crop_b = pr.crop_bottom;
+            let crop_l = pr.crop_left;
+            let crop_r = pr.crop_right;
+
+            let final_x = pr.screen_x + crop_l;
+            let final_y = pr.screen_y + crop_t;
+            let final_w = (pr.dest_w - crop_l - crop_r).max(0.0);
+            let final_h = (pr.dest_h - crop_t - crop_b).max(0.0);
+
+            // Ratios
+            let ratio_l = if pr.dest_w > 0.0 { crop_l / pr.dest_w } else { 0.0 };
+            let ratio_r = if pr.dest_w > 0.0 { crop_r / pr.dest_w } else { 0.0 };
+            let ratio_t = if pr.dest_h > 0.0 { crop_t / pr.dest_h } else { 0.0 };
+            let ratio_b = if pr.dest_h > 0.0 { crop_b / pr.dest_h } else { 0.0 };
+
+            let u0 = (px as f32 + pr.width as f32 * ratio_l) / max_atlas_w as f32;
+            let u1 = ((px + pr.width) as f32 - pr.width as f32 * ratio_r) / max_atlas_w as f32;
+            let v0 = (py as f32 + pr.height as f32 * ratio_t) / total_atlas_h as f32;
+            let v1 = ((py + pr.height) as f32 - pr.height as f32 * ratio_b) / total_atlas_h as f32;
+
             quads.push(TextQuad {
-                x: pr.screen_x,
-                y: pr.screen_y,
-                w: pr.dest_w,
-                h: pr.dest_h,
-                u0: px as f32 / max_atlas_w as f32,
-                v0: py as f32 / total_atlas_h as f32,
-                u1: (px + pr.width) as f32 / max_atlas_w as f32,
-                v1: (py + pr.height) as f32 / total_atlas_h as f32,
+                x: final_x,
+                y: final_y,
+                w: final_w,
+                h: final_h,
+                u0,
+                v0,
+                u1,
+                v1,
                 color: pr.color,
             });
 

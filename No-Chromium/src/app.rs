@@ -54,6 +54,7 @@ pub fn run() {
     let event_proxy = event_loop.create_proxy();
     set_event_proxy(event_proxy.clone());
     let rt = tokio::runtime::Runtime::new().unwrap();
+    let _enter_guard = rt.enter();
 
     // Trigger startup pre-caching of images
     crate::media::image_manager::pre_cache_resources(event_proxy.clone());

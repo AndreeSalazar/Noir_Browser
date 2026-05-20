@@ -120,19 +120,55 @@ pub fn spawn_image_decode_task(url: String, proxy: EventLoopProxy<BrowserEvent>)
     });
 }
 
+/// Pre-popula la caché de imágenes en disco y en memoria de forma instantánea usando recursos empaquetados.
+pub fn pre_populate_offline_cache(proxy: EventLoopProxy<BrowserEvent>) {
+    let assets = super::pre_cached_assets::get_pre_cached_assets();
+    println!("[Image Cache] Pre-populando {} recursos offline estáticos...", assets.len());
+
+    for (url, bytes) in assets {
+        let key = cache_key(url);
+        let path = cache_path(&key);
+
+        // Asegurar que el archivo de caché en disco exista
+        if !path.exists() {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(e) = std::fs::write(&path, bytes) {
+                println!("[Image Cache] Error escribiendo asset offline estático a disco: {:?}", e);
+            } else {
+                println!("[Image Cache] Escrito a caché de disco: {}", url);
+            }
+        }
+
+        // Decodificar e insertar en la caché en memoria inmediatamente
+        match image::load_from_memory(bytes) {
+            Ok(img) => {
+                let rgba_img = img.to_rgba8();
+                let loaded = Arc::new(LoadedImage {
+                    width: rgba_img.width(),
+                    height: rgba_img.height(),
+                    rgba: rgba_img.into_raw(),
+                });
+
+                {
+                    let mut cache = get_image_cache().lock().unwrap();
+                    cache.insert(url.to_string(), loaded);
+                }
+                println!("[Image Cache] Listo en caché en memoria: {}", url);
+                
+                // Notificar al EventLoop
+                let _ = proxy.send_event(BrowserEvent::ImageLoaded { url: url.to_string() });
+            }
+            Err(e) => {
+                println!("[Image Cache] Error al decodificar asset offline estático {}: {:?}", url, e);
+            }
+        }
+    }
+}
+
 /// Rutina de pre-caché para descargar imágenes comunes al iniciar la aplicación.
 pub fn pre_cache_resources(proxy: EventLoopProxy<BrowserEvent>) {
-    let common_urls = vec![
-        // Google Logo
-        "https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png".to_string(),
-        // Rust Artwork Logo (as a beautiful local fallback / test)
-        "https://raw.githubusercontent.com/rust-lang/rust-artwork/master/logo/rust-logo-512x512.png".to_string(),
-        // DuckDuckGo Icon
-        "https://duckduckgo.com/favicon.png".to_string(),
-    ];
-
-    println!("[Image Cache] Inicializando pre-caché de arranque para {} recursos comunes...", common_urls.len());
-    for url in common_urls {
-        spawn_image_decode_task(url, proxy.clone());
-    }
+    // Primero, pre-cargar y activar todos los assets locales/estáticos de manera instantánea
+    pre_populate_offline_cache(proxy);
 }

@@ -73,6 +73,8 @@ pub struct TextFragment {
     pub form_action: Option<String>,
     pub is_image: bool,
     pub image_url: Option<String>,
+    pub image_width: Option<f32>,
+    pub image_height: Option<f32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -167,6 +169,8 @@ impl TextFragment {
             form_action: None,
             is_image: false,
             image_url: None,
+            image_width: None,
+            image_height: None,
         }
     }
 }
@@ -1096,8 +1100,8 @@ pub fn render_page(
                     };
 
                     let (dest_w, dest_h, is_loaded) = if let Some(ref img) = cached_image {
-                        let img_w = img.width as f32;
-                        let img_h = img.height as f32;
+                        let img_w = fragment.image_width.unwrap_or(img.width as f32);
+                        let img_h = fragment.image_height.unwrap_or(img.height as f32);
                         let max_w = layout_box.content_width;
                         let mut dw = img_w;
                         let mut dh = img_h;
@@ -1108,8 +1112,10 @@ pub fn render_page(
                         }
                         (dw, dh, true)
                     } else {
-                        // Placeholder size
-                        (140.0, 90.0, false)
+                        // Placeholder size using custom attributes if available, else default
+                        let dw = fragment.image_width.unwrap_or(140.0);
+                        let dh = fragment.image_height.unwrap_or(90.0);
+                        (dw, dh, false)
                     };
 
                     if line_started && cursor_x + dest_w > layout_box.content_x + layout_box.content_width {
@@ -1127,16 +1133,43 @@ pub fn render_page(
                     if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom && line_index < MAX_VISIBLE_LINES {
                         if is_loaded {
                             if let Some(ref img) = cached_image {
-                                // Draw actual image by registering an AtlasImageRequest
-                                image_requests.push(AtlasImageRequest {
-                                    rgba: std::sync::Arc::new(img.rgba.clone()),
-                                    width: img.width,
-                                    height: img.height,
-                                    pos_x: cursor_x,
-                                    pos_y: screen_y,
-                                    dest_w,
-                                    dest_h,
-                                });
+                                // Draw actual image by registering an AtlasImageRequest with precise viewport clipping
+                                let crop_top = if screen_y < CONTENT_TOP {
+                                    (CONTENT_TOP - screen_y).min(dest_h).max(0.0)
+                                } else {
+                                    0.0
+                                };
+                                let crop_bottom = if screen_y + dest_h > visible_bottom {
+                                    (screen_y + dest_h - visible_bottom).min(dest_h - crop_top).max(0.0)
+                                } else {
+                                    0.0
+                                };
+                                let crop_left = if cursor_x < 0.0 {
+                                    (-cursor_x).min(dest_w).max(0.0)
+                                } else {
+                                    0.0
+                                };
+                                let crop_right = if cursor_x + dest_w > viewport_width {
+                                    (cursor_x + dest_w - viewport_width).min(dest_w - crop_left).max(0.0)
+                                } else {
+                                    0.0
+                                };
+
+                                if crop_top + crop_bottom < dest_h && crop_left + crop_right < dest_w {
+                                    image_requests.push(AtlasImageRequest {
+                                        rgba: std::sync::Arc::new(img.rgba.clone()),
+                                        width: img.width,
+                                        height: img.height,
+                                        pos_x: cursor_x,
+                                        pos_y: screen_y,
+                                        dest_w,
+                                        dest_h,
+                                        crop_top,
+                                        crop_bottom,
+                                        crop_left,
+                                        crop_right,
+                                    });
+                                }
                             }
                         } else {
                             // Draw placeholder
@@ -1722,16 +1755,18 @@ fn intrinsic_element_fragment(
         _ => return None,
     };
 
-    let (is_image, image_url) = if matches!(tag, HtmlTag::Img) {
+    let (is_image, image_url, image_width, image_height) = if matches!(tag, HtmlTag::Img) {
         let url = first_resolved_attribute(attributes, base_url, &["src", "data-src"]);
         if let Some(ref u) = url {
             if let Some(proxy) = crate::app::get_event_proxy() {
                 crate::media::image_manager::spawn_image_decode_task(u.clone(), proxy);
             }
         }
-        (true, url)
+        let w = attributes.get("width").and_then(|s| s.parse::<f32>().ok());
+        let h = attributes.get("height").and_then(|s| s.parse::<f32>().ok());
+        (true, url, w, h)
     } else {
-        (false, None)
+        (false, None, None, None)
     };
 
     Some(TextFragment {
@@ -1752,6 +1787,8 @@ fn intrinsic_element_fragment(
         form_action: form_action.map(str::to_string),
         is_image,
         image_url,
+        image_width,
+        image_height,
     })
 }
 

@@ -183,6 +183,13 @@ fn get_newtab_html() -> String {
     text-decoration: none;
     color: #66fcf1;
   }
+  .shortcut-icon {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 12px;
+    border-radius: 4px;
+  }
   .shortcut-title {
     color: #ffffff;
     font-weight: bold;
@@ -215,21 +222,25 @@ fn get_newtab_html() -> String {
     
     <div class="grid-container">
       <a class="shortcut-card" href="https://www.google.com">
+        <img class="shortcut-icon" src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png" width="80" height="27" alt="Google" />
         <div class="shortcut-title">Google</div>
         <div class="shortcut-desc">Search Engine</div>
       </a>
       
       <a class="shortcut-card" href="https://www.youtube.com">
+        <img class="shortcut-icon" src="https://upload.wikimedia.org/wikipedia/commons/3/34/YouTube_logo_%282017%29.png" width="64" height="15" alt="YouTube" />
         <div class="shortcut-title">YouTube</div>
         <div class="shortcut-desc">Videos</div>
       </a>
       
       <a class="shortcut-card" href="https://github.com">
+        <img class="shortcut-icon" src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" width="32" height="32" alt="GitHub" />
         <div class="shortcut-title">GitHub</div>
         <div class="shortcut-desc">Repository</div>
       </a>
-
+      
       <a class="shortcut-card" href="https://www.rust-lang.org">
+        <img class="shortcut-icon" src="https://www.rust-lang.org/static/images/rust-logo-blk.png" width="32" height="32" alt="Rust" />
         <div class="shortcut-title">Rust Lang</div>
         <div class="shortcut-desc">Programming</div>
       </a>
