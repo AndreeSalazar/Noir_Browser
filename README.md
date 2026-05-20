@@ -6,7 +6,7 @@
 
 Un motor de navegación web **ultrarrápido, moderno e independiente** desarrollado desde cero en **Rust y Vulkan (Ash)**, diseñado para romper la hegemonía y la pesadez de los motores basados en Chromium, WebKit y Gecko.
 
-![Noir Browser Showcase](docs/images/noir_browser_mockup.png)
+![Noir Browser Showcase](No-Chromium/docs/images/noir_browser_mockup.png)
 
 ---
 
@@ -25,38 +25,41 @@ Hoy en día, casi todos los navegadores web modernos (Chrome, Edge, Brave, Opera
 
 Noir Browser no utiliza componentes externos de renderizado. Todo el pipeline, desde la lectura de la red hasta el mapeo del framebuffer, está implementado en la base de código:
 
-![Pipeline de Renderizado Vulkan](docs/images/vulkan_pipeline_infographic.png)
+![Pipeline de Renderizado Vulkan](No-Chromium/docs/images/vulkan_pipeline_infographic.png)
 
 ### Orden de los Módulos del Motor:
-1. **Red e Ingesta de Datos (`src/media/image_manager.rs`, `src/parsers/`)**: Realiza peticiones asíncronas y gestiona la caché de recursos estáticos en memoria (pre-caching).
-2. **Parser HTML Nativo (`src/parsers/html_elements.rs`, `src/parsers/dom_native.rs`)**: Convierte el código HTML bruto en una estructura de árbol DOM binaria optimizada.
-3. **Parser CSS Cascading (`src/parsers/css_simple.rs`)**: Escanea las hojas de estilo y calcula la especificidad de los selectores, aplicando cascada y herencia a los elementos.
-4. **Motor de Layout Modular (`src/browser/page_modular/mod.rs`)**:
+1. **Red e Ingesta de Datos (`No-Chromium/src/media/image_manager.rs`, `No-Chromium/src/parsers/`)**: Realiza peticiones asíncronas y gestiona la caché de recursos estáticos en memoria (pre-caching).
+2. **Parser HTML Nativo (`No-Chromium/src/parsers/html_elements.rs`, `No-Chromium/src/parsers/dom_native.rs`)**: Convierte el código HTML bruto en una estructura de árbol DOM binaria optimizada.
+3. **Parser CSS Cascading (`No-Chromium/src/parsers/css_simple.rs`)**: Escanea las hojas de estilo y calcula la especificidad de los selectores, aplicando cascada y herencia a los elementos.
+4. **Motor de Layout Modular (`No-Chromium/src/browser/page_modular/mod.rs`)**:
    - Resuelve el tamaño de las cajas de diseño.
    - Aplica un algoritmo de alineación por línea (Line-Level Alignment) que agrupa elementos inline y calcula traslaciones (`shift_x`) para centrado perfecto de inputs y textos.
    - Corrige el orden de capas mediante placeholder buffers (`render_box_idx`) para asegurar que los fondos de bloque se rendericen debajo del contenido.
-5. **Vulkan 2D Graphics Engine (`src/vulkan_engine/`)**: Utiliza `Ash` (bindings de Vulkan en Rust) para transferir los vectores de cajas, imágenes y solicitudes de texto hacia búferes de la GPU y dibujarlos con antialiasing a tasa de refresco nativa.
+5. **Vulkan 2D Graphics Engine (`No-Chromium/src/vulkan_engine/`)**: Utiliza `Ash` (bindings de Vulkan en Rust) para transferir los vectores de cajas, imágenes y solicitudes de texto hacia búferes de la GPU y dibujarlos con antialiasing a tasa de refresco nativa.
 
 ---
 
 ## 📁 Estructura del Proyecto
 
 ```bash
-No-Chromium/
-├── assets/                    # Recursos y assets estáticos locales.
-│   └── pre_cache/             # Imágenes pre-cargadas en el Atlas (Logos, favicons).
-├── docs/                      # Documentación del proyecto.
-│   └── images/                # Infografías y capturas de pantalla del motor.
-├── src/                       # Código fuente en Rust.
-│   ├── app.rs                 # Inicializador del loop de la aplicación y ciclo de vida de winit.
-│   ├── browser/               # Motor lógico de navegación.
-│   │   ├── page_modular/      # Motor de Layout, Noir Dark Theme y cálculo de hitboxes.
-│   │   └── page.rs            # Estructura del manejador de pestañas.
-│   ├── vulkan_engine/         # Renderizador Vulkan (Ash) 2D con Shaders propios.
-│   ├── parsers/               # Lexers y Parsers para DOM, CSS y JS (sin V8).
-│   └── media/                 # Gestión de decodificación asíncrona de imágenes.
-├── Cargo.toml                 # Dependencias (ash, winit, tokio, image, rusttype).
-└── README.md                  # Este documento explicativo.
+Noir_Browser/
+├── No-Chromium/               # Subdirectorio principal del navegador.
+│   ├── assets/                # Recursos y assets estáticos locales.
+│   │   └── pre_cache/         # Imágenes pre-cargadas en el Atlas (Logos, favicons).
+│   ├── docs/                  # Documentación del proyecto.
+│   │   └── images/            # Infografías y capturas de pantalla del motor.
+│   ├── src/                   # Código fuente en Rust.
+│   │   ├── app.rs             # Inicializador del loop de la aplicación y ciclo de vida de winit.
+│   │   ├── browser/           # Motor lógico de navegación.
+│   │   │   ├── page_modular/  # Motor de Layout, Noir Dark Theme y cálculo de hitboxes.
+│   │   │   └── page.rs        # Estructura del manejador de pestañas.
+│   │   ├── vulkan_engine/     # Renderizador Vulkan (Ash) 2D con Shaders propios.
+│   │   ├── parsers/           # Lexers y Parsers para DOM, CSS y JS (sin V8).
+│   │   └── media/             # Gestión de decodificación asíncrona de imágenes.
+│   └── Cargo.toml             # Dependencias del proyecto.
+├── parsers/                   # Módulo independiente de parsing.
+├── .gitignore                 # Exclusión de archivos en git.
+└── README.md                  # Este documento explicativo (en la raíz del repositorio).
 ```
 
 ---
@@ -73,7 +76,7 @@ No-Chromium/
 
 Para alcanzar un nivel de soporte y versatilidad equivalente a estándares modernos, el roadmap contempla:
 
-1. **Motor de Layout Avanzado (CSS Flexbox & Grid)**:
+1. **Motor de Layout Advanced (CSS Flexbox & Grid)**:
    - *Motivo*: Permitir el diseño nativo de páginas web complejas sin depender de simulaciones de inline-block.
 2. **Motor JavaScript Integrado (Boa o V8)**:
    - *Motivo*: Dar soporte a páginas dinámicas e interactivas complejas (reproducción en YouTube, buscador dinámico en tiempo real).
