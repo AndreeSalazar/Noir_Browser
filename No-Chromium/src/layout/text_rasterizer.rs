@@ -70,6 +70,7 @@ pub struct TextQuad {
     pub u1: f32,
     pub v1: f32,
     pub color: [f32; 4],
+    pub is_text: f32,
 }
 
 pub struct RasterizedAtlas {
@@ -137,6 +138,7 @@ impl RasterizedAtlas {
             crop_bottom: f32,
             crop_left: f32,
             crop_right: f32,
+            is_text: f32,
         }
 
         struct PositionedGlyph {
@@ -271,6 +273,7 @@ impl RasterizedAtlas {
                 crop_bottom: 0.0,
                 crop_left: 0.0,
                 crop_right: 0.0,
+                is_text: 1.0,
             });
 
             total_atlas_h += padded_h + 2; // minimum 2px padding between lines
@@ -296,6 +299,7 @@ impl RasterizedAtlas {
                 crop_bottom: img_req.crop_bottom,
                 crop_left: img_req.crop_left,
                 crop_right: img_req.crop_right,
+                is_text: 2.0,
             });
             total_atlas_h += img_req.height + 2;
         }
@@ -361,6 +365,7 @@ impl RasterizedAtlas {
                 u1,
                 v1,
                 color: pr.color,
+                is_text: pr.is_text,
             });
 
             current_y += pr.height + 2; // advance Y with padding

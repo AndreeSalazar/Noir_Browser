@@ -276,7 +276,7 @@ pub async fn fetch_resource(
     let cached = CachedResource::load(&cache_key, resource_type);
     let mut request = client()
         .get(url)
-        .header(USER_AGENT, "No-Chromium/0.1 Sovereign Rust Vulkan Browser")
+        .header(USER_AGENT, "Noir/1.0 (Vulkan; Rust) compatible; Googlebot/2.1; +https://github.com/AndreeSalazar/Noir_Browser")
         .header(ACCEPT, resource_type.accept_header());
 
     if let Some(cached) = &cached {

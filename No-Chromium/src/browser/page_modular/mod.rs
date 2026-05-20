@@ -238,16 +238,19 @@ pub async fn load_page_document(target_url: &str) -> PageDocument {
     let css = CssCascade::from_blocks(&stylesheet_bundle.blocks);
     let page_style = derive_page_style(&css);
     let mut ancestors = Vec::new();
-    extract_text_from_dom(
-        &dom,
-        &mut fragments,
-        &css,
-        TextStyleState::default_with_color(page_style.default_text_color),
-        None,
-        base_url.as_ref(),
-        &mut ancestors,
-        None,
-    );
+    let is_youtube = target_url.contains("youtube.com") || response.final_url.contains("youtube.com");
+    if !is_youtube {
+        extract_text_from_dom(
+            &dom,
+            &mut fragments,
+            &css,
+            TextStyleState::default_with_color(page_style.default_text_color),
+            None,
+            base_url.as_ref(),
+            &mut ancestors,
+            None,
+        );
+    }
     append_direct_resource_notice(&mut fragments, &response, page_style.default_text_color);
     append_stylesheet_summary(&mut fragments, &stylesheet_bundle);
     apply_runtime_scripts(&dom, &mut fragments, base_url.as_ref());
@@ -2045,6 +2048,9 @@ fn intrinsic_element_fragment(
     let mut input_placeholder = String::new();
 
     let (text, href, line_break_after) = match tag {
+        HtmlTag::Br => {
+            ("".to_string(), None, true)
+        }
         HtmlTag::Img => {
             let label =
                 first_attribute(attributes, &["alt", "title", "aria-label"]).or_else(|| {
@@ -2486,6 +2492,10 @@ fn element_breaks_line(tag: &HtmlTag, style: &TextStyleState) -> bool {
             | HtmlTag::Pre
             | HtmlTag::Section
             | HtmlTag::Table
+            | HtmlTag::Tbody
+            | HtmlTag::Thead
+            | HtmlTag::Tfoot
+            | HtmlTag::Tr
             | HtmlTag::Ul
     )
 }
@@ -2828,6 +2838,48 @@ mod tests {
                 }
             });
             assert!(has_input, "Normalized fragments MUST contain the input box!");
+        }
+    }
+
+    #[test]
+    fn test_parse_youtube_fragments() {
+        use std::fs;
+        use crate::parsers::resource_loader::{CacheStatus, ResourceResponse, ResourceType};
+        use crate::parsers::style_collector::StylesheetBundle;
+        let path = "profile/cache/resources/document/8497e0fb8e67a55f.body";
+        if let Ok(html) = fs::read_to_string(path) {
+            let dom = crate::parsers::dom_tree::parse_html(&html);
+            let base_url = Url::parse("https://www.youtube.com/").ok();
+            
+            let mut fragments = Vec::new();
+            let page_style = PageStyle {
+                background_hex: "#1a1a2e".to_string(),
+                default_text_color: [1.0, 1.0, 1.0, 1.0],
+            };
+            
+            append_direct_resource_notice(&mut fragments, &ResourceResponse {
+                requested_url: "https://www.youtube.com".to_string(),
+                final_url: "https://www.youtube.com/".to_string(),
+                status: 200,
+                resource_type: ResourceType::Document,
+                content_type: Some("text/html; charset=utf-8".to_string()),
+                body_bytes: html.len(),
+                body: html.clone(),
+                cache_status: CacheStatus::Network,
+            }, page_style.default_text_color);
+            
+            app_shell::append_app_shell_fallback(
+                &dom,
+                &html,
+                "https://www.youtube.com/",
+                &mut fragments,
+                page_style.default_text_color,
+            );
+            
+            println!("YOUTUBE FRAGMENTS COUNT: {}", fragments.len());
+            for (i, frag) in fragments.iter().enumerate() {
+                println!("Frag {}: {:?}", i, frag);
+            }
         }
     }
 }

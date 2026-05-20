@@ -37,7 +37,7 @@ impl UIVertex {
             x, y, r, g, b, a, u, v, box_w, box_h, radius, is_text: 0.0,
         }
     }
-    pub fn textured(x: f32, y: f32, r: f32, g: f32, b: f32, a: f32, u: f32, v: f32) -> Self {
+    pub fn textured(x: f32, y: f32, r: f32, g: f32, b: f32, a: f32, u: f32, v: f32, is_text: f32) -> Self {
         Self {
             x,
             y,
@@ -50,7 +50,7 @@ impl UIVertex {
             box_w: 0.0,
             box_h: 0.0,
             radius: 0.0,
-            is_text: 1.0,
+            is_text,
         }
     }
 }

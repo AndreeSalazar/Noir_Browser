@@ -27,6 +27,7 @@ struct PlayerShell {
     duration: Option<String>,
     views: Option<String>,
     status: Option<String>,
+    video_id: Option<String>,
     direct_streams: Vec<StreamLink>,
     protected_formats: usize,
 }
@@ -96,12 +97,12 @@ pub(super) fn append_app_shell_fallback(
     if has_video_cards {
         push_fallback_fragment(
             fragments,
-            "Videos detectados",
-            20.0,
+            "\u{1F4FA} YOUTUBE PREMIUM LITE",
+            22.0,
             true,
-            28.0,
+            30.0,
             8.0,
-            text_color,
+            [1.0, 0.22, 0.22, 1.0],
             true,
         );
         for video in video_cards {
@@ -121,9 +122,9 @@ pub(super) fn append_app_shell_fallback(
             });
 
         let title_str = if let Some(ref q) = query_param {
-            format!("Resultados de busqueda para: \"{}\" (Ligeros)", q)
+            format!("\u{1F50D} Resultados: \"{}\" — YouTube Premium Lite", q)
         } else {
-            "Recomendados de YouTube (Ligeros)".to_string()
+            "\u{1F4FA} YOUTUBE PREMIUM LITE — Recomendados".to_string()
         };
 
         push_fallback_fragment(
@@ -133,7 +134,7 @@ pub(super) fn append_app_shell_fallback(
             true,
             30.0,
             12.0,
-            text_color,
+            [1.0, 0.22, 0.22, 1.0],
             true,
         );
 
@@ -337,71 +338,105 @@ pub(super) fn append_app_shell_fallback(
 fn push_player_shell_fragments(
     fragments: &mut Vec<LayoutFragment>,
     player: PlayerShell,
-    text_color: [f32; 4],
+    _text_color: [f32; 4],
 ) {
+    // Premium header
     push_fallback_fragment(
         fragments,
-        "Reproductor ligero",
-        20.0,
+        "\u{1F3AC} REPRODUCTOR NOIR",
+        22.0,
         true,
-        28.0,
-        8.0,
-        text_color,
+        30.0,
+        6.0,
+        [1.0, 0.22, 0.22, 1.0],
         true,
     );
 
-    if let Some(title) = player.title {
-        push_fallback_fragment(fragments, &title, 17.0, true, 25.0, 5.0, text_color, true);
-    }
-
-    let mut details = Vec::new();
-    if let Some(author) = player.author {
-        details.push(author);
-    }
-    if let Some(duration) = player.duration {
-        details.push(duration);
-    }
-    if let Some(views) = player.views {
-        details.push(format!("{views} vistas"));
-    }
-    if let Some(status) = player.status {
-        details.push(status);
-    }
-    if !details.is_empty() {
+    // Large white title
+    if let Some(ref title) = player.title {
         push_fallback_fragment(
             fragments,
-            &details.join(" / "),
-            14.0,
-            false,
-            21.0,
-            8.0,
-            text_color,
+            title,
+            24.0,
+            true,
+            32.0,
+            4.0,
+            [1.0, 1.0, 1.0, 1.0],
             true,
         );
     }
 
-    if player.direct_streams.is_empty() {
+    // Grey subtitle line: author / duration / views
+    let mut details = Vec::new();
+    if let Some(ref author) = player.author {
+        details.push(author.clone());
+    }
+    if let Some(ref duration) = player.duration {
+        details.push(format!("\u{23F1} {}", duration));
+    }
+    if let Some(ref views) = player.views {
+        details.push(format!("{} vistas", views));
+    }
+    if let Some(ref status) = player.status {
+        details.push(status.clone());
+    }
+    if !details.is_empty() {
+        push_fallback_fragment(
+            fragments,
+            &details.join("  \u{2022}  "),
+            15.0,
+            false,
+            22.0,
+            10.0,
+            [0.65, 0.65, 0.65, 1.0],
+            true,
+        );
+    }
+
+    // Invidious streaming links (bypass signature cipher)
+    if let Some(ref vid) = player.video_id {
+        push_link_fragment(
+            fragments,
+            "\u{25B6} Reproducir en Invidious (Ligero)",
+            &format!("https://invidious.f5.si/watch?v={}", vid),
+        );
+        push_link_fragment(
+            fragments,
+            "\u{21E9} Stream Directo (360p MP4)",
+            &format!("https://invidious.f5.si/latest_version?id={}&itag=18&local=true", vid),
+        );
+        push_link_fragment(
+            fragments,
+            "\u{21E9} Stream Directo (720p MP4)",
+            &format!("https://invidious.f5.si/latest_version?id={}&itag=22&local=true", vid),
+        );
+        push_link_fragment(
+            fragments,
+            "\u{21BB} Servidor Alternativo",
+            &format!("https://inv.thepixora.com/watch?v={}", vid),
+        );
+    } else if !player.direct_streams.is_empty() {
+        for stream in &player.direct_streams {
+            push_link_fragment(
+                fragments,
+                &format!("\u{25B6} Stream directo {}", stream.label),
+                &stream.url,
+            );
+        }
+    } else {
         push_fallback_fragment(
             fragments,
             &format!(
-                "{} formatos detectados; requieren descifrar el player JS de YouTube para URL directa.",
+                "{} formatos detectados; requieren descifrar el player JS de YouTube.",
                 player.protected_formats
             ),
             14.0,
             false,
             21.0,
             6.0,
-            text_color,
+            [0.65, 0.65, 0.65, 1.0],
             true,
         );
-    } else {
-        for stream in player.direct_streams {
-            push_link_fragment(
-                fragments,
-                &format!("Stream directo {}", stream.label),
-                &stream.url,
-            );
-        }
     }
 }
 
@@ -422,13 +457,12 @@ fn push_link_fragment(fragments: &mut Vec<LayoutFragment>, text: &str, href: &st
     )));
 }
 
-fn is_youtube_home_shell(page_url: &str, raw_html: &str) -> bool {
+fn is_youtube_home_shell(page_url: &str, _raw_html: &str) -> bool {
     if let Ok(url) = Url::parse(page_url) {
         if let Some(host) = url.host_str() {
             if host.contains("youtube.com") {
                 let path = url.path();
                 return (path == "/" || path.is_empty() || path.starts_with("/feed") || path.starts_with("/results"))
-                    && !raw_html.contains("\"videoId\"")
                     && !url.query().unwrap_or("").contains("v=");
             }
         }
@@ -445,33 +479,46 @@ fn is_youtube_watch_shell(page_url: &str, raw_html: &str) -> bool {
 }
 
 fn push_video_card_fragment(fragments: &mut Vec<LayoutFragment>, video: VideoCard) {
-    let mut text = video.title;
-    let mut details = Vec::new();
-    if let Some(duration) = video.duration.filter(|value| !value.is_empty()) {
-        details.push(duration);
-    }
-    if let Some(subtitle) = video.subtitle.filter(|value| !value.is_empty()) {
-        details.push(subtitle);
-    }
-    if !details.is_empty() {
-        text.push_str(" - ");
-        text.push_str(&details.join(" / "));
-    }
-
+    // YouTube Red clickable title
     fragments.push(LayoutFragment::Text(TextFragment::new_text(
-        normalize_text(&text),
-        15.0,
-        false,
-        22.0,
-        5.0,
+        normalize_text(&video.title),
+        16.0,
+        true,
+        23.0,
+        2.0,
         true,
         FragmentLayout {
             max_width: Some("920px".to_string()),
             ..FragmentLayout::default()
         },
-        [0.478, 0.635, 0.968, 1.0],
+        [1.0, 0.22, 0.22, 1.0],
         Some(video.url),
     )));
+
+    // Grey subtitle line: duration / channel
+    let mut details = Vec::new();
+    if let Some(duration) = video.duration.filter(|value| !value.is_empty()) {
+        details.push(format!("\u{23F1} {}", duration));
+    }
+    if let Some(subtitle) = video.subtitle.filter(|value| !value.is_empty()) {
+        details.push(subtitle);
+    }
+    if !details.is_empty() {
+        fragments.push(LayoutFragment::Text(TextFragment::new_text(
+            normalize_text(&details.join("  \u{2022}  ")),
+            13.0,
+            false,
+            19.0,
+            8.0,
+            true,
+            FragmentLayout {
+                max_width: Some("920px".to_string()),
+                ..FragmentLayout::default()
+            },
+            [0.65, 0.65, 0.65, 1.0],
+            None,
+        )));
+    }
 }
 
 fn push_fallback_fragment(
@@ -651,6 +698,11 @@ fn extract_embedded_player_shell(raw_html: &str) -> Option<PlayerShell> {
         }
     }
 
+    let video_id = details
+        .and_then(|d| d.get("videoId"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
     Some(PlayerShell {
         title: details
             .and_then(|details| details.get("title"))
@@ -672,6 +724,7 @@ fn extract_embedded_player_shell(raw_html: &str) -> Option<PlayerShell> {
             .and_then(|status| status.get("status"))
             .and_then(Value::as_str)
             .map(str::to_string),
+        video_id,
         direct_streams,
         protected_formats: formats.len(),
     })

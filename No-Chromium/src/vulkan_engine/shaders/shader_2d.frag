@@ -10,7 +10,15 @@ layout(location = 0) out vec4 outColor;
 void main() {
     float is_text = fragExtra.w;
     
-    if (is_text > 0.5) {
+    if (is_text > 1.5) {
+        // Actual Images (is_text == 2.0)
+        vec4 texColor = texture(texSampler, fragTexCoord);
+        if (texColor.a <= 0.001) {
+            discard;
+        }
+        outColor = texColor * fragColor;
+    } else if (is_text > 0.5) {
+        // Text glyph (is_text == 1.0)
         vec4 mask = texture(texSampler, fragTexCoord);
         float coverage = max(max(mask.r, mask.g), max(mask.b, mask.a));
         if (coverage <= 0.001) {

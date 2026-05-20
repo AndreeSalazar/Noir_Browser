@@ -735,12 +735,12 @@ impl Renderer2D {
 
                 let c = tq.color;
                 let quad = [
-                    UIVertex::textured(text_x, text_y, c[0], c[1], c[2], c[3], tq.u0, tq.v0),
-                    UIVertex::textured(text_x + text_w, text_y, c[0], c[1], c[2], c[3], tq.u1, tq.v0),
-                    UIVertex::textured(text_x, text_y + text_h, c[0], c[1], c[2], c[3], tq.u0, tq.v1),
-                    UIVertex::textured(text_x + text_w, text_y, c[0], c[1], c[2], c[3], tq.u1, tq.v0),
-                    UIVertex::textured(text_x + text_w, text_y + text_h, c[0], c[1], c[2], c[3], tq.u1, tq.v1),
-                    UIVertex::textured(text_x, text_y + text_h, c[0], c[1], c[2], c[3], tq.u0, tq.v1),
+                    UIVertex::textured(text_x, text_y, c[0], c[1], c[2], c[3], tq.u0, tq.v0, tq.is_text),
+                    UIVertex::textured(text_x + text_w, text_y, c[0], c[1], c[2], c[3], tq.u1, tq.v0, tq.is_text),
+                    UIVertex::textured(text_x, text_y + text_h, c[0], c[1], c[2], c[3], tq.u0, tq.v1, tq.is_text),
+                    UIVertex::textured(text_x + text_w, text_y, c[0], c[1], c[2], c[3], tq.u1, tq.v0, tq.is_text),
+                    UIVertex::textured(text_x + text_w, text_y + text_h, c[0], c[1], c[2], c[3], tq.u1, tq.v1, tq.is_text),
+                    UIVertex::textured(text_x, text_y + text_h, c[0], c[1], c[2], c[3], tq.u0, tq.v1, tq.is_text),
                 ];
 
                 for v in &quad {
