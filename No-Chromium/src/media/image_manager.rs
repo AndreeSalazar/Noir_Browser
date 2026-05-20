@@ -55,7 +55,7 @@ pub async fn fetch_image_bytes(url: &str) -> Result<Vec<u8>, Box<dyn Error + Sen
         .build()
         .unwrap_or_default();
     
-    let user_agent = "Noir/1.0 (Vulkan; Rust) compatible; Googlebot/2.1; +https://github.com/AndreeSalazar/Noir_Browser";
+    let user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
     let bytes = client
         .get(url)
         .header(reqwest::header::USER_AGENT, user_agent)

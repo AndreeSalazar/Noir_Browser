@@ -735,13 +735,13 @@ pub fn render_page(
                             .unwrap_or(150.0);
                         total_w += input_w;
                     } else if frag.is_submit {
-                        let btn_w = estimated_text_width(&frag.text, frag.px_size) + 32.0;
+                        let btn_w = estimated_text_width(&frag.text, frag.px_size, true) + 32.0;
                         total_w += btn_w;
                     } else if frag.is_image {
                         let img_w = frag.image_width.unwrap_or(80.0);
                         total_w += img_w;
                     } else {
-                        let txt_w = estimated_text_width(&frag.text, frag.px_size);
+                        let txt_w = estimated_text_width(&frag.text, frag.px_size, frag.is_bold);
                         total_w += txt_w;
                     }
                 }
@@ -1224,7 +1224,7 @@ pub fn render_page(
                         }
 
                         let text_x = if fragment.layout.text_align.as_deref() == Some("center") {
-                            fragment_box.content_x + (fragment_box.content_width - estimated_text_width(&text_to_draw, fragment.px_size)) * 0.5
+                            fragment_box.content_x + (fragment_box.content_width - estimated_text_width(&text_to_draw, fragment.px_size, fragment.is_bold)) * 0.5
                         } else {
                             fragment_box.content_x + 12.0
                         };
@@ -1266,9 +1266,9 @@ pub fn render_page(
                     line_height = active_line_height;
                     line_started = true;
 
-                    if fragment_box.content_width > 300.0 {
-                        document_y += line_height;
-                        cursor_x = fragment_box.content_x;
+                    if fragment_box.content_width > 300.0 || fragment.line_break_after {
+                        document_y += line_height + fragment.margin_after;
+                        cursor_x = layout_box.content_x;
                         line_height = 0.0;
                         line_started = false;
                         line_index += 1;
@@ -1280,7 +1280,7 @@ pub fn render_page(
                     let line_bottom = screen_y + active_line_height;
 
                     let btn_text = fragment.text.clone();
-                    let text_w = estimated_text_width(&btn_text, fragment.px_size);
+                    let text_w = estimated_text_width(&btn_text, fragment.px_size, true);
                     let button_width = text_w + 32.0;
 
                     if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom && line_index < MAX_VISIBLE_LINES {
@@ -1349,6 +1349,15 @@ pub fn render_page(
                     cursor_x += button_width + 12.0;
                     line_height = active_line_height;
                     line_started = true;
+
+                    if fragment.line_break_after {
+                        document_y += line_height + fragment.margin_after;
+                        cursor_x = layout_box.content_x;
+                        line_height = 0.0;
+                        line_started = false;
+                        line_index += 1;
+                        ensure_line_context(line_index, &active_align, layout_box.content_x, layout_box.content_width);
+                    }
                 } else if fragment.is_image {
                     let image_url = fragment.image_url.as_ref().map(|s| s.as_str()).unwrap_or("");
                     let cached_image = {
@@ -1455,7 +1464,7 @@ pub fn render_page(
                                 "Cargando...".to_string()
                             };
 
-                            let text_w = estimated_text_width(&alt_text, 11.0);
+                            let text_w = estimated_text_width(&alt_text, 11.0, false);
                             let text_x = cursor_x + (dest_w - text_w) / 2.0;
                             let text_y = screen_y + (dest_h - 14.0) / 2.0;
 
@@ -1493,6 +1502,15 @@ pub fn render_page(
                     cursor_x += dest_w;
                     line_height = active_line_height;
                     line_started = true;
+
+                    if fragment.line_break_after {
+                        document_y += line_height + fragment.margin_after;
+                        cursor_x = layout_box.content_x;
+                        line_height = 0.0;
+                        line_started = false;
+                        line_index += 1;
+                        ensure_line_context(line_index, &active_align, layout_box.content_x, layout_box.content_width);
+                    }
                 } else {
                     let color = if fragment.href.is_some() && fragment.color == TextStyleState::default().color {
                         [0.478, 0.635, 0.968, 1.0]
@@ -1500,9 +1518,9 @@ pub fn render_page(
                         fragment.color
                     };
 
-                    let space_width = estimated_text_width(" ", fragment.px_size);
+                    let space_width = estimated_text_width(" ", fragment.px_size, fragment.is_bold);
                     for word in fragment.text.split_whitespace() {
-                        let word_width = estimated_text_width(word, fragment.px_size);
+                        let word_width = estimated_text_width(word, fragment.px_size, fragment.is_bold);
                         let mut leading_space = if line_started { space_width } else { 0.0 };
                         if line_started
                             && cursor_x + leading_space + word_width > layout_box.content_x + layout_box.content_width
@@ -1596,7 +1614,7 @@ pub fn render_page(
 
                 for (tr, l_idx) in &page_text_requests {
                     if *l_idx == line_idx {
-                        let w = estimated_text_width(&tr.text, tr.px_size);
+                        let w = estimated_text_width(&tr.text, tr.px_size, tr.is_bold);
                         min_x = min_x.min(tr.pos_x);
                         max_x = max_x.max(tr.pos_x + w);
                         has_elements = true;
@@ -2577,8 +2595,28 @@ fn is_low_value_text(text: &str) -> bool {
     matches!(text.trim(), "." | "," | "|" | "-" | "•")
 }
 
-fn estimated_text_width(text: &str, px_size: f32) -> f32 {
-    text.chars().count() as f32 * (px_size * 0.54).max(7.0)
+fn estimated_text_width(text: &str, px_size: f32, is_bold: bool) -> f32 {
+    let mut sum = 0.0;
+    for c in text.chars() {
+        let factor = if c.is_uppercase() {
+            0.68
+        } else if c.is_lowercase() {
+            0.51
+        } else if c.is_numeric() {
+            0.56
+        } else if c == ' ' {
+            0.28
+        } else {
+            0.45
+        };
+        let char_w = px_size * factor;
+        sum += char_w.max(6.0);
+    }
+    if is_bold {
+        sum * 1.08
+    } else {
+        sum
+    }
 }
 
 fn should_skip_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> bool {

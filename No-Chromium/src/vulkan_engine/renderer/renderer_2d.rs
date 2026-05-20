@@ -48,6 +48,7 @@ pub struct Renderer2D {
     // Layout State
     pub text_quads: Vec<TextQuad>,
     pub quality: QualityProfile,
+    pub texture_rgba: Vec<u8>,
 }
 
 impl Renderer2D {
@@ -477,11 +478,18 @@ impl Renderer2D {
                 vertex_count: 0,
                 text_quads: text_data.quads,
                 quality,
+                texture_rgba: text_data.rgba_data.clone(),
             }
         }
     }
 
     pub fn update_text_atlas(&mut self, ctx: &VulkanContext, text_data: RasterizedAtlas) {
+        if self.texture_rgba == text_data.rgba_data {
+            self.text_quads = text_data.quads;
+            return;
+        }
+        self.texture_rgba = text_data.rgba_data.clone();
+
         unsafe {
             ctx.device.device.device_wait_idle().unwrap();
 

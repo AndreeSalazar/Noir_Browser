@@ -61,7 +61,42 @@ pub(super) fn append_app_shell_fallback(
     fragments: &mut Vec<LayoutFragment>,
     text_color: [f32; 4],
 ) {
-    let is_youtube = page_url.contains("youtube.com");
+    let is_sorry = page_url.contains("google.com/sorry") || raw_html.contains("google.com/sorry") || raw_html.contains("sorry/index");
+    if is_sorry {
+        push_fallback_fragment(
+            fragments,
+            "[ AVISO: VERIFICACION DE CAPTCHA REQUERIDA ]",
+            24.0,
+            true,
+            32.0,
+            12.0,
+            [1.0, 0.4, 0.4, 1.0],
+            true,
+        );
+        push_fallback_fragment(
+            fragments,
+            "YouTube ha detectado trafico inusual desde tu direccion IP y requiere verificar que eres humano (CAPTCHA).",
+            16.0,
+            true,
+            24.0,
+            8.0,
+            [0.9, 0.9, 0.9, 1.0],
+            true,
+        );
+        push_fallback_fragment(
+            fragments,
+            "Para resolverlo, por favor abre la pagina en un navegador estandar, soluciona el CAPTCHA de Google e intenta de nuevo.",
+            14.0,
+            false,
+            20.0,
+            16.0,
+            [0.7, 0.7, 0.7, 1.0],
+            true,
+        );
+        return;
+    }
+
+    let is_youtube = page_url.contains("youtube.com") || page_url.contains("google.com/sorry"); // allow fallback if redirected
     let visible_fragments = fragments
         .iter()
         .filter(|fragment| {
@@ -166,6 +201,10 @@ pub(super) fn append_app_shell_fallback(
                     .into_owned()
                     .find(|(k, _)| k == "search_query" || k == "q")
                     .map(|(_, v)| v)
+            })
+            .filter(|q| {
+                let is_token = q.len() > 30 && !q.contains(' ') && (q.starts_with("Eg") || q.contains('_') || q.contains('-'));
+                !is_token
             });
 
         // Render YouTube logo image!
@@ -510,22 +549,22 @@ fn push_player_shell_fragments(
         push_link_fragment(
             fragments,
             "[PLAY] Reproducir en Invidious (Ligero)",
-            &format!("https://invidious.f5.si/watch?v={}", vid),
+            &format!("https://inv.thepixora.com/watch?v={}", vid),
         );
         push_link_fragment(
             fragments,
             "[STREAM] Stream Directo (360p MP4)",
-            &format!("https://invidious.f5.si/latest_version?id={}&itag=18&local=true", vid),
+            &format!("https://inv.thepixora.com/latest_version?id={}&itag=18&local=true", vid),
         );
         push_link_fragment(
             fragments,
             "[STREAM] Stream Directo (720p MP4)",
-            &format!("https://invidious.f5.si/latest_version?id={}&itag=22&local=true", vid),
+            &format!("https://inv.thepixora.com/latest_version?id={}&itag=22&local=true", vid),
         );
         push_link_fragment(
             fragments,
             "[MIRROR] Servidor Alternativo",
-            &format!("https://inv.thepixora.com/watch?v={}", vid),
+            &format!("https://yewtu.be/watch?v={}", vid),
         );
     } else if !player.direct_streams.is_empty() {
         for stream in &player.direct_streams {
@@ -1011,8 +1050,8 @@ fn is_useful_video_title(title: &str) -> bool {
 }
 
 fn extract_assigned_json(raw_html: &str, variable: &str) -> Option<String> {
-    let marker = format!("{variable} = ");
-    let start = raw_html.find(&marker)? + marker.len();
+    let var_pos = raw_html.find(variable)?;
+    let start = var_pos + variable.len();
     let json_start = raw_html[start..].find('{')? + start;
     extract_balanced_json_object(&raw_html[json_start..])
 }
