@@ -392,25 +392,26 @@ pub fn generate_chrome_vertices(
         pill,
         8.0 * scale_factor,
     );
-    push_quad_px(
+    push_pill_outline(
         &mut raw_data,
         width,
         height,
         layout.address_bar.x_min,
         layout.address_bar.y_min,
         url_w,
-        1.0 * scale_factor,
-        pill_edge,
+        url_h,
+        1.5 * scale_factor,
+        (0.120, 0.650, 0.820, 0.85),
+        8.0 * scale_factor,
     );
-    push_quad_px(
+    push_icon_star(
         &mut raw_data,
         width,
         height,
-        layout.address_bar.x_min,
-        layout.address_bar.y_max - 1.0 * scale_factor,
-        url_w,
-        1.0 * scale_factor,
-        (0.0, 0.0, 0.0, 0.26),
+        layout.address_bar.x_max - 20.0 * scale_factor,
+        layout.address_bar.y_min + 11.0 * scale_factor,
+        (0.950, 0.750, 0.200, 1.0),
+        scale_factor,
     );
 
     push_nav_button(&mut raw_data, width, height, layout.back_btn.x_min, layout.back_btn.y_min, subtle, scale_factor);
@@ -534,6 +535,73 @@ fn push_window_button(raw: &mut Vec<f32>, width: f32, height: f32, x: f32, butto
     }
 }
 
+fn push_pill_outline(
+    raw: &mut Vec<f32>,
+    width: f32,
+    height: f32,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    thickness: f32,
+    color: (f32, f32, f32, f32),
+    radius: f32,
+) {
+    push_line_px(raw, width, height, x + radius, y, x + w - radius, y, thickness, color);
+    push_line_px(raw, width, height, x + radius, y + h, x + w - radius, y + h, thickness, color);
+    let segments = 12;
+    let r = radius;
+    let left_cx = x + radius;
+    let left_cy = y + h * 0.5;
+    let mut last = (left_cx, left_cy + r);
+    for i in 1..=segments {
+        let t = std::f32::consts::FRAC_PI_2 + (i as f32 / segments as f32) * std::f32::consts::PI;
+        let next = (left_cx + t.cos() * r, left_cy + t.sin() * r);
+        push_line_px(raw, width, height, last.0, last.1, next.0, next.1, thickness, color);
+        last = next;
+    }
+    let right_cx = x + w - radius;
+    let right_cy = y + h * 0.5;
+    let mut last = (right_cx, right_cy - r);
+    for i in 1..=segments {
+        let t = -std::f32::consts::FRAC_PI_2 + (i as f32 / segments as f32) * std::f32::consts::PI;
+        let next = (right_cx + t.cos() * r, right_cy + t.sin() * r);
+        push_line_px(raw, width, height, last.0, last.1, next.0, next.1, thickness, color);
+        last = next;
+    }
+}
+
+fn push_icon_star(
+    raw: &mut Vec<f32>,
+    width: f32,
+    height: f32,
+    cx: f32,
+    cy: f32,
+    color: (f32, f32, f32, f32),
+    scale_factor: f32,
+) {
+    let s = 0.70 * scale_factor;
+    let map_x = |x_svg: f32| cx + (x_svg - 12.0) * s;
+    let map_y = |y_svg: f32| cy + (y_svg - 12.0) * s;
+    let thickness = 1.6 * scale_factor;
+    let points = [
+        (12.0, 7.5),
+        (13.1, 9.7),
+        (15.5, 10.05),
+        (13.75, 11.75),
+        (14.17, 14.15),
+        (12.0, 13.0),
+        (9.83, 14.15),
+        (10.25, 11.75),
+        (8.5, 10.05),
+        (10.9, 9.7),
+        (12.0, 7.5),
+    ];
+    for pair in points.windows(2) {
+        push_line_px(raw, width, height, map_x(pair[0].0), map_y(pair[0].1), map_x(pair[1].0), map_y(pair[1].1), thickness, color);
+    }
+}
+
 fn push_icon_back(
     raw: &mut Vec<f32>,
     width: f32,
@@ -543,9 +611,13 @@ fn push_icon_back(
     color: (f32, f32, f32, f32),
     scale_factor: f32,
 ) {
-    push_line_px(raw, width, height, cx + 5.0 * scale_factor, cy, cx - 5.0 * scale_factor, cy, 2.5 * scale_factor, color);
-    push_line_px(raw, width, height, cx - 5.0 * scale_factor, cy, cx, cy - 5.0 * scale_factor, 2.5 * scale_factor, color);
-    push_line_px(raw, width, height, cx - 5.0 * scale_factor, cy, cx, cy + 5.0 * scale_factor, 2.5 * scale_factor, color);
+    let s = 0.75 * scale_factor;
+    let map_x = |x_svg: f32| cx + (x_svg - 12.0) * s;
+    let map_y = |y_svg: f32| cy + (y_svg - 12.0) * s;
+    let thickness = 2.2 * scale_factor;
+    push_line_px(raw, width, height, map_x(15.0), map_y(6.0), map_x(9.0), map_y(12.0), thickness, color);
+    push_line_px(raw, width, height, map_x(9.0), map_y(12.0), map_x(15.0), map_y(18.0), thickness, color);
+    push_line_px(raw, width, height, map_x(9.0), map_y(12.0), map_x(20.0), map_y(12.0), thickness, color);
 }
 
 fn push_icon_forward(
@@ -557,9 +629,13 @@ fn push_icon_forward(
     color: (f32, f32, f32, f32),
     scale_factor: f32,
 ) {
-    push_line_px(raw, width, height, cx - 5.0 * scale_factor, cy, cx + 5.0 * scale_factor, cy, 2.5 * scale_factor, color);
-    push_line_px(raw, width, height, cx + 5.0 * scale_factor, cy, cx, cy - 5.0 * scale_factor, 2.5 * scale_factor, color);
-    push_line_px(raw, width, height, cx + 5.0 * scale_factor, cy, cx, cy + 5.0 * scale_factor, 2.5 * scale_factor, color);
+    let s = 0.75 * scale_factor;
+    let map_x = |x_svg: f32| cx + (x_svg - 12.0) * s;
+    let map_y = |y_svg: f32| cy + (y_svg - 12.0) * s;
+    let thickness = 2.2 * scale_factor;
+    push_line_px(raw, width, height, map_x(9.0), map_y(6.0), map_x(15.0), map_y(12.0), thickness, color);
+    push_line_px(raw, width, height, map_x(15.0), map_y(12.0), map_x(9.0), map_y(18.0), thickness, color);
+    push_line_px(raw, width, height, map_x(4.0), map_y(12.0), map_x(15.0), map_y(12.0), thickness, color);
 }
 
 fn push_icon_reload(
@@ -571,37 +647,24 @@ fn push_icon_reload(
     color: (f32, f32, f32, f32),
     scale_factor: f32,
 ) {
-    let mut last: Option<(f32, f32)> = None;
-    for i in 0..18 {
-        let t = 0.45 + i as f32 * 0.255;
-        let p = (cx + t.cos() * 6.0 * scale_factor, cy + t.sin() * 6.0 * scale_factor);
-        if let Some(prev) = last {
-            push_line_px(raw, width, height, prev.0, prev.1, p.0, p.1, 2.5 * scale_factor, color);
-        }
-        last = Some(p);
+    let s = 0.75 * scale_factor;
+    let map_x = |x_svg: f32| cx + (x_svg - 12.0) * s;
+    let map_y = |y_svg: f32| cy + (y_svg - 12.0) * s;
+    let thickness = 2.0 * scale_factor;
+    let segments = 24;
+    let center_x = map_x(12.0);
+    let center_y = map_y(12.0);
+    let r = 8.0 * s;
+    let max_angle = 1.75 * std::f32::consts::TAU;
+    let mut last = (center_x + r, center_y);
+    for i in 1..=segments {
+        let t = (i as f32 / segments as f32) * max_angle;
+        let next = (center_x + t.cos() * r, center_y + t.sin() * r);
+        push_line_px(raw, width, height, last.0, last.1, next.0, next.1, thickness, color);
+        last = next;
     }
-    push_line_px(
-        raw,
-        width,
-        height,
-        cx + 5.6 * scale_factor,
-        cy - 4.0 * scale_factor,
-        cx + 8.0 * scale_factor,
-        cy - 8.0 * scale_factor,
-        2.5 * scale_factor,
-        color,
-    );
-    push_line_px(
-        raw,
-        width,
-        height,
-        cx + 5.6 * scale_factor,
-        cy - 4.0 * scale_factor,
-        cx + 2.0 * scale_factor,
-        cy - 5.8 * scale_factor,
-        2.5 * scale_factor,
-        color,
-    );
+    push_line_px(raw, width, height, map_x(20.0), map_y(4.0), map_x(20.0), map_y(10.0), thickness, color);
+    push_line_px(raw, width, height, map_x(20.0), map_y(10.0), map_x(14.0), map_y(10.0), thickness, color);
 }
 
 fn push_icon_home(
@@ -613,41 +676,18 @@ fn push_icon_home(
     color: (f32, f32, f32, f32),
     scale_factor: f32,
 ) {
-    push_line_px(raw, width, height, cx - 7.0 * scale_factor, cy, cx, cy - 7.0 * scale_factor, 2.5 * scale_factor, color);
-    push_line_px(raw, width, height, cx, cy - 7.0 * scale_factor, cx + 7.0 * scale_factor, cy, 2.5 * scale_factor, color);
-    push_line_px(
-        raw,
-        width,
-        height,
-        cx - 5.0 * scale_factor,
-        cy,
-        cx - 5.0 * scale_factor,
-        cy + 7.0 * scale_factor,
-        2.5 * scale_factor,
-        color,
-    );
-    push_line_px(
-        raw,
-        width,
-        height,
-        cx + 5.0 * scale_factor,
-        cy,
-        cx + 5.0 * scale_factor,
-        cy + 7.0 * scale_factor,
-        2.5 * scale_factor,
-        color,
-    );
-    push_line_px(
-        raw,
-        width,
-        height,
-        cx - 5.0 * scale_factor,
-        cy + 7.0 * scale_factor,
-        cx + 5.0 * scale_factor,
-        cy + 7.0 * scale_factor,
-        2.5 * scale_factor,
-        color,
-    );
+    let s = 0.75 * scale_factor;
+    let map_x = |x_svg: f32| cx + (x_svg - 12.0) * s;
+    let map_y = |y_svg: f32| cy + (y_svg - 12.0) * s;
+    let thickness = 2.0 * scale_factor;
+    push_line_px(raw, width, height, map_x(4.0), map_y(11.0), map_x(12.0), map_y(4.0), thickness, color);
+    push_line_px(raw, width, height, map_x(12.0), map_y(4.0), map_x(20.0), map_y(11.0), thickness, color);
+    push_line_px(raw, width, height, map_x(6.5), map_y(10.5), map_x(6.5), map_y(20.0), thickness, color);
+    push_line_px(raw, width, height, map_x(6.5), map_y(20.0), map_x(17.5), map_y(20.0), thickness, color);
+    push_line_px(raw, width, height, map_x(17.5), map_y(20.0), map_x(17.5), map_y(10.5), thickness, color);
+    push_line_px(raw, width, height, map_x(10.0), map_y(20.0), map_x(10.0), map_y(15.0), thickness, color);
+    push_line_px(raw, width, height, map_x(10.0), map_y(15.0), map_x(14.0), map_y(15.0), thickness, color);
+    push_line_px(raw, width, height, map_x(14.0), map_y(15.0), map_x(14.0), map_y(20.0), thickness, color);
 }
 
 fn push_icon_lock(
@@ -659,40 +699,25 @@ fn push_icon_lock(
     color: (f32, f32, f32, f32),
     scale_factor: f32,
 ) {
-    push_quad_px(raw, width, height, cx - 4.5 * scale_factor, cy - 1.0 * scale_factor, 9.0 * scale_factor, 7.0 * scale_factor, color);
-    push_line_px(
-        raw,
-        width,
-        height,
-        cx - 3.2 * scale_factor,
-        cy - 1.0 * scale_factor,
-        cx - 3.2 * scale_factor,
-        cy - 5.0 * scale_factor,
-        2.0 * scale_factor,
-        color,
-    );
-    push_line_px(
-        raw,
-        width,
-        height,
-        cx + 3.2 * scale_factor,
-        cy - 1.0 * scale_factor,
-        cx + 3.2 * scale_factor,
-        cy - 5.0 * scale_factor,
-        2.0 * scale_factor,
-        color,
-    );
-    push_line_px(
-        raw,
-        width,
-        height,
-        cx - 3.2 * scale_factor,
-        cy - 5.0 * scale_factor,
-        cx + 3.2 * scale_factor,
-        cy - 5.0 * scale_factor,
-        2.0 * scale_factor,
-        color,
-    );
+    let s = 0.75 * scale_factor;
+    let map_x = |x_svg: f32| cx + (x_svg - 12.0) * s;
+    let map_y = |y_svg: f32| cy + (y_svg - 12.0) * s;
+    let thickness = 1.8 * scale_factor;
+    push_pill_outline(raw, width, height, map_x(5.0), map_y(10.0), 14.0 * s, 10.0 * s, thickness, color, 2.0 * s);
+    push_line_px(raw, width, height, map_x(8.0), map_y(10.0), map_x(8.0), map_y(7.0), thickness, color);
+    push_line_px(raw, width, height, map_x(16.0), map_y(7.0), map_x(16.0), map_y(10.0), thickness, color);
+    let segments = 10;
+    let arc_cx = map_x(12.0);
+    let arc_cy = map_y(7.0);
+    let r = 4.0 * s;
+    let mut last = (arc_cx - r, arc_cy);
+    for i in 1..=segments {
+        let t = std::f32::consts::PI - (i as f32 / segments as f32) * std::f32::consts::PI;
+        let next = (arc_cx + t.cos() * r, arc_cy + t.sin() * r);
+        push_line_px(raw, width, height, last.0, last.1, next.0, next.1, thickness, color);
+        last = next;
+    }
+    push_line_px(raw, width, height, map_x(12.0), map_y(14.0), map_x(12.0), map_y(16.0), thickness, color);
 }
 
 fn push_icon_globe(

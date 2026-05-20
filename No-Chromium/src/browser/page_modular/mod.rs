@@ -1063,14 +1063,16 @@ pub fn render_page(
                             .and_then(|v| parse_layout_length(v, available))
                             .unwrap_or(0.0);
 
-                        cursor_x = block.layout_box.box_x + block.layout_box.box_width + margin_right;
-                        let line_height_on_current_line = if document_y > block.start_y {
-                            line_height.max(40.0)
-                        } else {
-                            height
-                        };
-                        line_height = line_height.max(line_height_on_current_line);
-                        line_started = true;
+                        if line_started {
+                            cursor_x = block.layout_box.box_x + block.layout_box.box_width + margin_right;
+                            let line_height_on_current_line = if document_y > block.start_y {
+                                line_height.max(40.0)
+                            } else {
+                                height
+                            };
+                            line_height = line_height.max(line_height_on_current_line);
+                            line_started = true;
+                        }
 
                         if let Some(parent_block) = active_blocks.last() {
                             active_box = parent_block.layout_box;
@@ -1139,10 +1141,17 @@ pub fn render_page(
                 active_box = layout_box;
 
                 if fragment.is_input {
+                    let fragment_box = resolve_fragment_layout(
+                        &fragment.layout,
+                        viewport_width,
+                        layout_box.content_x,
+                        layout_box.content_width,
+                    );
+
                     // Force line break before input if we are already inline and it's a wide input
-                    if line_started && layout_box.content_width > 300.0 {
+                    if line_started && fragment_box.content_width > 300.0 {
                         document_y += line_height;
-                        cursor_x = layout_box.content_x;
+                        cursor_x = fragment_box.content_x;
                         line_height = 0.0;
                         line_started = false;
                         line_index += 1;
@@ -1185,9 +1194,9 @@ pub fn render_page(
 
                         if draw_h > 0.0 {
                             page_render_boxes.push((RenderBox {
-                                x: layout_box.content_x,
+                                x: fragment_box.content_x,
                                 y: draw_y,
-                                w: layout_box.content_width,
+                                w: fragment_box.content_width,
                                 h: draw_h,
                                 color: if is_focused { [0.26, 0.52, 0.96, 1.0] } else { [0.35, 0.35, 0.37, 1.0] },
                                 radius: parsed_radius,
@@ -1201,9 +1210,9 @@ pub fn render_page(
                         let draw_inner_h = (inner_y + inner_h - draw_inner_y).min(visible_bottom - draw_inner_y).max(0.0);
                         if draw_inner_h > 0.0 {
                             page_render_boxes.push((RenderBox {
-                                x: layout_box.content_x + 1.0,
+                                x: fragment_box.content_x + 1.0,
                                 y: draw_inner_y,
-                                w: layout_box.content_width - 2.0,
+                                w: fragment_box.content_width - 2.0,
                                 h: draw_inner_h,
                                 color: [0.188, 0.192, 0.204, 1.0], // Dark input background #303134
                                 radius: (parsed_radius - 1.0).max(0.0),
@@ -1211,13 +1220,19 @@ pub fn render_page(
                             }, line_index));
                         }
 
+                        let text_x = if fragment.layout.text_align.as_deref() == Some("center") {
+                            fragment_box.content_x + (fragment_box.content_width - estimated_text_width(&text_to_draw, fragment.px_size)) * 0.5
+                        } else {
+                            fragment_box.content_x + 12.0
+                        };
+
                         let text_y = screen_y + (active_line_height - fragment.line_height) / 2.0;
                         if text_y >= CONTENT_TOP && text_y <= visible_bottom {
                             page_text_requests.push((TextRequest {
                                 text: text_to_draw,
                                 px_size: fragment.px_size,
                                 is_bold: false,
-                                pos_x: layout_box.content_x + 12.0,
+                                pos_x: text_x.max(fragment_box.content_x + 4.0),
                                 pos_y: text_y,
                                 color: draw_color,
                             }, line_index));
@@ -1228,9 +1243,9 @@ pub fn render_page(
                         if draw_link_h > 0.0 {
                             page_link_hitboxes.push((LinkHitbox {
                                 href: String::new(),
-                                x: layout_box.content_x,
+                                x: fragment_box.content_x,
                                 y: draw_link_y,
-                                w: layout_box.content_width,
+                                w: fragment_box.content_width,
                                 h: draw_link_h,
                                 is_input: true,
                                 is_submit: false,
@@ -1244,13 +1259,13 @@ pub fn render_page(
                         );
                     }
 
-                    cursor_x += layout_box.content_width;
+                    cursor_x += fragment_box.content_width;
                     line_height = active_line_height;
                     line_started = true;
 
-                    if layout_box.content_width > 300.0 {
+                    if fragment_box.content_width > 300.0 {
                         document_y += line_height;
-                        cursor_x = layout_box.content_x;
+                        cursor_x = fragment_box.content_x;
                         line_height = 0.0;
                         line_started = false;
                         line_index += 1;
@@ -1261,50 +1276,47 @@ pub fn render_page(
                     let screen_y = document_y - scroll_offset;
                     let line_bottom = screen_y + active_line_height;
 
+                    let btn_text = fragment.text.clone();
+                    let text_w = estimated_text_width(&btn_text, fragment.px_size);
+                    let button_width = text_w + 32.0;
+
                     if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom && line_index < MAX_VISIBLE_LINES {
                         let box_y = screen_y - 4.0;
                         let box_h = active_line_height + 8.0;
                         let draw_y = box_y.max(CONTENT_TOP);
                         let draw_h = (box_y + box_h - draw_y).min(visible_bottom - draw_y).max(0.0);
                         if draw_h > 0.0 {
+                            // Border box (acting as the border)
                             page_render_boxes.push((RenderBox {
-                                x: layout_box.content_x,
+                                x: cursor_x,
                                 y: draw_y,
-                                w: layout_box.content_width,
+                                w: button_width,
                                 h: draw_h,
-                                color: [0.188, 0.192, 0.204, 1.0], // Dark button background #303134
-                                radius: 6.0,
+                                color: [0.12, 0.65, 0.82, 0.5], // Subtle cyan border
+                                radius: 18.0,
                                 href: None,
                             }, line_index));
-                        }
 
-                        let border_y = screen_y - 4.0;
-                        let border_h = 1.0;
-                        let draw_border_y = border_y.max(CONTENT_TOP);
-                        let draw_border_h = (border_y + border_h - draw_border_y).min(visible_bottom - draw_border_y).max(0.0);
-                        if draw_border_h > 0.0 {
+                            // Inner box (background)
                             page_render_boxes.push((RenderBox {
-                                x: layout_box.content_x,
-                                y: draw_border_y,
-                                w: layout_box.content_width,
-                                h: draw_border_h,
-                                color: [0.3, 0.3, 0.32, 1.0], // Darker top border
-                                radius: 0.0,
+                                x: cursor_x + 1.0,
+                                y: draw_y + 1.0,
+                                w: button_width - 2.0,
+                                h: draw_h - 2.0,
+                                color: [0.188, 0.192, 0.204, 1.0], // Dark button background #303134
+                                radius: 17.0,
                                 href: None,
                             }, line_index));
                         }
 
-                        let btn_text = fragment.text.clone();
-                        let text_w = estimated_text_width(&btn_text, fragment.px_size);
-                        let text_x = layout_box.content_x + (layout_box.content_width - text_w) / 2.0;
-
+                        let text_x = cursor_x + 16.0;
                         let text_y = screen_y + (active_line_height - fragment.line_height) / 2.0;
                         if text_y >= CONTENT_TOP && text_y <= visible_bottom {
                             page_text_requests.push((TextRequest {
                                 text: btn_text,
                                 px_size: fragment.px_size,
                                 is_bold: true,
-                                pos_x: text_x.max(layout_box.content_x + 4.0),
+                                pos_x: text_x,
                                 pos_y: text_y,
                                 color: [0.91, 0.92, 0.93, 1.0], // Light button text #e8eaed
                             }, line_index));
@@ -1315,9 +1327,9 @@ pub fn render_page(
                         if draw_link_h > 0.0 {
                             page_link_hitboxes.push((LinkHitbox {
                                 href: String::new(),
-                                x: layout_box.content_x,
+                                x: cursor_x,
                                 y: draw_link_y,
-                                w: layout_box.content_width,
+                                w: button_width,
                                 h: draw_link_h,
                                 is_input: false,
                                 is_submit: true,
@@ -1331,7 +1343,7 @@ pub fn render_page(
                         );
                     }
 
-                    cursor_x += layout_box.content_width;
+                    cursor_x += button_width + 12.0;
                     line_height = active_line_height;
                     line_started = true;
                 } else if fragment.is_image {
