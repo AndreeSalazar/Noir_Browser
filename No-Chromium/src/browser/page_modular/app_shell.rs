@@ -274,11 +274,17 @@ fn push_link_fragment(fragments: &mut Vec<LayoutFragment>, text: &str, href: &st
 }
 
 fn is_youtube_home_shell(page_url: &str, raw_html: &str) -> bool {
-    let is_youtube = Url::parse(page_url)
-        .ok()
-        .and_then(|url| url.host_str().map(|host| host.contains("youtube.com")))
-        .unwrap_or(false);
-    is_youtube && raw_html.contains("feedNudgeRenderer") && !raw_html.contains("\"videoId\"")
+    if let Ok(url) = Url::parse(page_url) {
+        if let Some(host) = url.host_str() {
+            if host.contains("youtube.com") {
+                let path = url.path();
+                return (path == "/" || path.is_empty() || path.starts_with("/feed") || path.starts_with("/results"))
+                    && !raw_html.contains("\"videoId\"")
+                    && !url.query().unwrap_or("").contains("v=");
+            }
+        }
+    }
+    false
 }
 
 fn is_youtube_watch_shell(page_url: &str, raw_html: &str) -> bool {

@@ -79,45 +79,49 @@ pub fn spawn_image_decode_task(url: String, proxy: EventLoopProxy<BrowserEvent>)
         }
     }
 
-    tokio::spawn(async move {
-        match fetch_image_bytes(&url).await {
-            Ok(bytes) => {
-                // Decode image in a CPU blocking task to not stall the async executor
-                let url_clone = url.clone();
-                let decode_res = tokio::task::spawn_blocking(move || {
-                    image::load_from_memory(&bytes)
-                }).await;
+    if let Some(handle) = crate::app::get_runtime_handle() {
+        handle.spawn(async move {
+            match fetch_image_bytes(&url).await {
+                Ok(bytes) => {
+                    // Decode image in a CPU blocking task to not stall the async executor
+                    let url_clone = url.clone();
+                    let decode_res = tokio::task::spawn_blocking(move || {
+                        image::load_from_memory(&bytes)
+                    }).await;
 
-                match decode_res {
-                    Ok(Ok(img)) => {
-                        let rgba_img = img.to_rgba8();
-                        let loaded = Arc::new(LoadedImage {
-                            width: rgba_img.width(),
-                            height: rgba_img.height(),
-                            rgba: rgba_img.into_raw(),
-                        });
+                    match decode_res {
+                        Ok(Ok(img)) => {
+                            let rgba_img = img.to_rgba8();
+                            let loaded = Arc::new(LoadedImage {
+                                width: rgba_img.width(),
+                                height: rgba_img.height(),
+                                rgba: rgba_img.into_raw(),
+                            });
 
-                        {
-                            let mut cache = get_image_cache().lock().unwrap();
-                            cache.insert(url.clone(), loaded);
+                            {
+                                let mut cache = get_image_cache().lock().unwrap();
+                                cache.insert(url.clone(), loaded);
+                            }
+
+                            println!("[Image Cache] Successfully decoded image: {}", url);
+                            let _ = proxy.send_event(BrowserEvent::ImageLoaded { url });
                         }
-
-                        println!("[Image Cache] Successfully decoded image: {}", url);
-                        let _ = proxy.send_event(BrowserEvent::ImageLoaded { url });
-                    }
-                    Ok(Err(e)) => {
-                        println!("[Image Cache] Failed to decode image from {}: {:?}", url_clone, e);
-                    }
-                    Err(join_err) => {
-                        println!("[Image Cache] Blocking decode join error for {}: {:?}", url_clone, join_err);
+                        Ok(Err(e)) => {
+                            println!("[Image Cache] Failed to decode image from {}: {:?}", url_clone, e);
+                        }
+                        Err(join_err) => {
+                            println!("[Image Cache] Blocking decode join error for {}: {:?}", url_clone, join_err);
+                        }
                     }
                 }
+                Err(e) => {
+                    println!("[Image Cache] Failed to download image from {}: {:?}", url, e);
+                }
             }
-            Err(e) => {
-                println!("[Image Cache] Failed to download image from {}: {:?}", url, e);
-            }
-        }
-    });
+        });
+    } else {
+        println!("[Image Cache] Warning: No Tokio runtime handle set, could not spawn decode task for {}", url);
+    }
 }
 
 /// Pre-popula la caché de imágenes en disco y en memoria de forma instantánea usando recursos empaquetados.

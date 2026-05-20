@@ -510,12 +510,41 @@ fn append_stylesheet_summary(fragments: &mut Vec<LayoutFragment>, bundle: &Style
     );
 }
 
+fn is_light_color(color: [f32; 4]) -> bool {
+    let luminance = 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2];
+    luminance > 0.6
+}
+
+fn map_background_to_dark(color: [f32; 4]) -> [f32; 4] {
+    if is_light_color(color) {
+        // Map light background to Google's standard dark gray: #202124
+        [0.125, 0.13, 0.14, 1.0]
+    } else {
+        color
+    }
+}
+
+fn map_text_to_light_if_needed(text_color: [f32; 4], background_color: [f32; 4]) -> [f32; 4] {
+    let bg_is_dark = !is_light_color(background_color);
+    if bg_is_dark {
+        let text_lum = 0.2126 * text_color[0] + 0.7152 * text_color[1] + 0.0722 * text_color[2];
+        if text_lum < 0.45 {
+            // Text is too dark on a dark background; map it to standard Google dark mode text: #e8eaed
+            [0.91, 0.92, 0.93, 1.0]
+        } else {
+            text_color
+        }
+    } else {
+        text_color
+    }
+}
+
 fn derive_page_style(css: &CssCascade) -> PageStyle {
     let empty = HashMap::new();
     let html = css.declarations_for(&HtmlTag::Custom("html".to_string()), &empty);
     let body = css.declarations_for(&HtmlTag::Custom("body".to_string()), &empty);
 
-    let background = body
+    let mut background = body
         .background_color
         .as_deref()
         .or(body.background.as_deref())
@@ -524,6 +553,8 @@ fn derive_page_style(css: &CssCascade) -> PageStyle {
         .and_then(first_css_color)
         .unwrap_or([0.102, 0.102, 0.180, 1.0]);
 
+    background = map_background_to_dark(background);
+
     let mut text = body
         .color
         .as_deref()
@@ -531,6 +562,7 @@ fn derive_page_style(css: &CssCascade) -> PageStyle {
         .and_then(parse_color)
         .unwrap_or_else(|| readable_text_color(background));
     text = ensure_contrast(text, background);
+    text = map_text_to_light_if_needed(text, background);
 
     PageStyle {
         background_hex: rgba_to_hex(background),
@@ -582,6 +614,7 @@ struct ActiveBlock {
     href: Option<String>,
     is_block: bool,
     start_cursor_x: f32,
+    render_box_idx: Option<usize>,
 }
 
 pub fn render_page(
@@ -658,6 +691,70 @@ pub fn render_page(
     let mut render_boxes = Vec::new();
     let mut active_blocks: Vec<ActiveBlock> = Vec::new();
 
+    let mut page_text_requests: Vec<(TextRequest, usize)> = Vec::new();
+    let mut page_image_requests: Vec<(AtlasImageRequest, usize)> = Vec::new();
+    let mut page_render_boxes: Vec<(RenderBox, usize)> = Vec::new();
+    let mut page_link_hitboxes: Vec<(LinkHitbox, usize)> = Vec::new();
+
+    #[derive(Clone)]
+    struct LineContext {
+        alignment: Option<String>,
+        container_x: f32,
+        container_width: f32,
+    }
+    let mut line_contexts: Vec<LineContext> = Vec::new();
+
+    let estimate_inline_block_width = |start_idx: usize, parent_layout: &FragmentLayout| -> f32 {
+        let available = (viewport_width - CONTENT_SIDE_PADDING).max(320.0);
+        if let Some(ref w_str) = parent_layout.width {
+            if let Some(w) = parse_layout_length(w_str, available) {
+                return w;
+            }
+        }
+        
+        let mut total_w = 0.0_f32;
+        let mut depth = 0;
+        for idx in (start_idx + 1)..document.fragments.len() {
+            match &document.fragments[idx] {
+                LayoutFragment::BlockStart { .. } => {
+                    depth += 1;
+                }
+                LayoutFragment::BlockEnd { .. } => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                }
+                LayoutFragment::Text(frag) => {
+                    if frag.is_input {
+                        let input_w = frag.layout.width.as_deref()
+                            .and_then(|v| parse_layout_length(v, available))
+                            .unwrap_or(150.0);
+                        total_w += input_w;
+                    } else if frag.is_submit {
+                        let btn_w = estimated_text_width(&frag.text, frag.px_size) + 32.0;
+                        total_w += btn_w;
+                    } else if frag.is_image {
+                        let img_w = frag.image_width.unwrap_or(80.0);
+                        total_w += img_w;
+                    } else {
+                        let txt_w = estimated_text_width(&frag.text, frag.px_size);
+                        total_w += txt_w;
+                    }
+                }
+            }
+        }
+        
+        let padding_left = parent_layout.padding_left.as_deref()
+            .and_then(|v| parse_layout_length(v, available))
+            .unwrap_or(0.0);
+        let padding_right = parent_layout.padding_right.as_deref()
+            .and_then(|v| parse_layout_length(v, available))
+            .unwrap_or(0.0);
+            
+        (total_w + padding_left + padding_right).max(16.0)
+    };
+
     let mut step_log = String::new();
     for (frag_idx, layout_frag) in document.fragments.iter().enumerate() {
         step_log.push_str(&format!(
@@ -697,6 +794,22 @@ pub fn render_page(
 
                     let block_color = background_color.unwrap_or([0.0, 0.0, 0.0, 0.0]);
                     let radius = border_radius.unwrap_or(0.0);
+                    let render_box_idx = if block_color[3] > 0.0 {
+                        let idx = render_boxes.len();
+                        render_boxes.push(RenderBox {
+                            x: 0.0,
+                            y: 0.0,
+                            w: 0.0,
+                            h: 0.0,
+                            color: [0.0, 0.0, 0.0, 0.0],
+                            radius: 0.0,
+                            href: None,
+                        });
+                        Some(idx)
+                    } else {
+                        None
+                    };
+
                     active_blocks.push(ActiveBlock {
                         id: *id,
                         layout: layout.clone(),
@@ -707,15 +820,17 @@ pub fn render_page(
                         href: href.clone(),
                         is_block: true,
                         start_cursor_x: cursor_x,
+                        render_box_idx,
                     });
                 } else {
                     // Inline-block:
                     let available = (viewport_width - CONTENT_SIDE_PADDING).max(320.0);
+                    let estimated_w = estimate_inline_block_width(frag_idx, layout);
                     let card_width = layout
                         .width
                         .as_deref()
                         .and_then(|v| parse_layout_length(v, available))
-                        .unwrap_or(130.0);
+                        .unwrap_or(estimated_w);
 
                     let margin_left = layout
                         .margin_left
@@ -743,7 +858,7 @@ pub fn render_page(
                         layout,
                         viewport_width,
                         cursor_x,
-                        default_content_width,
+                        card_width,
                     );
 
                     active_box = layout_box;
@@ -751,6 +866,22 @@ pub fn render_page(
 
                     let block_color = background_color.unwrap_or([0.0, 0.0, 0.0, 0.0]);
                     let radius = border_radius.unwrap_or(0.0);
+                    let render_box_idx = if block_color[3] > 0.0 {
+                        let idx = page_render_boxes.len();
+                        page_render_boxes.push((RenderBox {
+                            x: 0.0,
+                            y: 0.0,
+                            w: 0.0,
+                            h: 0.0,
+                            color: [0.0, 0.0, 0.0, 0.0],
+                            radius: 0.0,
+                            href: None,
+                        }, line_index));
+                        Some(idx)
+                    } else {
+                        None
+                    };
+
                     active_blocks.push(ActiveBlock {
                         id: *id,
                         layout: layout.clone(),
@@ -761,6 +892,7 @@ pub fn render_page(
                         href: href.clone(),
                         is_block: false,
                         start_cursor_x: cursor_x,
+                        render_box_idx,
                     });
                 }
             }
@@ -789,15 +921,29 @@ pub fn render_page(
                                 let draw_y = screen_y.max(CONTENT_TOP);
                                 let draw_h = (screen_y + height - draw_y).min(visible_bottom - draw_y).max(0.0);
                                 if draw_h > 0.0 {
-                                    render_boxes.push(RenderBox {
-                                        x: block.layout_box.box_x,
-                                        y: draw_y,
-                                        w: block.layout_box.box_width,
-                                        h: draw_h,
-                                        color: block.color,
-                                        radius: block.radius,
-                                        href: block.href.clone(),
-                                    });
+                                    if let Some(idx) = block.render_box_idx {
+                                        if idx < render_boxes.len() {
+                                            render_boxes[idx] = RenderBox {
+                                                x: block.layout_box.box_x,
+                                                y: draw_y,
+                                                w: block.layout_box.box_width,
+                                                h: draw_h,
+                                                color: block.color,
+                                                radius: block.radius,
+                                                href: block.href.clone(),
+                                            };
+                                        }
+                                    } else {
+                                        render_boxes.push(RenderBox {
+                                            x: block.layout_box.box_x,
+                                            y: draw_y,
+                                            w: block.layout_box.box_width,
+                                            h: draw_h,
+                                            color: block.color,
+                                            radius: block.radius,
+                                            href: block.href.clone(),
+                                        });
+                                    }
                                 }
                                 if let Some(link) = &block.href {
                                     let draw_y = screen_y.max(CONTENT_TOP);
@@ -839,22 +985,63 @@ pub fn render_page(
                             if line_bottom >= CONTENT_TOP && screen_y <= visible_bottom {
                                 let draw_y = screen_y.max(CONTENT_TOP);
                                 let draw_h = (screen_y + height - draw_y).min(visible_bottom - draw_y).max(0.0);
-                                if draw_h > 0.0 {
-                                    render_boxes.push(RenderBox {
-                                        x: block.layout_box.box_x,
-                                        y: draw_y,
-                                        w: block.layout_box.box_width,
-                                        h: draw_h,
-                                        color: block.color,
-                                        radius: block.radius,
-                                        href: block.href.clone(),
+                                
+                                // Register line context for alignment tracking
+                                let active_align = block.layout.text_align.clone()
+                                    .or_else(|| active_blocks.iter().rev().find_map(|b| b.layout.text_align.clone()));
+                                if line_index >= line_contexts.len() {
+                                    line_contexts.resize(line_index + 1, LineContext {
+                                        alignment: None,
+                                        container_x: default_content_x,
+                                        container_width: default_content_width,
                                     });
+                                }
+                                let ctx = &mut line_contexts[line_index];
+                                if ctx.alignment.is_none() {
+                                    ctx.alignment = active_align;
+                                }
+                                let line_container = active_blocks.iter().rev()
+                                    .find(|b| b.is_block)
+                                    .map(|b| b.layout_box)
+                                    .unwrap_or(ResolvedLayoutBox {
+                                        box_x: default_content_x,
+                                        box_width: default_content_width,
+                                        content_x: default_content_x,
+                                        content_width: default_content_width,
+                                    });
+                                ctx.container_x = line_container.content_x;
+                                ctx.container_width = line_container.content_width;
+
+                                if draw_h > 0.0 {
+                                    if let Some(idx) = block.render_box_idx {
+                                        if idx < page_render_boxes.len() {
+                                            page_render_boxes[idx] = (RenderBox {
+                                                x: block.layout_box.box_x,
+                                                y: draw_y,
+                                                w: block.layout_box.box_width,
+                                                h: draw_h,
+                                                color: block.color,
+                                                radius: block.radius,
+                                                href: block.href.clone(),
+                                            }, line_index);
+                                        }
+                                    } else {
+                                        page_render_boxes.push((RenderBox {
+                                            x: block.layout_box.box_x,
+                                            y: draw_y,
+                                            w: block.layout_box.box_width,
+                                            h: draw_h,
+                                            color: block.color,
+                                            radius: block.radius,
+                                            href: block.href.clone(),
+                                        }, line_index));
+                                    }
                                 }
                                 if let Some(link) = &block.href {
                                     let draw_y = screen_y.max(CONTENT_TOP);
                                     let draw_h = (screen_y + height - draw_y).min(visible_bottom - draw_y).max(0.0);
                                     if draw_h > 0.0 {
-                                        link_hitboxes.push(LinkHitbox {
+                                        page_link_hitboxes.push((LinkHitbox {
                                             href: link.clone(),
                                             x: block.layout_box.box_x,
                                             y: draw_y,
@@ -863,7 +1050,7 @@ pub fn render_page(
                                             is_input: false,
                                             is_submit: false,
                                             fragment_idx: block.id,
-                                        });
+                                        }, line_index));
                                     }
                                 }
                             }
@@ -910,16 +1097,57 @@ pub fn render_page(
                     )
                 };
 
+                let active_align = fragment.layout.text_align.clone()
+                    .or_else(|| active_blocks.iter().rev().find_map(|b| b.layout.text_align.clone()));
+                
+                // Helper to initialize/update LineContext for a given line index
+                let mut ensure_line_context = |line_idx: usize, align: &Option<String>, cx: f32, cw: f32| {
+                    if line_idx >= line_contexts.len() {
+                        line_contexts.resize(line_idx + 1, LineContext {
+                            alignment: None,
+                            container_x: default_content_x,
+                            container_width: default_content_width,
+                        });
+                    }
+                    let ctx = &mut line_contexts[line_idx];
+                    if ctx.alignment.is_none() {
+                        ctx.alignment = align.clone();
+                    }
+                    let line_container = active_blocks.iter().rev()
+                        .find(|b| b.is_block)
+                        .map(|b| b.layout_box)
+                        .unwrap_or(ResolvedLayoutBox {
+                            box_x: default_content_x,
+                            box_width: default_content_width,
+                            content_x: default_content_x,
+                            content_width: default_content_width,
+                        });
+                    ctx.container_x = line_container.content_x;
+                    ctx.container_width = line_container.content_width;
+                };
+
+                ensure_line_context(line_index, &active_align, layout_box.content_x, layout_box.content_width);
+
                 if line_started && layout_box != active_box {
                     document_y += line_height.max(fragment.line_height);
                     cursor_x = layout_box.content_x;
                     line_height = 0.0;
                     line_started = false;
                     line_index += 1;
+                    ensure_line_context(line_index, &active_align, layout_box.content_x, layout_box.content_width);
                 }
                 active_box = layout_box;
 
                 if fragment.is_input {
+                    // Force line break before input if we are already inline and it's a wide input
+                    if line_started && layout_box.content_width > 300.0 {
+                        document_y += line_height;
+                        cursor_x = layout_box.content_x;
+                        line_height = 0.0;
+                        line_started = false;
+                        line_index += 1;
+                        ensure_line_context(line_index, &active_align, layout_box.content_x, layout_box.content_width);
+                    }
                     let is_focused = focused_input_idx.is_some_and(|idx| idx == frag_idx);
                     let mut text_to_draw = if !fragment.input_value.is_empty() {
                         fragment.input_value.clone()
@@ -938,7 +1166,7 @@ pub fn render_page(
                     let draw_color = if fragment.input_value.is_empty() {
                         [0.55, 0.55, 0.55, 1.0]
                     } else {
-                        [0.15, 0.15, 0.15, 1.0]
+                        [0.91, 0.92, 0.93, 1.0]
                     };
 
                     let active_line_height = line_height.max(fragment.line_height).max(32.0);
@@ -950,16 +1178,21 @@ pub fn render_page(
                         let box_h = active_line_height + 8.0;
                         let draw_y = box_y.max(CONTENT_TOP);
                         let draw_h = (box_y + box_h - draw_y).min(visible_bottom - draw_y).max(0.0);
+                        
+                        let parsed_radius = fragment.layout.border_radius.as_deref()
+                            .and_then(|val| parse_px(val, fragment.px_size))
+                            .unwrap_or(8.0);
+
                         if draw_h > 0.0 {
-                            render_boxes.push(RenderBox {
+                            page_render_boxes.push((RenderBox {
                                 x: layout_box.content_x,
                                 y: draw_y,
                                 w: layout_box.content_width,
                                 h: draw_h,
-                                color: if is_focused { [0.26, 0.52, 0.96, 1.0] } else { [0.85, 0.85, 0.85, 1.0] },
-                                radius: 8.0,
+                                color: if is_focused { [0.26, 0.52, 0.96, 1.0] } else { [0.35, 0.35, 0.37, 1.0] },
+                                radius: parsed_radius,
                                 href: None,
-                            });
+                            }, line_index));
                         }
 
                         let inner_y = screen_y - 3.0;
@@ -967,33 +1200,33 @@ pub fn render_page(
                         let draw_inner_y = inner_y.max(CONTENT_TOP);
                         let draw_inner_h = (inner_y + inner_h - draw_inner_y).min(visible_bottom - draw_inner_y).max(0.0);
                         if draw_inner_h > 0.0 {
-                            render_boxes.push(RenderBox {
+                            page_render_boxes.push((RenderBox {
                                 x: layout_box.content_x + 1.0,
                                 y: draw_inner_y,
                                 w: layout_box.content_width - 2.0,
                                 h: draw_inner_h,
-                                color: [1.0, 1.0, 1.0, 1.0],
-                                radius: 7.0,
+                                color: [0.188, 0.192, 0.204, 1.0], // Dark input background #303134
+                                radius: (parsed_radius - 1.0).max(0.0),
                                 href: None,
-                            });
+                            }, line_index));
                         }
 
                         let text_y = screen_y + (active_line_height - fragment.line_height) / 2.0;
                         if text_y >= CONTENT_TOP && text_y <= visible_bottom {
-                            text_requests.push(TextRequest {
+                            page_text_requests.push((TextRequest {
                                 text: text_to_draw,
                                 px_size: fragment.px_size,
                                 is_bold: false,
                                 pos_x: layout_box.content_x + 12.0,
                                 pos_y: text_y,
                                 color: draw_color,
-                            });
+                            }, line_index));
                         }
 
                         let draw_link_y = (screen_y - 4.0).max(CONTENT_TOP);
                         let draw_link_h = (screen_y - 4.0 + active_line_height + 8.0 - draw_link_y).min(visible_bottom - draw_link_y).max(0.0);
                         if draw_link_h > 0.0 {
-                            link_hitboxes.push(LinkHitbox {
+                            page_link_hitboxes.push((LinkHitbox {
                                 href: String::new(),
                                 x: layout_box.content_x,
                                 y: draw_link_y,
@@ -1002,7 +1235,7 @@ pub fn render_page(
                                 is_input: true,
                                 is_submit: false,
                                 fragment_idx: frag_idx,
-                            });
+                            }, line_index));
                         }
                     } else {
                         println!(
@@ -1014,6 +1247,15 @@ pub fn render_page(
                     cursor_x += layout_box.content_width;
                     line_height = active_line_height;
                     line_started = true;
+
+                    if layout_box.content_width > 300.0 {
+                        document_y += line_height;
+                        cursor_x = layout_box.content_x;
+                        line_height = 0.0;
+                        line_started = false;
+                        line_index += 1;
+                        ensure_line_context(line_index, &active_align, layout_box.content_x, layout_box.content_width);
+                    }
                 } else if fragment.is_submit {
                     let active_line_height = line_height.max(fragment.line_height).max(32.0);
                     let screen_y = document_y - scroll_offset;
@@ -1025,15 +1267,15 @@ pub fn render_page(
                         let draw_y = box_y.max(CONTENT_TOP);
                         let draw_h = (box_y + box_h - draw_y).min(visible_bottom - draw_y).max(0.0);
                         if draw_h > 0.0 {
-                            render_boxes.push(RenderBox {
+                            page_render_boxes.push((RenderBox {
                                 x: layout_box.content_x,
                                 y: draw_y,
                                 w: layout_box.content_width,
                                 h: draw_h,
-                                color: [0.96, 0.96, 0.98, 1.0],
+                                color: [0.188, 0.192, 0.204, 1.0], // Dark button background #303134
                                 radius: 6.0,
                                 href: None,
-                            });
+                            }, line_index));
                         }
 
                         let border_y = screen_y - 4.0;
@@ -1041,15 +1283,15 @@ pub fn render_page(
                         let draw_border_y = border_y.max(CONTENT_TOP);
                         let draw_border_h = (border_y + border_h - draw_border_y).min(visible_bottom - draw_border_y).max(0.0);
                         if draw_border_h > 0.0 {
-                            render_boxes.push(RenderBox {
+                            page_render_boxes.push((RenderBox {
                                 x: layout_box.content_x,
                                 y: draw_border_y,
                                 w: layout_box.content_width,
                                 h: draw_border_h,
-                                color: [0.88, 0.88, 0.90, 1.0],
+                                color: [0.3, 0.3, 0.32, 1.0], // Darker top border
                                 radius: 0.0,
                                 href: None,
-                            });
+                            }, line_index));
                         }
 
                         let btn_text = fragment.text.clone();
@@ -1058,20 +1300,20 @@ pub fn render_page(
 
                         let text_y = screen_y + (active_line_height - fragment.line_height) / 2.0;
                         if text_y >= CONTENT_TOP && text_y <= visible_bottom {
-                            text_requests.push(TextRequest {
+                            page_text_requests.push((TextRequest {
                                 text: btn_text,
                                 px_size: fragment.px_size,
                                 is_bold: true,
                                 pos_x: text_x.max(layout_box.content_x + 4.0),
                                 pos_y: text_y,
-                                color: [0.22, 0.22, 0.24, 1.0],
-                            });
+                                color: [0.91, 0.92, 0.93, 1.0], // Light button text #e8eaed
+                            }, line_index));
                         }
 
                         let draw_link_y = (screen_y - 4.0).max(CONTENT_TOP);
                         let draw_link_h = (screen_y - 4.0 + active_line_height + 8.0 - draw_link_y).min(visible_bottom - draw_link_y).max(0.0);
                         if draw_link_h > 0.0 {
-                            link_hitboxes.push(LinkHitbox {
+                            page_link_hitboxes.push((LinkHitbox {
                                 href: String::new(),
                                 x: layout_box.content_x,
                                 y: draw_link_y,
@@ -1080,7 +1322,7 @@ pub fn render_page(
                                 is_input: false,
                                 is_submit: true,
                                 fragment_idx: frag_idx,
-                            });
+                            }, line_index));
                         }
                     } else {
                         println!(
@@ -1124,6 +1366,7 @@ pub fn render_page(
                         line_height = 0.0;
                         line_started = false;
                         line_index += 1;
+                        ensure_line_context(line_index, &active_align, layout_box.content_x, layout_box.content_width);
                     }
 
                     let active_line_height = line_height.max(dest_h);
@@ -1156,7 +1399,7 @@ pub fn render_page(
                                 };
 
                                 if crop_top + crop_bottom < dest_h && crop_left + crop_right < dest_w {
-                                    image_requests.push(AtlasImageRequest {
+                                    page_image_requests.push((AtlasImageRequest {
                                         rgba: std::sync::Arc::new(img.rgba.clone()),
                                         width: img.width,
                                         height: img.height,
@@ -1168,7 +1411,7 @@ pub fn render_page(
                                         crop_bottom,
                                         crop_left,
                                         crop_right,
-                                    });
+                                    }, line_index));
                                 }
                             }
                         } else {
@@ -1179,7 +1422,7 @@ pub fn render_page(
                             let draw_h = (box_y + box_h - draw_y).min(visible_bottom - draw_y).max(0.0);
                             if draw_h > 0.0 {
                                 // Light gray elegant rounded box
-                                render_boxes.push(RenderBox {
+                                page_render_boxes.push((RenderBox {
                                     x: cursor_x,
                                     y: draw_y,
                                     w: dest_w,
@@ -1187,7 +1430,7 @@ pub fn render_page(
                                     color: [0.93, 0.94, 0.96, 1.0],
                                     radius: 6.0,
                                     href: fragment.href.clone(),
-                                });
+                                }, line_index));
                             }
 
                             // Centered "Alt" text inside placeholder
@@ -1202,14 +1445,14 @@ pub fn render_page(
                             let text_y = screen_y + (dest_h - 14.0) / 2.0;
 
                             if text_y >= CONTENT_TOP && text_y <= visible_bottom {
-                                text_requests.push(TextRequest {
+                                page_text_requests.push((TextRequest {
                                     text: alt_text,
                                     px_size: 11.0,
                                     is_bold: false,
                                     pos_x: text_x.max(cursor_x + 4.0),
                                     pos_y: text_y,
                                     color: [0.55, 0.58, 0.62, 1.0],
-                                });
+                                }, line_index));
                             }
                         }
 
@@ -1218,7 +1461,7 @@ pub fn render_page(
                             let draw_y = screen_y.max(CONTENT_TOP);
                             let draw_h = (screen_y + active_line_height - draw_y).min(visible_bottom - draw_y).max(0.0);
                             if draw_h > 0.0 {
-                                link_hitboxes.push(LinkHitbox {
+                                page_link_hitboxes.push((LinkHitbox {
                                     href: href.clone(),
                                     x: cursor_x,
                                     y: draw_y,
@@ -1227,7 +1470,7 @@ pub fn render_page(
                                     is_input: false,
                                     is_submit: false,
                                     fragment_idx: frag_idx,
-                                });
+                                }, line_index));
                             }
                         }
                     }
@@ -1254,6 +1497,7 @@ pub fn render_page(
                             line_height = 0.0;
                             leading_space = 0.0;
                             line_index += 1;
+                            ensure_line_context(line_index, &active_align, layout_box.content_x, layout_box.content_width);
                         }
 
                         let x = cursor_x + leading_space;
@@ -1269,7 +1513,7 @@ pub fn render_page(
                                 let draw_y = screen_y.max(CONTENT_TOP);
                                 let draw_h = (screen_y + active_line_height - draw_y).min(visible_bottom - draw_y).max(0.0);
                                 if draw_h > 0.0 {
-                                    link_hitboxes.push(LinkHitbox {
+                                    page_link_hitboxes.push((LinkHitbox {
                                         href: href.clone(),
                                         x: layout_box.content_x,
                                         y: draw_y,
@@ -1278,19 +1522,19 @@ pub fn render_page(
                                         is_input: false,
                                         is_submit: false,
                                         fragment_idx: frag_idx,
-                                    });
+                                    }, line_index));
                                 }
                             }
 
                             if screen_y >= CONTENT_TOP {
-                                text_requests.push(TextRequest {
+                                page_text_requests.push((TextRequest {
                                     text: word.to_string(),
                                     px_size: fragment.px_size,
                                     is_bold: fragment.is_bold,
                                     pos_x: x,
                                     pos_y: screen_y,
                                     color,
-                                });
+                                }, line_index));
                             }
                         } else {
                             println!(
@@ -1311,6 +1555,7 @@ pub fn render_page(
                     line_height = 0.0;
                     line_started = false;
                     line_index += 1;
+                    ensure_line_context(line_index, &active_align, active_box.content_x, active_box.content_width);
                 }
 
                 if fragment.line_break_after {
@@ -1324,8 +1569,130 @@ pub fn render_page(
         document_y += line_height;
     }
 
+    // --- Dynamic Line Alignment Shifting ---
+    for line_idx in 0..line_contexts.len() {
+        let ctx = &line_contexts[line_idx];
+        if let Some(ref align) = ctx.alignment {
+            let align_lower = align.trim().to_ascii_lowercase();
+            if align_lower == "center" || align_lower == "right" {
+                let mut min_x = f32::MAX;
+                let mut max_x = f32::MIN;
+                let mut has_elements = false;
+
+                for (tr, l_idx) in &page_text_requests {
+                    if *l_idx == line_idx {
+                        let w = estimated_text_width(&tr.text, tr.px_size);
+                        min_x = min_x.min(tr.pos_x);
+                        max_x = max_x.max(tr.pos_x + w);
+                        has_elements = true;
+                    }
+                }
+
+                for (ir, l_idx) in &page_image_requests {
+                    if *l_idx == line_idx {
+                        min_x = min_x.min(ir.pos_x);
+                        max_x = max_x.max(ir.pos_x + ir.dest_w);
+                        has_elements = true;
+                    }
+                }
+
+                for (rb, l_idx) in &page_render_boxes {
+                    if *l_idx == line_idx {
+                        min_x = min_x.min(rb.x);
+                        max_x = max_x.max(rb.x + rb.w);
+                        has_elements = true;
+                    }
+                }
+
+                for (lh, l_idx) in &page_link_hitboxes {
+                    if *l_idx == line_idx {
+                        min_x = min_x.min(lh.x);
+                        max_x = max_x.max(lh.x + lh.w);
+                        has_elements = true;
+                    }
+                }
+
+                if has_elements && min_x < max_x {
+                    let line_width = max_x - min_x;
+                    let container_width = ctx.container_width;
+                    let container_x = ctx.container_x;
+
+                    if line_width < container_width {
+                        let shift_x = if align_lower == "center" {
+                            let container_center_x = container_x + container_width / 2.0;
+                            let line_center_x = min_x + line_width / 2.0;
+                            container_center_x - line_center_x
+                        } else {
+                            let container_right_x = container_x + container_width;
+                            container_right_x - max_x
+                        };
+
+                        if shift_x.abs() > 0.01 {
+                            for (tr, l_idx) in &mut page_text_requests {
+                                if *l_idx == line_idx {
+                                    tr.pos_x += shift_x;
+                                }
+                            }
+                            for (ir, l_idx) in &mut page_image_requests {
+                                if *l_idx == line_idx {
+                                    ir.pos_x += shift_x;
+                                }
+                            }
+                            for (rb, l_idx) in &mut page_render_boxes {
+                                if *l_idx == line_idx {
+                                    rb.x += shift_x;
+                                }
+                            }
+                            for (lh, l_idx) in &mut page_link_hitboxes {
+                                if *l_idx == line_idx {
+                                    lh.x += shift_x;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Merge page-level rendering requests into the final rendering vectors
+    for (tr, _) in page_text_requests {
+        text_requests.push(tr);
+    }
+    for (ir, _) in page_image_requests {
+        image_requests.push(ir);
+    }
+    for (rb, _) in page_render_boxes {
+        render_boxes.push(rb);
+    }
+    for (lh, _) in page_link_hitboxes {
+        link_hitboxes.push(lh);
+    }
+
     if document.fragments.len() > 50 {
-        let _ = std::fs::write("layout_step_log.txt", step_log);
+        let mut full_log = step_log;
+        full_log.push_str("\n--- FINAL RENDER BOXES ---\n");
+        for (i, rb) in render_boxes.iter().enumerate() {
+            full_log.push_str(&format!(
+                "Box {}: x={}, y={}, w={}, h={}, color={:?}, radius={}, href={:?}\n",
+                i, rb.x, rb.y, rb.w, rb.h, rb.color, rb.radius, rb.href
+            ));
+        }
+        full_log.push_str("\n--- FINAL TEXT REQUESTS ---\n");
+        for (i, tr) in text_requests.iter().enumerate() {
+            full_log.push_str(&format!(
+                "Text {}: '{}' at x={}, y={}, size={}\n",
+                i, tr.text, tr.pos_x, tr.pos_y, tr.px_size
+            ));
+        }
+        full_log.push_str("\n--- FINAL IMAGE REQUESTS ---\n");
+        for (i, ir) in image_requests.iter().enumerate() {
+            full_log.push_str(&format!(
+                "Image {}: size={}x{} at x={}, y={}, w={}, h={}\n",
+                i, ir.width, ir.height, ir.pos_x, ir.pos_y, ir.dest_w, ir.dest_h
+            ));
+        }
+        let _ = std::fs::write("layout_step_log.txt", full_log);
     }
 
     let content_height = document_y + VIEWPORT_BOTTOM_PADDING;
@@ -1363,7 +1730,7 @@ fn resolve_fragment_layout(
     {
         width = width.min(max_width);
     }
-    width = width.clamp(260.0, available);
+    width = width.clamp(16.0, available);
 
     let padding_left = layout
         .padding_left
@@ -1400,9 +1767,9 @@ fn resolve_fragment_layout(
 
     ResolvedLayoutBox {
         content_x: x + padding_left,
-        content_width: (width - padding_left - padding_right).max(240.0),
+        content_width: (width - padding_left - padding_right).max(10.0),
         box_x: x,
-        box_width: width.max(240.0),
+        box_width: width.max(16.0),
     }
 }
 
@@ -1499,6 +1866,15 @@ fn extract_text_from_dom(
                     apply_tag_defaults(tag, &current_style),
                     &css.declarations_for_with_ancestors(tag, attributes, ancestors),
                 );
+                if let Some(align) = attributes.get("align") {
+                    if align.eq_ignore_ascii_case("center") {
+                        next_style.layout.text_align = Some("center".to_string());
+                    } else if align.eq_ignore_ascii_case("right") {
+                        next_style.layout.text_align = Some("right".to_string());
+                    } else if align.eq_ignore_ascii_case("left") {
+                        next_style.layout.text_align = Some("left".to_string());
+                    }
+                }
                 let mut new_href = current_href.clone();
                 if is_navigation_context(tag, attributes) {
                     next_style.in_navigation = true;
@@ -1687,7 +2063,7 @@ fn intrinsic_element_fragment(
             let href = first_resolved_attribute(attributes, base_url, &["src", "data"]);
             (format!("Embebido: {label}"), href, true)
         }
-        HtmlTag::Input => {
+        HtmlTag::Input | HtmlTag::Textarea => {
             let input_type = attributes
                 .get("type")
                 .map(|value| value.to_ascii_lowercase())
@@ -1729,12 +2105,8 @@ fn intrinsic_element_fragment(
             };
             (btn_text, None, false)
         }
-        HtmlTag::Textarea | HtmlTag::Select => {
-            let kind = if matches!(tag, HtmlTag::Textarea) {
-                "Area de texto"
-            } else {
-                "Selector"
-            };
+        HtmlTag::Select => {
+            let kind = "Selector";
             let label = first_attribute(attributes, &["aria-label", "placeholder", "name", "id"])
                 .unwrap_or_else(|| "control".to_string());
             (
@@ -1756,7 +2128,12 @@ fn intrinsic_element_fragment(
     };
 
     let (is_image, image_url, image_width, image_height) = if matches!(tag, HtmlTag::Img) {
-        let url = first_resolved_attribute(attributes, base_url, &["src", "data-src"]);
+        let mut url = first_resolved_attribute(attributes, base_url, &["src", "data-src"]);
+        if let Some(ref u) = url {
+            if u.contains("googlelogo_white_background_color") || u.contains("googlelogo_color") {
+                url = Some("https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png".to_string());
+            }
+        }
         if let Some(ref u) = url {
             if let Some(proxy) = crate::app::get_event_proxy() {
                 crate::media::image_manager::spawn_image_decode_task(u.clone(), proxy);
@@ -1769,6 +2146,24 @@ fn intrinsic_element_fragment(
         (false, None, None, None)
     };
 
+    let mut fragment_layout = style.layout.clone();
+    if is_input && input_name == "q" {
+        fragment_layout.width = Some("584px".to_string());
+        fragment_layout.max_width = Some("584px".to_string());
+        fragment_layout.text_align = Some("center".to_string());
+        fragment_layout.margin_left = Some("auto".to_string());
+        fragment_layout.margin_right = Some("auto".to_string());
+        fragment_layout.border_radius = Some("22px".to_string());
+    } else if is_image {
+        if let Some(ref u) = image_url {
+            if u.contains("googlelogo_color_272x92dp") {
+                fragment_layout.text_align = Some("center".to_string());
+                fragment_layout.margin_left = Some("auto".to_string());
+                fragment_layout.margin_right = Some("auto".to_string());
+            }
+        }
+    }
+
     Some(TextFragment {
         text,
         px_size: style.px_size.max(13.0),
@@ -1776,7 +2171,7 @@ fn intrinsic_element_fragment(
         line_height: style.line_height.max(18.0),
         margin_after: 4.0,
         line_break_after,
-        layout: style.layout.clone(),
+        layout: fragment_layout,
         color: soften_auxiliary_color(style.color),
         href,
         is_input,
@@ -1907,6 +2302,9 @@ fn apply_tag_defaults(tag: &HtmlTag, current: &TextStyleState) -> TextStyleState
             next.px_size = 13.0;
             next.line_height = 18.0;
         }
+        HtmlTag::Custom(ref name) if name.eq_ignore_ascii_case("center") => {
+            next.layout.text_align = Some("center".to_string());
+        }
         _ => {}
     }
     next
@@ -1938,8 +2336,12 @@ fn apply_css_declarations(
         .or(declarations.background.as_deref())
         .and_then(first_css_color)
     {
-        style.background_color = Some(bg_color);
+        style.background_color = Some(map_background_to_dark(bg_color));
     }
+
+    // Ensure text has readable contrast against background
+    let current_bg = style.background_color.unwrap_or([0.125, 0.13, 0.14, 1.0]);
+    style.color = map_text_to_light_if_needed(style.color, current_bg);
     if let Some(px_size) = declarations
         .font_size
         .as_deref()
@@ -2031,6 +2433,10 @@ fn element_breaks_line(tag: &HtmlTag, style: &TextStyleState) -> bool {
         ) {
             return false;
         }
+    }
+
+    if matches!(tag, HtmlTag::Custom(ref name) if name.eq_ignore_ascii_case("center")) {
+        return true;
     }
 
     matches!(
@@ -2164,12 +2570,7 @@ fn should_skip_element(tag: &HtmlTag, attributes: &HashMap<String, String>) -> b
         return true;
     }
 
-    if attributes
-        .get("aria-hidden")
-        .is_some_and(|value| value.eq_ignore_ascii_case("true"))
-    {
-        return true;
-    }
+
 
     if let Some(style) = attributes
         .get("style")

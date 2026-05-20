@@ -30,6 +30,16 @@ pub fn set_event_proxy(proxy: winit::event_loop::EventLoopProxy<BrowserEvent>) {
     let _ = EVENT_PROXY.set(proxy);
 }
 
+static RUNTIME_HANDLE: std::sync::OnceLock<tokio::runtime::Handle> = std::sync::OnceLock::new();
+
+pub fn get_runtime_handle() -> Option<tokio::runtime::Handle> {
+    RUNTIME_HANDLE.get().cloned()
+}
+
+pub fn set_runtime_handle(handle: tokio::runtime::Handle) {
+    let _ = RUNTIME_HANDLE.set(handle);
+}
+
 pub fn run() {
     let event_loop = EventLoopBuilder::<BrowserEvent>::with_user_event().build();
     let window = WindowBuilder::new()
@@ -54,6 +64,7 @@ pub fn run() {
     let event_proxy = event_loop.create_proxy();
     set_event_proxy(event_proxy.clone());
     let rt = tokio::runtime::Runtime::new().unwrap();
+    set_runtime_handle(rt.handle().clone());
     let _enter_guard = rt.enter();
 
     // Trigger startup pre-caching of images
