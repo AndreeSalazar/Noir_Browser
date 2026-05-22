@@ -1,0 +1,110 @@
+[workspace]
+members = ["No-Chromium"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE"
+authors = ["andre"]
+description = "Noir Browser: Ultra-fast, privacy-first web browser built in Rust + Vulkan"
+
+[workspace.dependencies]
+# Core async runtime
+tokio = { version = "1.35", features = ["full", "tracing"] }
+async-trait = "0.1"
+
+# Vulkan graphics (Ash for direct control)
+ash = { version = "0.37", features = ["linked"] }
+gpu-allocator = "0.25"
+winit = { version = "0.29", features = ["rwh_05"] }
+
+# Parser combinators (zero-copy)
+nom = "7.1"
+memchr = "2.7"
+
+# JavaScript engine (Boa - native Rust, no GC)
+boa_engine = "0.18"
+boa_parser = "0.18"
+boa_ast = "0.18"
+
+# Networking
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "socks", "http2"] }
+rustls = "0.21"
+tokio-socks = "0.5"
+hickory-resolver = { version = "0.24", features = ["dns-over-https-rustls"] }
+
+# Privacy & Security
+zeroize = { version = "1.7", features = ["derive"] }
+rand = { version = "0.8", features = ["std_rng"] }
+sha2 = "0.10"
+hmac = "0.12"
+
+# Data structures
+smallvec = "1.13"
+slotmap = "1.0"
+dashmap = "5.5"
+
+# Utilities
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+once_cell = "1.19"
+thiserror = "1.0"
+bytes = "1.5"
+
+# Optional: MSDF font rendering
+rustybuzz = "0.12"
+ttf-parser = "0.20"
+
+# Optional: SQLite for local search index
+rusqlite = { version = "0.30", features = ["bundled", "fts5"], optional = true }
+
+# Dev dependencies
+criterion = { version = "0.5", features = ["async_tokio"] }
+pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.bench]
+inherits = "release"
+debug = true
+
+[profile.dev]
+opt-level = 1
+debug = true
+
+# Feature flags for different build modes
+[features]
+default = ["ultrafast"]
+
+# Ultra-fast Vulkan pipeline (default)
+ultrafast = []
+
+# Debug Vulkan validation layers (development only)
+debug_vulkan = ["ash/linked", "ash/debug"]
+
+# Privacy mode: FPI + anti-fingerprint + disk avoidance
+privacy = ["zeroize/derive", "rand/std_rng"]
+
+# Tor mode: SOCKS5 chain + circuit rotation + DoH
+tor_mode = ["privacy", "tokio-socks", "hickory-resolver/dns-over-https-rustls"]
+
+# Local search index (SQLite FTS5)
+local_search = ["dep:rusqlite"]
+
+# MSDF font rendering
+msdf_fonts = ["dep:rustybuzz", "dep:ttf-parser"]
+
+# Hardware video decoding (NVDEC/Vulkan Video)
+hw_video = []
+
+# Full isolation: one renderer process per tab
+full_isolation = []
+
+# Lightweight mode: single process for low-RAM devices
+lightweight = []
