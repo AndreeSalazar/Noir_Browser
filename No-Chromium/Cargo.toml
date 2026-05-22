@@ -39,7 +39,7 @@ boa_gc.workspace = true
 boa_ast.workspace = true
 
 # Networking
-reqwest.workspace = true
+reqwest = { version = "0.12", features = ["json", "stream", "socks", "http2"] }
 rustls.workspace = true
 tokio-socks.workspace = true
 hickory-resolver.workspace = true
