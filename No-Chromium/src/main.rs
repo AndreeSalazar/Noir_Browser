@@ -70,32 +70,7 @@ impl ProcessModel {
 }
 
 // === CONFIGURACIÓN DE LA APLICACIÓN ===
-#[derive(Debug, Clone)]
-pub struct AppConfig {
-    pub process_model: ProcessModel,
-    pub enable_privacy: bool,
-    pub enable_tor_mode: bool,
-    pub enable_ultrafast: bool,
-    pub enable_msdf_fonts: bool,
-    pub debug_vulkan: bool,
-    pub max_tabs: usize,
-    pub cache_size_mb: usize,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            process_model: ProcessModel::from_available_ram(detect_available_ram()),
-            enable_privacy: cfg!(feature = "privacy"),
-            enable_tor_mode: cfg!(feature = "tor_mode"),
-            enable_ultrafast: cfg!(feature = "ultrafast"),
-            enable_msdf_fonts: cfg!(feature = "msdf_fonts"),
-            debug_vulkan: cfg!(feature = "debug_vulkan"),
-            max_tabs: 20,
-            cache_size_mb: 512,
-        }
-    }
-}
+use crate::app::AppConfig;
 
 // === DETECCIÓN DE MEMORIA DEL SISTEMA ===
 fn detect_available_ram() -> u64 {
@@ -160,6 +135,7 @@ struct AppCoordinator {
     runtime: Arc<Runtime>,
 }
 
+
 impl AppCoordinator {
     fn new(config: AppConfig) -> anyhow::Result<Self> {
         // Configurar runtime Tokio según el modelo de procesos
@@ -222,10 +198,7 @@ impl AppCoordinator {
     
     async fn init_vulkan_engine(&self) -> anyhow::Result<()> {
         // Delegar al módulo vulkan_engine
-        vulkan_engine::UltraFastVulkanEngine::initialize(
-            self.config.enable_ultrafast,
-            self.config.debug_vulkan,
-        ).await?;
+        vulkan_engine::UltraFastVulkanEngine::initialize().await?;
         Ok(())
     }
     
@@ -245,10 +218,7 @@ impl AppCoordinator {
     }
     
     async fn init_network_module(&self) -> anyhow::Result<()> {
-        network::NetworkCoordinator::initialize(
-            self.config.enable_tor_mode,
-            self.config.enable_privacy,
-        ).await?;
+        network::NetworkCoordinator::initialize().await?;
         Ok(())
     }
     
@@ -273,8 +243,8 @@ impl AppCoordinator {
         // 3. Liberar recursos Vulkan
         vulkan_engine::UltraFastVulkanEngine::shutdown().await;
         
-        // 4. Esperar que todas las tasks de Tokio completen
-        self.runtime.shutdown_timeout(std::time::Duration::from_secs(5));
+        // 4. El Runtime se limpia automáticamente al salir del scope
+        // self.runtime.shutdown_timeout(std::time::Duration::from_secs(5));
         
         Ok(())
     }
