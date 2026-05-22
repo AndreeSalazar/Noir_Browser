@@ -110,18 +110,18 @@ pub struct BrowserInstance {
 
 impl BrowserInstance {
     /// Abre una nueva pestaña con la URL especificada
-    pub async fn open_tab(&self, url: &str) -> anyhow::Result<TabId> {
+    pub async fn open_tab(&self, _url: &str) -> anyhow::Result<TabId> {
         // Implementación delegada al browser coordinator
         unimplemented!()
     }
     
     /// Cierra una pestaña por su ID
-    pub async fn close_tab(&self, tab_id: TabId) -> anyhow::Result<()> {
+    pub async fn close_tab(&self, _tab_id: TabId) -> anyhow::Result<()> {
         unimplemented!()
     }
     
     /// Navega a una URL en una pestaña existente
-    pub async fn navigate(&self, tab_id: TabId, url: &str) -> anyhow::Result<()> {
+    pub async fn navigate(&self, _tab_id: TabId, _url: &str) -> anyhow::Result<()> {
         unimplemented!()
     }
 }

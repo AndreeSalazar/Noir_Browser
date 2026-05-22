@@ -25,7 +25,7 @@ impl JsRuntime {
         // Boa's Object::get accepts Into<PropertyKey>, so &str works directly
         self.context
             .global_object()
-            .get(name.to_string(), &mut self.context)
+            .get(boa_engine::string::JsString::from(name), &mut self.context)
             .ok()
     }
 }
