@@ -1,6 +1,11 @@
-mod history;
-mod navigation;
-mod page;
+//! Browser Module - Placeholder para Fase 4
+//! 
+//! Multi-proceso con aislamiento por sitio (Chrome-style)
+//! IPC con canales Tokio MPSC
 
-pub use navigation::{BrowserState, LinkHitbox, PageClickResult};
-pub use page::{load_page_document, PageDocument, RenderBox};
+// TODO: Implementar en Fase 4
+// - Browser process coordinator
+// - Tab management con IPC
+// - Navigation flow
+
+pub struct Browser;

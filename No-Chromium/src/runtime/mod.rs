@@ -1,6 +1,10 @@
-mod dom_runtime;
-mod mini_js;
-mod script_collector;
+//! Runtime Module - Placeholder
+//! 
+//! Event loop integrado, microtasks, scheduler
 
-pub use mini_js::BrowserRuntime;
-pub use script_collector::{collect_scripts, ScriptSource};
+// TODO: Implementar
+// - Integration con Tokio runtime
+// - Microtask queue para JS
+// - Scheduler de tareas de render
+
+pub struct Runtime;

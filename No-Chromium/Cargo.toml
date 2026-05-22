@@ -8,59 +8,85 @@ license-file = "LICENSE"
 repository = "https://github.com/AndreeSalazar/Noir_Browser"
 
 [dependencies]
-# === VULKAN CORE ===
-ash = { version = "0.37", features = ["debug", "linked"] }
-gpu-allocator = { version = "0.25", features = ["vulkan"] }
-vulkano = { version = "0.34", optional = true }  # Fallback si Ash es muy complejo
+# === VULKAN CORE (from workspace) ===
+ash.workspace = true
+gpu-allocator.workspace = true
+vulkano = { version = "0.34", optional = true }
 
-# === WINDOWING & INPUT ===
-winit = "0.29"
-raw-window-handle = "0.5"
+# === WINDOWING & INPUT (from workspace) ===
+winit.workspace = true
+raw-window-handle.workspace = true
 
-# === ASYNC & CONCURRENCY ===
-tokio = { version = "1.35", features = ["full", "tracing"] }
-async-trait = "0.1"
+# === ASYNC & CONCURRENCY (from workspace) ===
+tokio.workspace = true
+async-trait.workspace = true
 futures = "0.3"
 
-# === PARSING ===
-html5ever = "0.26"
-markup5ever = "0.11"
-cssparser = "0.31"
-selectors = "0.25"
+# === PARSING (from workspace) ===
+html5ever.workspace = true
+markup5ever.workspace = true
+cssparser.workspace = true
+selectors.workspace = true
+nom.workspace = true
+memchr.workspace = true
 
-# === JAVASCRIPT ENGINE ===
-boa_engine = "0.18"
-boa_parser = "0.18"
-boa_gc = "0.18"
+# === JAVASCRIPT ENGINE (from workspace) ===
+boa_engine.workspace = true
+boa_parser.workspace = true
+boa_gc.workspace = true
+boa_ast.workspace = true
 
 # === SEARCH & INDEXING ===
-rusqlite = { version = "0.30", features = ["bundled", "fts5"] }
-tantivy = "0.21"  # Full-text search engine alternativo a SQLite FTS5
-lru = "0.12"
+# rusqlite es opcional y se define localmente (no puede ir en workspace.dependencies)
+rusqlite = { version = "0.30", features = ["bundled", "fts5"], optional = true }
+tantivy.workspace = true
+lru.workspace = true
 
-# === UTILITIES ===
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-anyhow = "1.0"
-thiserror = "1.0"
-bytemuck = { version = "1.14", features = ["derive"] }
- glam = "0.25"  # Math para layout
+# === UTILITIES (from workspace) ===
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+bytemuck.workspace = true
+glam.workspace = true
 
-# === IMAGE & FONT ===
-image = { version = "0.24", default-features = false, features = ["png", "jpeg", "webp"] }
-rustybuzz = "0.12"  # Text shaping
-fontdb = "0.16"
+# === IMAGE & FONT (from workspace) ===
+image.workspace = true
+rustybuzz.workspace = true
+fontdb.workspace = true
+ttf-parser.workspace = true
 
-# === SECURITY ===
-rustls = "0.22"
-webpki-roots = "0.26"
+# === SECURITY (from workspace) ===
+rustls.workspace = true
+webpki-roots.workspace = true
+zeroize.workspace = true
+rand.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+
+# === DATA STRUCTURES (from workspace) ===
+smallvec.workspace = true
+slotmap.workspace = true
+dashmap.workspace = true
+bytes.workspace = true
+once_cell.workspace = true
 
 [features]
 default = ["ultrafast"]
-ultrafast = []  # Vulkan 1.3 + bindless + async compute
-debug_vulkan = ["ash/debug"]  # Validation layers
-fallback_vulkano = ["dep:vulkano"]  # Usar vulkano si ash es muy complejo
-video_decode = []  # NVDEC / Vulkan Video support
+ultrafast = []
+debug_vulkan = ["ash/debug"]
+fallback_vulkano = ["dep:vulkano"]
+video_decode = []
+
+# Feature que habilita búsqueda local con SQLite
+local_search = ["dep:rusqlite"]
+
+# Feature combinado para modo privacidad
+privacy = []
+tor_mode = ["privacy"]
+
+# Feature para renderizado de fuentes MSDF
+msdf_fonts = []
 
 [profile.dev]
 opt-level = 1
