@@ -75,7 +75,7 @@ impl HtmlParser {
         Self { buffer: Vec::new() }
     }
 
-    pub fn parse(&mut self, html: &[u8]) -> Result<PageDocument, String> {
+    pub fn parse(&mut self, _html: &[u8]) -> Result<PageDocument, String> {
         // TODO: Implementar parser real en Fase 1
         let mut doc = PageDocument::new("about:blank");
         doc.title = "Noir Browser".to_string();

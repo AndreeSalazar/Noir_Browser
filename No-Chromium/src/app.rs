@@ -42,7 +42,7 @@ impl ApplicationHandler for App {
         
         // Inicializar Vulkan engine (stub for Phase 0)
         #[cfg(not(feature = "debug_vulkan"))]
-        let enable_validation = false;
+        let _enable_validation = false;
         #[cfg(feature = "debug_vulkan")]
         let enable_validation = true;
         

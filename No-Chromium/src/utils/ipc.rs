@@ -1,5 +1,4 @@
 use tokio::sync::{mpsc, oneshot};
-use std::fmt;
 
 pub type TabId = u64;
 

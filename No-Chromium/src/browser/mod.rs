@@ -12,7 +12,8 @@ pub mod history;
 pub mod privacy;
 
 use tokio::sync::mpsc;
-use crate::utils::ipc::{BrowserMessage, RendererMessage, TabId};
+use crate::utils::ipc::{BrowserMessage, RendererMessage};
+pub use crate::utils::ipc::TabId;
 
 /// Re-export TabState from tab_manager for unified type
 pub use tab_manager::TabState;
@@ -73,10 +74,5 @@ impl BrowserCoordinator {
     /// Lista todas las pestañas activas con sus estados
     pub fn list_tabs(&self) -> Vec<(TabId, &TabState)> {
         self.tab_manager.list_active()
-            .into_iter()
-            .filter_map(|id| {
-                self.tab_manager.get_state(id).map(|state| (id, state))
-            })
-            .collect()
     }
 }

@@ -92,7 +92,7 @@ impl Default for AppConfig {
 /// # Ok(())
 /// # }
 /// ```
-pub async fn create_browser(config: AppConfig) -> anyhow::Result<BrowserInstance> {
+pub async fn create_browser(_config: AppConfig) -> anyhow::Result<BrowserInstance> {
     // Delegar al coordinador interno
     // Stub para Fase 0 - delegar al app::run() en modo single-process
     #[cfg(not(test))]
