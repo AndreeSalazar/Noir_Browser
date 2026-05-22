@@ -7,51 +7,90 @@ authors.workspace = true
 description.workspace = true
 
 [dependencies]
+# Vulkan & GPU
 ash.workspace = true
 ash-window.workspace = true
 gpu-allocator.workspace = true
+
+# UI & Windowing
 winit.workspace = true
 raw-window-handle.workspace = true
+
+# Async Runtime
 tokio.workspace = true
 async-trait.workspace = true
+futures.workspace = true
+
+# Parsing & Rendering
 html5ever.workspace = true
 markup5ever.workspace = true
 cssparser.workspace = true
 selectors.workspace = true
 nom.workspace = true
 memchr.workspace = true
+rustybuzz.workspace = true
+fontdb.workspace = true
+ttf-parser.workspace = true
+
+# JavaScript Engine
 boa_engine.workspace = true
 boa_parser.workspace = true
 boa_gc.workspace = true
 boa_ast.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-anyhow.workspace = true
-thiserror.workspace = true
-bytemuck.workspace = true
-glam.workspace = true
-image.workspace = true
-rustybuzz.workspace = true
-fontdb.workspace = true
-ttf-parser.workspace = true
+
+# Networking
+reqwest.workspace = true
 rustls.workspace = true
+tokio-socks.workspace = true
+hickory-resolver.workspace = true
 webpki-roots.workspace = true
+url.workspace = true
+
+# Privacy & Security
 zeroize.workspace = true
 rand.workspace = true
 sha2.workspace = true
 hmac.workspace = true
+
+# Data Structures & Utilities
 smallvec.workspace = true
 slotmap.workspace = true
 dashmap.workspace = true
 bytes.workspace = true
 once_cell.workspace = true
-tantivy.workspace = true
 lru.workspace = true
-futures.workspace = true
-zstd-sys.workspace = true
-intrusive-collections.workspace = true
+bytemuck.workspace = true
+glam.workspace = true
+
+# Search & Indexing
+tantivy.workspace = true
+
+# Error Handling & Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Image & Media
+image.workspace = true
+
+# Optional Dependencies
 vulkano = { version = "0.34", optional = true }
 rusqlite = { version = "0.30", features = ["bundled"], optional = true }
+
+# Platform-specific
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.52", features = ["Win32_System_SystemInformation"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+sys-info = "0.9"
+
+# Compression & Collections
+zstd-sys.workspace = true
+intrusive-collections.workspace = true
+
+# Chrono para manejo de fechas en cookies
+chrono = { version = "0.4", features = ["clock"], default-features = false }
 
 [features]
 default = ["ultrafast"]

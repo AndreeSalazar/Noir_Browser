@@ -1,177 +1,333 @@
-# 🌌 Noir Browser v2.0 (No-Chromium Engine) - GPU-First Architecture
+# 🌌 Noir Browser - No-Chromium Core
 
-![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)
-![Vulkan](https://img.shields.io/badge/Graphics-Vulkan%20%2F%20Ash-red.svg)
-![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green.svg)
-![Status](https://img.shields.io/badge/Status-Reconstrucci%C3%B3n%20v2.0-orange.svg)
+> **Arquitectura Fusionada**: Chrome × Tor × Vulkan  
+> **Lema**: Velocidad de Chrome + Privacidad de Tor + Vulkan Ultra-Fast
 
-> ⚡ **RECONSTRUCCIÓN EN PROGRESO**: Estamos reescribiendo Noir Browser desde cero con arquitectura **GPU-First** para ser el navegador más rápido del mundo. Ver [RECONSTRUCCION_v2.md](./RECONSTRUCCION_v2.md) para detalles.
+## 📋 Tabla de Contenidos
 
-Un motor de navegación web ultrarrápido, moderno e independiente desarrollado desde cero en Rust y Vulkan (Ash), diseñado para romper la hegemonía y la pesadez de los motores basados en Chromium, WebKit y Gecko.
-
----
-
-## 🚀 ¿Por qué No-Chromium? (El Potencial y la Misión)
-
-Hoy en día, casi todos los navegadores web modernos (Chrome, Edge, Brave, Opera, Vivaldi) son clones con diferentes pieles que corren bajo el mismo motor masivo y sediento de recursos: Chromium. Esto ha creado un monopolio tecnológico de facto, exponiendo a los usuarios a telemetría invasiva, sobrecarga de memoria y un ecosistema web uniforme.
-
-**Noir Browser (No-Chromium) nace con cuatro propósitos clave:**
-
-✨ **Independencia Tecnológica**: Crear un renderizador web nativo 2D totalmente escrito en Rust, eliminando el C++ heredado de 30 años y reduciendo la superficie de vulnerabilidad.
-
-🎮 **Rendimiento de GPU Puro**: Dibujar cada elemento del DOM, imagen, botón y texto usando llamadas a la GPU con Vulkan, logrando renderizados pixel-perfect estables a más de 60fps sin sobrecargar la CPU.
-
-💾 **Consumo Eficiente y Seguro**: Menos del 10% del consumo de memoria RAM de un proceso tradicional de Chrome, gracias a una arquitectura concurrente y libre de recolección de basura (Garbage Collector).
-
-🔥 **v2.0 - GPU-First**: Todo el pipeline (parsing, layout, composición) ejecutándose en paralelo en la GPU mediante Compute Shaders. Zero-copy memory management. Búsqueda nativa integrada.
+- [🧬 Filosofía de Diseño](#-filosofía-de-diseño)
+- [🏗️ Arquitectura Multi-Proceso](#-arquitectura-multi-proceso)
+- [📁 Estructura del Proyecto](#-estructura-del-proyecto)
+- [⚡ Características Principales](#-características-principales)
+- [🔧 Configuración y Build](#-configuración-y-build)
+- [🗺️ Roadmap de Desarrollo](#-roadmap-de-desarrollo)
+- [🚀 Primeros Pasos](#-primeros-pasos)
 
 ---
 
-## 🛠️ Arquitectura v2.0: GPU-First Pipeline
+## 🧬 Filosofía de Diseño
 
-```text
-┌─────────────────┐
-│   NETWORK       │ HTTP/3 + QUIC + DoH + Pre-fetch predictivo
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│   PARSING (GPU) │ HTML/CSS tokenization en Compute Shaders
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│   LAYOUT (GPU)  │ Flexbox/Grid paralelizado + Text shaping
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│   COMPOSITION   │ Vulkan render passes optimizados + Dirty rect
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│   PRESENT       │ Swapchain + V-Sync + Frame pacing
-└─────────────────┘
+| Principio | Fuente | Implementación en Noir |
+|-----------|--------|----------------------|
+| **Aislamiento por proceso** | Chrome Site Isolation | `tokio::task` con memoria separada por dominio |
+| **Privacidad por defecto** | Tor Browser | Sin telemetría, cookies partitioned, fingerprint jitter |
+| **Renderizado GPU puro** | Innovación Noir | Vulkan 1.3, zero-copy, bindless, triple buffering |
+| **Servicios adaptativos** | Chrome Servicification | Auto-escala: 1 proceso en 4GB RAM, procesos separados en 16GB |
+| **Anonimato de red** | Tor Onion Routing | SOCKS5 chain opcional, circuit rotation, DNS over HTTPS |
+| **Evitar escritura a disco** | Tor Disk Avoidance | Cache efímera en `mmap` anónimo, `zeroize` al cerrar |
+
+---
+
+## 🏗️ Arquitectura Multi-Proceso (Rust Native)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        NOIR BROWSER                             │
+│                                                                 │
+│  ┌─────────────────────┐    ┌───────────────────────────────┐   │
+│  │   BROWSER PROCESS   │◄──►│       GPU PROCESS             │   │
+│  │  (UI + Navigation)  │ IPC│  (Vulkan Engine - ash)        │   │
+│  │                     │    │  - Frame composer             │   │
+│  │ - Address bar       │    │  - Shader pipelines           │   │
+│  │ - Tab management    │    │  - Bindless descriptors       │   │
+│  │ - Cookie jar (FPI)  │    │  - Timeline semaphores        │   │
+│  │ - History (RAM)     │    │  - MSDF text rasterizer       │   │
+│  └─────────┬───────────┘    └───────────────────────────────┘   │
+│            │                                                    │
+│            ▼                                                    │
+│  ┌─────────────────────┐    ┌───────────────────────────────┐   │
+│  │  RENDERER PROCESS 1 │    │  NETWORK PROCESS              │   │
+│  │  (tab: example.com) │    │                               │   │
+│  │                     │    │  - HTTP/HTTPS fetch           │   │
+│  │ - HTML Parser       │    │  - DNS-over-HTTPS resolver    │   │
+│  │ - CSS Cascade       │    │  - SOCKS5 proxy (Tor mode)    │   │
+│  │ - Layout Engine     │    │  - Pre-cache async            │   │
+│  │ - JS Engine (Boa)   │    │  - Certificate pinning        │   │
+│  └─────────┬───────────┘    └───────────────────────────────┘   │
+│            │                                                    │
+│            ▼                                                    │
+│  ┌─────────────────────┐    ┌───────────────────────────────┐   │
+│  │  RENDERER PROCESS 2 │    │  UTILITY PROCESSES            │   │
+│  │  (tab: news.ycombin)|◄──►│                               │   │
+│  │                     │    │  - Image decoder (async)      │   │
+│  │ - DOM Isolated      │    │  - Font loader (MSDF)         │   │
+│  │ - Cookie Partition  │    │  - Video decoder (NVDEC)      │   │
+│  │ - Script Sandbox    │    │  - Search indexer (SQLite)    │   │
+│  └─────────────────────┘    └───────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Principios de Diseño:
-- **Zero-Copy**: Datos nunca se copian innecesariamente entre CPU↔GPU
-- **Async Everything**: Tokio + async/await en cada capa, sin bloqueos
-- **Compute-First**: Parsing y layout ejecutándose en paralelo en GPU
-- **Search-Native**: Búsqueda integrada en el kernel, no como addon
+### Comunicación IPC (Canales MPSC Tokio)
 
-> 📋 Para detalles técnicos completos: [RECONSTRUCCION_v2.md](./RECONSTRUCCION_v2.md)
+Los mensajes entre procesos usan canales tipo-safe definidos en `src/utils/ipc.rs`:
 
----
+```rust
+// Browser ↔ Renderer
+pub enum BrowserMessage {
+    Navigate { url: String, tab_id: TabId },
+    StopLoading { tab_id: TabId },
+    GetTitle { tab_id: TabId, reply: oneshot::Sender<String> },
+    CloseTab { tab_id: TabId },
+}
 
-## 📁 Estructura del Proyecto (v2.0)
+// Renderer ↔ GPU
+pub enum RenderMessage {
+    SubmitFrame { commands: Vec<CommandBuffer>, sem: Semaphore },
+    SwapChainInvalid,
+    Resize { width: u32, height: u32 },
+}
 
-```text
-Noir_Browser/
-├── No-Chromium/
-│   ├── src/
-│   │   ├── core/           # Kernel: gpu/, memory/, async/
-│   │   ├── parsing/        # HTML/CSS/DOM parsers en GPU
-│   │   ├── layout/         # Flexbox/Grid + text shaping paralelo
-│   │   ├── search/         # OmniSearch nativo + autocomplete GPU
-│   │   ├── network/        # HTTP/3 + QUIC + pre-fetch ML
-│   │   └── vulkan_engine/  # Render core optimizado
-│   ├── shaders/            # Compute/Graphics shaders fuente
-│   ├── scripts/            # Setup, build, benchmark
-│   └── tests/              # Perf, WPT, search tests
-├── RECONSTRUCCION_v2.md    # 🚀 Roadmap completo de reconstrucción
-├── Fases.md                # 📋 Plan de implementación por fases
-└── README.md               # Este documento
+// Renderer ↔ Network
+pub enum NetworkMessage {
+    FetchUrl { url: Url, headers: Headers, reply: oneshot::Sender<Response> },
+    WebSocketConnect { url: Url, reply: oneshot::Sender<WsStream> },
+    DnsResolve { hostname: String, reply: oneshot::Sender<IpAddr> },
+}
 ```
 
 ---
 
-## 🎯 Roadmap de Reconstrucción
+## 📁 Estructura del Proyecto
 
-| Fase | Objetivo | Duración | Estado |
-|------|----------|----------|--------|
-| 🔴 0 | Foundation: Allocator + Vulkan setup | 2 sem | 🔄 En progreso |
-| 🔴 1 | GPU Parsing Engine (HTML/CSS en shaders) | 3 sem | ⏳ Pendiente |
-| 🔴 2 | Layout paralelo (Flexbox/Grid en GPU) | 3 sem | ⏳ Pendiente |
-| 🔴 3 | OmniSearch nativo + autocomplete VRAM | 2 sem | ⏳ Pendiente |
-| 🔴 4 | Network: HTTP/3 + pre-fetch inteligente | 2 sem | ⏳ Pendiente |
-| 🔴 5 | Polish: Profiling, benchmarks, docs | 2 sem | ⏳ Pendiente |
-
-> ✅ **Meta final**: Startup <200ms, <30MB RAM/tab, 120fps locked, búsqueda <100ms
+```
+No-Chromium/
+├── Cargo.toml                      # Configuración con features
+├── README.md                       # Este documento
+├── src/
+│   ├── main.rs                     # Entry point + auto-scaling
+│   ├── lib.rs                      # API pública exportada
+│   ├── app.rs                      # UI loop (winit)
+│   ├── browser/                    # Proceso Browser
+│   │   ├── mod.rs                  # Coordinador + tipos base
+│   │   ├── coordinator.rs          # Lógica de coordinación
+│   │   ├── tab_manager.rs          # Gestión de tabs + IPC
+│   │   ├── navigation.rs           # Navigation flow (Chrome-style)
+│   │   └── privacy/                # Módulo de privacidad
+│   │       ├── mod.rs              # First-party isolation
+│   │       ├── fpi.rs              # Cookie/storage partitioning
+│   │       └── fingerprint.rs      # Canvas/WebGL jitter
+│   ├── renderer/                   # Proceso Renderer
+│   │   ├── mod.rs                  # Entry point renderer
+│   │   ├── html_parser.rs          # Zero-copy HTML parser
+│   │   ├── css_cascade.rs          # CSS specificity + inheritance
+│   │   ├── layout_engine.rs        # Block/inline → Flexbox/Grid
+│   │   └── js_engine/              # Motor JavaScript
+│   │       ├── mod.rs              # Boa integration
+│   │       └── boa_bridge.rs       # document/window bindings
+│   ├── vulkan_engine/              # Proceso GPU
+│   │   ├── mod.rs                  # Exportaciones públicas
+│   │   ├── core.rs                 # UltraFastVulkanEngine
+│   │   ├── shaders/                # Shaders GLSL
+│   │   │   ├── ui.comp             # UI compositing
+│   │   │   ├── text_msdf.frag      # MSDF text rendering
+│   │   │   └── image.frag          # Image sampling
+│   │   └── bindless.rs             # Descriptor indexing
+│   ├── network/                    # Proceso Network
+│   │   ├── mod.rs                  # Coordinador de red
+│   │   ├── fetch.rs                # HTTP/HTTPS async
+│   │   ├── socks_proxy.rs          # Tor-mode SOCKS5 chain
+│   │   ├── doh_resolver.rs         # DNS-over-HTTPS
+│   │   └── circuit.rs              # Circuit rotation logic
+│   └── utils/                      # Utilidades compartidas
+│       ├── mod.rs                  # Re-exports
+│       ├── ipc.rs                  # Tipos de mensajes MPSC
+│       ├── process_model.rs        # Auto-scaling logic
+│       └── memory.rs               # Ephemeral buffers + zeroize
+└── tests/
+    ├── wpt/                        # Web Platform Tests
+    ├── privacy/                    # Fingerprint tests
+    └── performance/                # Frame time benchmarks
+```
 
 ---
 
-## 🚀 Inicio Rápido (v2.0)
+## ⚡ Características Principales
+
+### 🔒 Privacidad (Herencia Tor)
+
+- **First-Party Isolation (FPI)**: Cookies y localStorage aislados por `(domain, first_party_domain)`
+- **Anti-Fingerprinting**: Jitter imperceptible en Canvas/WebGL (±1 en canales RGBA)
+- **Disk Avoidance**: Cache en `mmap` anónimo, `zeroize()` automático al cerrar
+
+```rust
+// Ejemplo: Obtener cookies respetando FPI
+let cookies = fpi.get_cookies("tracker.com", "example.com");
+// Retorna vacío si first_party no coincide
+```
+
+### 🚀 Velocidad (Herencia Chrome + Vulkan)
+
+- **Pipeline Zero-Copy**: HTML/CSS → Parser → Layout → Vulkan sin allocaciones intermedias
+- **Bindless Descriptors**: Acceso directo a recursos GPU sin rebinding
+- **Triple Buffering**: <5ms por frame en hardware compatible
+
+### 🧠 Auto-Scaling Inteligente
+
+```rust
+// Determina modelo según RAM disponible
+pub fn determine_process_model(available_ram_mb: u64) -> ProcessModel {
+    match available_ram_mb {
+        0..=2048   => ProcessModel::SingleProcess,     // Todo en 1 task
+        2049..=4096 => ProcessModel::Aggregated,       // Browser + 1 renderer
+        4097..=8192 => ProcessModel::ModerateIsolation, // Browser + renderer por tab
+        _          => ProcessModel::FullIsolation,     // Todos separados
+    }
+}
+```
+
+---
+
+## 🔧 Configuración y Build
+
+### Features Disponibles
+
+| Feature | Descripción | Default |
+|---------|-------------|---------|
+| `ultrafast` | Vulkan 1.3 zero-copy rendering | ✅ |
+| `privacy` | First-Party Isolation + anti-fingerprint | ❌ |
+| `tor_mode` | SOCKS5 proxy + circuit rotation | ❌ |
+| `msdf_fonts` | Multi-channel Signed Distance Field fonts | ❌ |
+| `debug_vulkan` | Vulkan validation layers | ❌ |
+| `fallback_vulkano` | Usar Vulkano como fallback | ❌ |
+| `video_decode` | Aceleración hardware de video | ❌ |
+| `local_search` | Búsqueda local con SQLite | ❌ |
+
+### Build Commands
 
 ```bash
-# 1. Clonar y entrar al proyecto
-git clone https://github.com/tu-user/noir-browser.git
-cd Noir_Browser/No-Chromium
-
-# 2. Ejecutar setup de Fase 0 (allocator + Vulkan optimizado)
-bash scripts/setup_phase0.sh
-
-# 3. Compilar en modo release (máximas optimizaciones)
+# Build estándar (ultrafast habilitado)
 cargo build --release
 
-# 4. Ejecutar con profiling opcional
-# TRACY=1 ./target/release/noir-browser
+# Build con privacidad completa
+cargo build --release --features "privacy,tor_mode"
 
-# 5. (Opcional) Ejecutar benchmarks
-cargo bench
+# Build con debug de Vulkan
+cargo build --features "debug_vulkan"
+
+# Run con flags de línea de comandos
+cargo run -- --tor-only --debug-vulkan
+
+# Tests
+cargo test --all-features
 ```
 
-### Requisitos:
-- Rust 1.75+ con nightly (para algunas features)
-- Vulkan 1.2+ con soporte para compute shaders
-- glslc (para compilación de shaders, opcional en dev)
-- Windows 10/11, Linux con Vulkan drivers actualizados
+### Variables de Entorno
+
+```bash
+# Nivel de logging
+RUST_LOG=noir=debug cargo run
+
+# Forzar modelo de proceso
+NOIR_PROCESS_MODEL=full_isolation cargo run
+
+# Límite de memoria para cache
+NOIR_CACHE_MB=1024 cargo run
+```
 
 ---
 
-## 🌓 Características Especiales (v2.0)
+## 🗺️ Roadmap de Desarrollo (7 Fases)
 
-✨ **Tema Oscuro Inteligente (Noir Dark Theme)**: Analiza en tiempo real la luminancia de los fondos y textos CSS. Los fondos claros se convierten en un gris oscuro premium (`#1f2023`), y los textos oscuros se iluminan suavemente para evitar destellos oculares, conservando el diseño original.
+| Fase | Duración | Objetivo | Criterio de Éxito |
+|------|----------|----------|------------------|
+| **0** | 2 sem | Vulkan 1.3 ultra-fast base | <8ms frame, triple buffering |
+| **1** | 3 sem | Pipeline zero-copy parser → GPU | Parse + render en <15ms |
+| **2** | 3 sem | Motor JS Boa + Bridge DOM mínimo | `document.getElementById()` funciona |
+| **3** | 2 sem | Privacidad Tor: FPI + anti-fingerprint | Canvas fingerprint ≠ real |
+| **4** | 3 sem | Multi-proceso + IPC | Crash en tab no afecta otros |
+| **5** | 2 sem | Red: SOCKS5 + DoH + circuit rotation | Navegación anónima funcional |
+| **6** | 3 sem | Flexbox/Grid + MSDF fonts | 90% WPT CSS pass |
+| **7** | 2 sem | Búsqueda nativa + overlay | Autocomplete <50ms, index local |
 
-✨ **Pre-Cache Off-line con GPU**: Los recursos más comunes se pre-cargan y decodifican de forma asíncrona en VRAM mediante Tokio + compute shaders, eliminando stalls de CPU.
-
-✨ **OmniSearch Nativo**: Barra de dirección = barra de búsqueda. Multi-engine paralelo (DuckDuckGo, SearXNG), resultados pre-renderizados en GPU, autocomplete con trie en VRAM (<1ms).
-
-✨ **Zero-GC Architecture**: Sin recolección de basura, sin pauses, sin overhead. Arena allocators + ring buffers para memory management determinista.
+**Total**: ~20 semanas (~5 meses) hasta producto usable.
 
 ---
 
-## 📈 Métricas de Rendimiento (Objetivos v2.0)
+## 🚀 Primeros Pasos
 
-| Métrica | Noir v2.0 (objetivo) | Chrome (referencia) |
-|---------|---------------------|---------------------|
-| Startup time | **< 200ms** | ~800ms |
-| RAM por tab | **< 30MB** | ~150-300MB |
-| FPS en scroll | **120fps locked** | 60fps variable |
-| Búsqueda → resultados | **< 100ms** | ~300-500ms |
-| Parse HTML 1MB | **< 5ms (GPU)** | ~50ms (CPU) |
-| Layout complejo | **< 10ms (paralelo)** | ~100ms (secuencial) |
+### 1. Clonar y Configurar
+
+```bash
+git clone https://github.com/tu-usuario/noir-browser.git
+cd noir-browser/No-Chromium
+```
+
+### 2. Instalar Dependencias del Sistema
+
+**Windows:**
+```powershell
+# Vulkan SDK: https://vulkan.lunarg.com/sdk/home
+# Rust: https://rustup.rs
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt install libvulkan-dev mesa-vulkan-drivers vulkan-tools
+```
+
+**macOS:**
+```bash
+# Vulkan via MoltenVK
+brew install vulkan-loader vulkan-headers
+```
+
+### 3. Build y Ejecutar
+
+```bash
+# Build de desarrollo
+cargo build
+
+# Ejecutar con configuración por defecto
+cargo run
+
+# Ejecutar con modo Tor y debug
+cargo run --features "tor_mode,debug_vulkan" -- --tor-only --debug-vulkan
+```
+
+### 4. Verificar Funcionamiento
+
+```bash
+# Test mínimo de compilación
+cargo test test_build
+
+# Benchmark de frame time
+cargo bench --bench frame_time
+```
 
 ---
 
 ## 🤝 Contribuir
 
-¡Estamos reconstruyendo desde cero y necesitamos ayuda!
-
-1. Lee [RECONSTRUCCION_v2.md](./RECONSTRUCCION_v2.md) para entender la arquitectura
-2. Revisa los issues etiquetados con `good first issue` o `fase-0`
-3. Ejecuta `bash scripts/setup_phase0.sh` para configurar tu entorno
-4. ¡Envía tu PR! Usamos `cargo fmt`, `cargo clippy` y tests obligatorios
-
-### Áreas que necesitan ayuda:
-- 🔹 Implementación de compute shaders para HTML/CSS parsing
-- 🔹 Bridge DOM mínimo para integración con Boa (JS engine)
-- 🔹 Optimización de Vulkan pipeline caching
-- 🔹 Tests de Web Platform Tests (WPT)
+1. Leer `ARCHITECTURE.md` en la raíz del proyecto
+2. Seguir el roadmap de fases en `Fases.md`
+3. Usar `cargo fmt` y `cargo clippy` antes de commit
+4. Añadir tests para nuevas funcionalidades
+5. Documentar APIs públicas en `lib.rs`
 
 ---
 
 ## 📄 Licencia
 
-Noir Browser está licenciado bajo **MIT** o **Apache 2.0**, a tu elección.
+Este proyecto está bajo la licencia especificada en `LICENSE`.
+
+> ⚠️ **Nota**: Esta arquitectura elimina la dependencia de C++ legacy, V8, y cualquier componente de Chromium. Todo es **Rust nativo + Vulkan directo + patrones de privacidad Tor**.
 
 ---
 
-> 💡 **¿Listo para contribuir?** Empieza con la [Fase 0](./RECONSTRUCCION_v2.md#-fase-0-foundation-2-semanas) o abre un issue para discutir ideas. ¡Hagamos el navegador más rápido del mundo! 🚀
+<div align="center">
+
+**🌌 Noir Browser** · *Navegación rápida. Privacidad real. Código abierto.*
+
+[📋 ARCHITECTURE.md](../ARCHITECTURE.md) · [🗺️ Fases.md](Fases.md) · [🚀 QUICKSTART.md](QUICKSTART.md)
+
+</div>
