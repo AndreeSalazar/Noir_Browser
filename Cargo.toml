@@ -57,6 +57,7 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
 futures = "0.3"
 zstd-sys = { version = "=2.0.8" }
+intrusive-collections = "=0.9.6"
 
 [profile.release]
 opt-level = 3

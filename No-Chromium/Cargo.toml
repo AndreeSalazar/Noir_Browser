@@ -49,6 +49,7 @@ tantivy.workspace = true
 lru.workspace = true
 futures.workspace = true
 zstd-sys.workspace = true
+intrusive-collections.workspace = true
 vulkano = { version = "0.34", optional = true }
 rusqlite = { version = "0.30", features = ["bundled"], optional = true }
 
