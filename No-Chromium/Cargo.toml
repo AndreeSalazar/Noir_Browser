@@ -1,25 +1,78 @@
 [package]
-name = "noir-browser"
-version = "0.7.0"
+name = "no-chromium"
+version = "0.2.0-ultrafast"
 edition = "2021"
+authors = ["Andre <andre@example.com>"]
+description = "Noir Browser - Ultra-fast Vulkan 1.3 web engine with native web search"
+license-file = "LICENSE"
+repository = "https://github.com/AndreeSalazar/Noir_Browser"
 
 [dependencies]
-ash = "0.37"
-winit = "0.28"
-ash-window = "0.12"
+# === VULKAN CORE ===
+ash = { version = "0.37", features = ["debug", "linked"] }
+gpu-allocator = { version = "0.25", features = ["vulkan"] }
+vulkano = { version = "0.34", optional = true }  # Fallback si Ash es muy complejo
+
+# === WINDOWING & INPUT ===
+winit = "0.29"
 raw-window-handle = "0.5"
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-fontdue = "0.9.3"
-shaderc = "0.10.1"
-gpu-allocator = { version = "0.26", features = ["vulkan"] }
-html5ever = "0.39.0"
-markup5ever_rcdom = "0.39.0"
-reqwest = { version = "0.13.3", features = ["rustls", "blocking"] }
-url = "2.5"
+
+# === ASYNC & CONCURRENCY ===
+tokio = { version = "1.35", features = ["full", "tracing"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# === PARSING ===
+html5ever = "0.26"
+markup5ever = "0.11"
+cssparser = "0.31"
+selectors = "0.25"
+
+# === JAVASCRIPT ENGINE ===
+boa_engine = "0.18"
+boa_parser = "0.18"
+boa_gc = "0.18"
+
+# === SEARCH & INDEXING ===
+rusqlite = { version = "0.30", features = ["bundled", "fts5"] }
+tantivy = "0.21"  # Full-text search engine alternativo a SQLite FTS5
+lru = "0.12"
+
+# === UTILITIES ===
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+thiserror = "1.0"
+bytemuck = { version = "1.14", features = ["derive"] }
+ glam = "0.25"  # Math para layout
+
+# === IMAGE & FONT ===
 image = { version = "0.24", default-features = false, features = ["png", "jpeg", "webp"] }
-boa_engine = "0.21.1"
-sha2 = "0.10.8"
-rodio = "0.17.3"
-symphonia = { version = "0.5.3", features = ["aac", "isomp4", "mp3"] }
+rustybuzz = "0.12"  # Text shaping
+fontdb = "0.16"
+
+# === SECURITY ===
+rustls = "0.22"
+webpki-roots = "0.26"
+
+[features]
+default = ["ultrafast"]
+ultrafast = []  # Vulkan 1.3 + bindless + async compute
+debug_vulkan = ["ash/debug"]  # Validation layers
+fallback_vulkano = ["dep:vulkano"]  # Usar vulkano si ash es muy complejo
+video_decode = []  # NVDEC / Vulkan Video support
+
+[profile.dev]
+opt-level = 1
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.bench]
+inherits = "release"
+debug = true
