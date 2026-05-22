@@ -10,50 +10,36 @@ authors = ["andre"]
 description = "Noir Browser: Ultra-fast, privacy-first web browser built in Rust + Vulkan"
 
 [workspace.dependencies]
-# === CORE ASYNC RUNTIME ===
 tokio = { version = "1.35", features = ["full", "tracing"] }
 async-trait = "0.1"
-
-# === VULKAN GRAPHICS (Ash for direct control) ===
 ash = { version = "0.37", features = ["linked"] }
+ash-window = "0.9"
 gpu-allocator = "0.25"
 winit = { version = "0.29", features = ["rwh_05"] }
 raw-window-handle = "0.5"
-
-# === PARSER COMBINATORS (zero-copy) ===
 nom = "7.1"
 memchr = "2.7"
 html5ever = "0.26"
 markup5ever = "0.11"
 cssparser = "0.31"
 selectors = "0.25"
-
-# === JAVASCRIPT ENGINE (Boa - native Rust, no GC) ===
 boa_engine = "0.18"
 boa_parser = "0.18"
 boa_ast = "0.18"
 boa_gc = "0.18"
-
-# === NETWORKING ===
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "socks", "http2"] }
 rustls = "0.21"
 tokio-socks = "0.5"
 hickory-resolver = { version = "0.24", features = ["dns-over-https-rustls"] }
-
-# === PRIVACY & SECURITY ===
 zeroize = { version = "1.7", features = ["derive"] }
 rand = { version = "0.8", features = ["std_rng"] }
 sha2 = "0.10"
 hmac = "0.12"
 webpki-roots = "0.26"
-
-# === DATA STRUCTURES ===
 smallvec = "1.13"
 slotmap = "1.0"
 dashmap = "5.5"
 lru = "0.12"
-
-# === UTILITIES ===
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 once_cell = "1.19"
@@ -62,19 +48,14 @@ anyhow = "1.0"
 bytes = "1.5"
 bytemuck = { version = "1.14", features = ["derive"] }
 glam = "0.25"
-
-# === IMAGE & FONT ===
 image = { version = "0.24", default-features = false, features = ["png", "jpeg", "webp"] }
 rustybuzz = "0.12"
 ttf-parser = "0.20"
 fontdb = "0.16"
-
-# === SEARCH & INDEXING ===
 tantivy = "0.21"
-
-# === DEV DEPENDENCIES ===
 criterion = { version = "0.5", features = ["async_tokio"] }
 pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
+futures = "0.3"
 
 [profile.release]
 opt-level = 3
@@ -90,34 +71,3 @@ debug = true
 [profile.dev]
 opt-level = 1
 debug = true
-
-# === FEATURE FLAGS ===
-[features]
-default = ["ultrafast"]
-
-# Ultra-fast Vulkan pipeline (default)
-ultrafast = []
-
-# Debug Vulkan validation layers (development only)
-debug_vulkan = ["ash/debug"]
-
-# Privacy mode: FPI + anti-fingerprint + disk avoidance
-privacy = ["zeroize/derive", "rand/std_rng"]
-
-# Tor mode: SOCKS5 chain + circuit rotation + DoH
-tor_mode = ["privacy", "tokio-socks", "hickory-resolver/dns-over-https-rustls"]
-
-# Local search index (SQLite FTS5) - defined in No-Chromium/Cargo.toml
-# local_search = ["dep:rusqlite"]  # Moved to package level
-
-# MSDF font rendering
-msdf_fonts = ["rustybuzz", "ttf-parser"]
-
-# Hardware video decoding (NVDEC/Vulkan Video)
-hw_video = []
-
-# Full isolation: one renderer process per tab
-full_isolation = []
-
-# Lightweight mode: single process for low-RAM devices
-lightweight = []

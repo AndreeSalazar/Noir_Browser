@@ -1,75 +1,55 @@
 [package]
 name = "no-chromium"
-version = "0.2.0-ultrafast"
-edition = "2021"
-authors = ["Andre <andre@example.com>"]
-description = "Noir Browser - Ultra-fast Vulkan 1.3 web engine with native web search"
-license-file = "LICENSE"
-repository = "https://github.com/AndreeSalazar/Noir_Browser"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+authors.workspace = true
+description.workspace = true
 
 [dependencies]
-# === VULKAN CORE (from workspace) ===
 ash.workspace = true
+ash-window.workspace = true
 gpu-allocator.workspace = true
-vulkano = { version = "0.34", optional = true }
-
-# === WINDOWING & INPUT (from workspace) ===
 winit.workspace = true
 raw-window-handle.workspace = true
-
-# === ASYNC & CONCURRENCY (from workspace) ===
 tokio.workspace = true
 async-trait.workspace = true
-futures = "0.3"
-
-# === PARSING (from workspace) ===
 html5ever.workspace = true
 markup5ever.workspace = true
 cssparser.workspace = true
 selectors.workspace = true
 nom.workspace = true
 memchr.workspace = true
-
-# === JAVASCRIPT ENGINE (from workspace) ===
 boa_engine.workspace = true
 boa_parser.workspace = true
 boa_gc.workspace = true
 boa_ast.workspace = true
-
-# === SEARCH & INDEXING ===
-# rusqlite es opcional y se define localmente (no puede ir en workspace.dependencies)
-rusqlite = { version = "0.30", features = ["bundled", "fts5"], optional = true }
-tantivy.workspace = true
-lru.workspace = true
-
-# === UTILITIES (from workspace) ===
 tracing.workspace = true
 tracing-subscriber.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 bytemuck.workspace = true
 glam.workspace = true
-
-# === IMAGE & FONT (from workspace) ===
 image.workspace = true
 rustybuzz.workspace = true
 fontdb.workspace = true
 ttf-parser.workspace = true
-
-# === SECURITY (from workspace) ===
 rustls.workspace = true
 webpki-roots.workspace = true
 zeroize.workspace = true
 rand.workspace = true
 sha2.workspace = true
 hmac.workspace = true
-
-# === DATA STRUCTURES (from workspace) ===
 smallvec.workspace = true
 slotmap.workspace = true
 dashmap.workspace = true
 bytes.workspace = true
 once_cell.workspace = true
+tantivy.workspace = true
+lru.workspace = true
+futures.workspace = true
+vulkano = { version = "0.34", optional = true }
+rusqlite = { version = "0.30", features = ["bundled", "fts5"], optional = true }
 
 [features]
 default = ["ultrafast"]
@@ -77,15 +57,9 @@ ultrafast = []
 debug_vulkan = ["ash/debug"]
 fallback_vulkano = ["dep:vulkano"]
 video_decode = []
-
-# Feature que habilita búsqueda local con SQLite
 local_search = ["dep:rusqlite"]
-
-# Feature combinado para modo privacidad
 privacy = []
 tor_mode = ["privacy"]
-
-# Feature para renderizado de fuentes MSDF
 msdf_fonts = []
 
 [profile.dev]
