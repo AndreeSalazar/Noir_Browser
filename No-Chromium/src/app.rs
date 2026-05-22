@@ -3,6 +3,8 @@
 //! Inicializa winit (ventana) + Vulkan engine + event loop básico
 
 use anyhow::Result;
+use std::sync::Arc;
+use tokio::runtime::Runtime;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -11,6 +13,7 @@ use winit::{
 };
 
 use crate::vulkan_engine::UltraFastVulkanEngine;
+use crate::config::AppConfig;
 
 /// Estado principal de la aplicación
 pub struct App {
@@ -92,7 +95,7 @@ impl ApplicationHandler for App {
 }
 
 /// Punto de entrada principal del loop de aplicación
-pub fn run() -> Result<()> {
+pub async fn run(_config: AppConfig, _runtime: Arc<Runtime>) -> Result<()> {
     tracing::info!("[app] Starting Noir Browser (Fase 0: Vulkan Ultra-Fast)");
     
     let event_loop = EventLoop::new()?;

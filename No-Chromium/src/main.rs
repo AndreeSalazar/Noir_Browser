@@ -171,7 +171,7 @@ impl AppCoordinator {
             }
             ProcessModel::ModerateIsolation | ProcessModel::FullIsolation => {
                 tokio::runtime::Builder::new_multi_thread()
-                    .worker_threads(num_cpus::get())
+                    .worker_threads(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4))
                     .enable_all()
                     .build()?
             }
@@ -184,7 +184,7 @@ impl AppCoordinator {
     }
     
     /// Ejecuta el ciclo principal de la aplicación
-    async fn run(mut self) -> anyhow::Result<()> {
+    async fn run(self) -> anyhow::Result<()> {
         info!("🚀 Starting Noir Browser with {:?} model", self.config.process_model);
         
         // 1. Inicializar motor Vulkan (Fase 0 - base ultra-fast)

@@ -14,6 +14,20 @@ impl UltraFastVulkanEngine {
         Ok(Self { allocator: None })
     }
 
+    /// Stub: global Vulkan initialization (Instance, etc.)
+    pub async fn initialize() -> anyhow::Result<()> {
+        tracing::info!("[Vulkan] Initializing engine globals (stub)...");
+        // Fase 1: ash::Entry::load(), vk::Instance creation, etc.
+        Ok(())
+    }
+
+    /// Stub: global Vulkan shutdown
+    pub async fn shutdown() -> anyhow::Result<()> {
+        tracing::info!("[Vulkan] Shutting down engine globals (stub)...");
+        // Fase 1: vk::Instance destruction, etc.
+        Ok(())
+    }
+
     /// Stub: real implementation uses KhrSwapchain::acquire_next_image
     pub unsafe fn acquire_next_image(&self, _timeout: u64) -> anyhow::Result<u32> {
         Ok(0)
