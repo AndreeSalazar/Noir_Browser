@@ -148,6 +148,11 @@ fn detect_macos_ram() -> u64 {
     4096
 }
 
+/// Detecta la memoria RAM disponible del sistema (en MB) - función pública
+pub fn detect_available_ram() -> u64 {
+    detect_available_ram_mb()
+}
+
 /// Calcula cuántos renderer processes se pueden crear con la RAM disponible
 pub fn calculate_max_renderers(
     available_ram_mb: u64,

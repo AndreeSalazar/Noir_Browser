@@ -9,5 +9,5 @@ pub mod memory;
 
 // Re-exportar tipos comunes
 pub use ipc::{BrowserMessage, RendererMessage, NetworkMessage, RenderMessage};
-pub use process_model::{ProcessModel, determine_process_model};
+pub use process_model::{ProcessModel, determine_process_model, detect_available_ram};
 pub use memory::{EphemeralBuffer, zeroize_slice};

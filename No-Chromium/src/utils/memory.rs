@@ -14,10 +14,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Al ser dropeado, zeroiza automáticamente su contenido.
 #[derive(ZeroizeOnDrop)]
 pub struct EphemeralBuffer {
-    #[zeroize(skip)]
     data: Vec<u8>,
     #[zeroize(skip)]
     used: AtomicUsize,
+    #[zeroize(skip)]
     capacity: usize,
 }
 

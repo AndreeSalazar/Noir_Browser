@@ -1,67 +1,49 @@
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+// HistoryStore: Almacena el historial de navegación en memoria (sin disco).
+// Stub implementado para resolver error E0432.
 
-const HISTORY_LIMIT: usize = 512;
+use chrono::{DateTime, Utc};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct HistoryEntry {
     pub url: String,
-    pub visit_count: u32,
-    pub last_visited_unix: u64,
+    pub title: String,
+    pub timestamp: DateTime<Utc>,
+    pub tab_id: u64,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct HistoryStore {
-    pub entries: Vec<HistoryEntry>,
+    entries: Vec<HistoryEntry>,
+    max_entries: usize,
 }
 
 impl HistoryStore {
-    pub fn load() -> Self {
-        let path = history_path();
-        let Ok(contents) = fs::read_to_string(path) else {
-            return Self::default();
+    pub fn new(max_entries: usize) -> Self {
+        Self {
+            entries: Vec::with_capacity(max_entries),
+            max_entries,
+        }
+    }
+
+    pub fn add_entry(&mut self, url: String, title: String, tab_id: u64) {
+        let entry = HistoryEntry {
+            url,
+            title,
+            timestamp: Utc::now(),
+            tab_id,
         };
-
-        serde_json::from_str(&contents).unwrap_or_default()
+        
+        if self.entries.len() >= self.max_entries {
+            self.entries.remove(0);
+        }
+        self.entries.push(entry);
     }
 
-    pub fn record_visit(&mut self, url: &str) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_secs())
-            .unwrap_or_default();
-
-        if let Some(entry) = self.entries.iter_mut().find(|entry| entry.url == url) {
-            entry.visit_count = entry.visit_count.saturating_add(1);
-            entry.last_visited_unix = now;
-        } else {
-            self.entries.push(HistoryEntry {
-                url: url.to_string(),
-                visit_count: 1,
-                last_visited_unix: now,
-            });
-        }
-
-        self.entries
-            .sort_by(|a, b| b.last_visited_unix.cmp(&a.last_visited_unix));
-        self.entries.truncate(HISTORY_LIMIT);
-        self.save();
+    pub fn get_recent(&self, limit: usize) -> &[HistoryEntry] {
+        let start = self.entries.len().saturating_sub(limit);
+        &self.entries[start..]
     }
 
-    fn save(&self) {
-        let path = history_path();
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-
-        if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = fs::write(path, json);
-        }
+    pub fn clear(&mut self) {
+        self.entries.clear();
     }
-}
-
-fn history_path() -> PathBuf {
-    PathBuf::from("profile").join("history.json")
 }

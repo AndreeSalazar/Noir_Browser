@@ -34,16 +34,43 @@ pub mod privacy;
 // === TIPOS PÚBLICOS RE-EXPORTADOS ===
 
 pub use crate::browser::TabId;
-pub use crate::renderer::RenderContext;
+// pub use crate::renderer::RenderContext; // TODO: Implementar en Fase 1
 pub use crate::vulkan_engine::{VulkanHandle, FrameInfo};
-pub use crate::network::{Request, Response, NetworkError};
+// pub use crate::network::{Request, Response, NetworkError}; // TODO: Implementar en Fase 5
 
 #[cfg(feature = "privacy")]
-pub use crate::privacy::{FirstPartyIsolation, FingerprintSeed};
+pub use crate::browser::privacy::{FirstPartyIsolation, FingerprintSeed};
 
 // === CONFIGURACIÓN PÚBLICA ===
 
-pub use crate::{AppConfig, ProcessModel};
+// Re-export ProcessModel desde utils
+pub use crate::utils::ProcessModel;
+
+/// Configuración principal de la aplicación
+#[derive(Clone, Debug)]
+pub struct AppConfig {
+    pub process_model: ProcessModel,
+    pub enable_privacy: bool,
+    pub enable_tor_mode: bool,
+    pub enable_ultrafast: bool,
+    pub max_tabs: usize,
+    pub cache_size_mb: usize,
+    pub enable_debug: bool,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            process_model: ProcessModel::from_available_ram(crate::utils::detect_available_ram()),
+            enable_privacy: true,
+            enable_tor_mode: false,
+            enable_ultrafast: cfg!(feature = "ultrafast"),
+            max_tabs: 10,
+            cache_size_mb: 256,
+            enable_debug: cfg!(debug_assertions),
+        }
+    }
+}
 
 // === FUNCIONES DE ALTO NIVEL ===
 
@@ -67,7 +94,11 @@ pub use crate::{AppConfig, ProcessModel};
 /// ```
 pub async fn create_browser(config: AppConfig) -> anyhow::Result<BrowserInstance> {
     // Delegar al coordinador interno
-    crate::AppCoordinator::new(config)?.run().await?;
+    // Stub para Fase 0 - delegar al app::run() en modo single-process
+    #[cfg(not(test))]
+    {
+        crate::app::run()?;
+    }
     Ok(BrowserInstance { _private: () })
 }
 

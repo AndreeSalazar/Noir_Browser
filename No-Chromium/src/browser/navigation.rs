@@ -1,7 +1,7 @@
 use crate::browser::history::HistoryStore;
-use crate::browser::page::{render_page, PageDocument, RenderBox};
-use crate::parsers::css_engine::ComputedStyle;
-use crate::render::text::{RasterizedAtlas, TextRasterizationOptions};
+use crate::renderer::{PageDocument, RenderBox, render_page};
+use crate::renderer::css_cascade::ComputedStyle;
+use crate::renderer::text::{RasterizedAtlas, TextRasterizationOptions};
 
 #[derive(Debug, Clone)]
 pub struct LinkHitbox {
@@ -413,7 +413,7 @@ impl BrowserState {
         let doc = tab.document.as_ref()?;
         
         let mut form_action = None;
-        if let Some(super::page::LayoutFragment::Text(frag)) = doc.fragments.get(element_idx) {
+        if let Some(super::renderer::LayoutFragment::Text(frag)) = doc.fragments.get(element_idx) {
             form_action = frag.form_action.clone();
         }
 
@@ -421,7 +421,7 @@ impl BrowserState {
         let mut params = Vec::new();
 
         for frag in &doc.fragments {
-            if let super::page::LayoutFragment::Text(f) = frag {
+            if let super::renderer::LayoutFragment::Text(f) = frag {
                 if f.is_input && f.form_action.as_ref() == Some(&action_url_str) && !f.input_name.is_empty() {
                     params.push((f.input_name.clone(), f.input_value.clone()));
                 }
