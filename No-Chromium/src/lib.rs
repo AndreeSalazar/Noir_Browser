@@ -35,7 +35,7 @@ pub mod privacy;
 
 pub use crate::browser::TabId;
 // pub use crate::renderer::RenderContext; // TODO: Implementar en Fase 1
-pub use crate::vulkan_engine::{VulkanHandle, FrameInfo};
+pub use crate::vulkan_engine::FrameInfo;
 // pub use crate::network::{Request, Response, NetworkError}; // TODO: Implementar en Fase 5
 
 #[cfg(feature = "privacy")]

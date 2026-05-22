@@ -7,5 +7,5 @@ pub mod doh_resolver;
 pub mod circuit;
 
 // Re-exports
-pub use fetch::Fetcher;
+pub use fetch::HttpFetcher as Fetcher;
 pub use socks_proxy::SocksProxy;

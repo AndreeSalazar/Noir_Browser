@@ -1,7 +1,7 @@
 // JavaScript Engine integration (Boa) - Stub for Fase 0
 // Stub implemented to resolve module errors
 
-use boa_engine::{Context, JsValue, Source};
+use boa_engine::{Context, JsValue, Source, property::PropertyKey};
 
 /// JavaScript runtime environment
 pub struct JsRuntime {
@@ -22,6 +22,7 @@ impl JsRuntime {
     }
 
     pub fn get_global(&mut self, name: &str) -> Option<JsValue> {
+        // Boa's Object::get accepts Into<PropertyKey>, so &str works directly
         self.context
             .global_object()
             .get(name, &mut self.context)

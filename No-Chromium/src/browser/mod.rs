@@ -6,40 +6,16 @@
 pub mod coordinator;
 pub mod tab_manager;
 pub mod navigation;
+pub mod history;
 
 #[cfg(feature = "privacy")]
 pub mod privacy;
 
 use tokio::sync::mpsc;
-use crate::utils::ipc::{BrowserMessage, RendererMessage};
+use crate::utils::ipc::{BrowserMessage, RendererMessage, TabId};
 
-/// Identificador único para una pestaña
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TabId(pub u64);
-
-impl TabId {
-    /// Genera un nuevo TabId único
-    pub fn new() -> Self {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-        Self(COUNTER.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-impl Default for TabId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Estado de una pestaña
-#[derive(Debug, Clone)]
-pub enum TabState {
-    Loading { url: String, progress: f32 },
-    Loaded { url: String, title: String },
-    Error { url: String, message: String },
-    Closed,
-}
+/// Re-export TabState from tab_manager for unified type
+pub use tab_manager::TabState;
 
 /// Coordinador del proceso Browser
 pub struct BrowserCoordinator {
@@ -94,8 +70,13 @@ impl BrowserCoordinator {
         self.tab_manager.get_state(tab_id)
     }
     
-    /// Lista todas las pestañas activas
+    /// Lista todas las pestañas activas con sus estados
     pub fn list_tabs(&self) -> Vec<(TabId, &TabState)> {
         self.tab_manager.list_active()
+            .into_iter()
+            .filter_map(|id| {
+                self.tab_manager.get_state(id).map(|state| (id, state))
+            })
+            .collect()
     }
 }

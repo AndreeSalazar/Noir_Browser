@@ -19,6 +19,9 @@ impl BrowserCoordinator {
             BrowserMessage::StopLoading { .. } => {}
             BrowserMessage::GetTitle { .. } => {}
             BrowserMessage::CloseTab { .. } => {}
+            BrowserMessage::UpdateState { tab_id, title, url } => {
+                tracing::debug!("Tab {} state: {} @ {}", tab_id, title, url);
+            }
         }
     }
 }

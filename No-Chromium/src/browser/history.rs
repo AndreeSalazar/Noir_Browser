@@ -1,49 +1,50 @@
-// HistoryStore: Almacena el historial de navegación en memoria (sin disco).
-// Stub implementado para resolver error E0432.
+use std::collections::VecDeque;
 
-use chrono::{DateTime, Utc};
-
-#[derive(Clone, Debug)]
-pub struct HistoryEntry {
-    pub url: String,
-    pub title: String,
-    pub timestamp: DateTime<Utc>,
-    pub tab_id: u64,
-}
-
-pub struct HistoryStore {
-    entries: Vec<HistoryEntry>,
+pub struct HistoryStore { 
+    entries: VecDeque<String>,
     max_entries: usize,
 }
 
 impl HistoryStore {
-    pub fn new(max_entries: usize) -> Self {
-        Self {
-            entries: Vec::with_capacity(max_entries),
-            max_entries,
+    pub fn new() -> Self { 
+        Self { 
+            entries: VecDeque::new(),
+            max_entries: 1000,
+        } 
+    }
+    
+    /// Load history from disk (stub - returns empty for Phase 0)
+    pub fn load() -> Self {
+        Self::new()
+    }
+    
+    pub fn push(&mut self, url: &str) { 
+        // Avoid duplicates at the front
+        if self.entries.front().map(|e| e.as_str()) != Some(url) {
+            self.entries.push_front(url.to_string());
+            // Trim to max size
+            while self.entries.len() > self.max_entries {
+                self.entries.pop_back();
+            }
         }
     }
-
-    pub fn add_entry(&mut self, url: String, title: String, tab_id: u64) {
-        let entry = HistoryEntry {
-            url,
-            title,
-            timestamp: Utc::now(),
-            tab_id,
-        };
-        
-        if self.entries.len() >= self.max_entries {
-            self.entries.remove(0);
-        }
-        self.entries.push(entry);
+    
+    /// Record a visit (alias for push for API compatibility)
+    pub fn record_visit(&mut self, url: &str) {
+        self.push(url);
     }
-
-    pub fn get_recent(&self, limit: usize) -> &[HistoryEntry] {
-        let start = self.entries.len().saturating_sub(limit);
-        &self.entries[start..]
+    
+    pub fn get_recent(&self, limit: usize) -> Vec<&str> {
+        self.entries.iter().take(limit).map(|s| s.as_str()).collect()
     }
-
+    
     pub fn clear(&mut self) {
         self.entries.clear();
+    }
+}
+
+impl Default for HistoryStore {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -2,6 +2,7 @@ use crate::browser::history::HistoryStore;
 use crate::renderer::{PageDocument, RenderBox, render_page};
 use crate::renderer::css_cascade::ComputedStyle;
 use crate::renderer::text::{RasterizedAtlas, TextRasterizationOptions};
+use crate::renderer::layout_engine::LayoutFragment;
 
 #[derive(Debug, Clone)]
 pub struct LinkHitbox {
@@ -304,7 +305,7 @@ impl BrowserState {
             &active_url,
             document,
             &mut tab.link_hitboxes,
-            text_options,
+            text_options.clone(),
             viewport_width,
             viewport_height,
             tab.scroll_offset,
@@ -322,7 +323,7 @@ impl BrowserState {
                 &active_url,
                 document,
                 &mut tab.link_hitboxes,
-                text_options,
+                text_options.clone(),
                 viewport_width,
                 viewport_height,
                 tab.scroll_offset,
@@ -412,8 +413,9 @@ impl BrowserState {
         let tab = self.current_tab();
         let doc = tab.document.as_ref()?;
         
-        let mut form_action = None;
-        if let Some(super::renderer::LayoutFragment::Text(frag)) = doc.fragments.get(element_idx) {
+        // Use LayoutFragment::Text which has form_action field
+        let mut form_action: Option<String> = None;
+        if let Some(LayoutFragment::Text(frag)) = doc.fragments.get(element_idx) {
             form_action = frag.form_action.clone();
         }
 
@@ -421,7 +423,7 @@ impl BrowserState {
         let mut params = Vec::new();
 
         for frag in &doc.fragments {
-            if let super::renderer::LayoutFragment::Text(f) = frag {
+            if let LayoutFragment::Text(f) = frag {
                 if f.is_input && f.form_action.as_ref() == Some(&action_url_str) && !f.input_name.is_empty() {
                     params.push((f.input_name.clone(), f.input_value.clone()));
                 }
@@ -442,9 +444,15 @@ impl BrowserState {
             }
             Some(url.to_string())
         } else {
-            Some(action_url_str)
+            Some(action_url_str.to_string())
         }
     }
+}
+
+/// Extract form action from document - stub that returns None since LayoutFragment::Form doesn't exist yet
+pub fn extract_form_action(_doc: &crate::renderer::html_parser::PageDocument) -> Option<String> {
+    // TODO: Implement when LayoutFragment::Form variant is added in Phase 1
+    None
 }
 
 #[derive(Debug, Clone, PartialEq)]

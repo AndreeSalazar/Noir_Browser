@@ -5,7 +5,7 @@
 use anyhow::Result;
 use winit::{
     application::ApplicationHandler,
-    event::{Event, WindowEvent},
+    event::WindowEvent,
     event_loop::{ActiveEventLoop, EventLoop},
     window::{Window, WindowAttributes, WindowId},
 };
@@ -40,15 +40,15 @@ impl ApplicationHandler for App {
         let window = event_loop.create_window(attributes).expect("Failed to create window");
         self.window_id = Some(window.id());
         
-        // Inicializar Vulkan engine
+        // Inicializar Vulkan engine (stub for Phase 0)
         #[cfg(not(feature = "debug_vulkan"))]
         let enable_validation = false;
         #[cfg(feature = "debug_vulkan")]
         let enable_validation = true;
         
-        match UltraFastVulkanEngine::new(&window, enable_validation) {
+        match UltraFastVulkanEngine::new() {
             Ok(engine) => {
-                tracing::info!("[vulkan] Engine initialized successfully");
+                tracing::info!("[vulkan] Engine initialized successfully (stub)");
                 self.vulkan_engine = Some(engine);
             }
             Err(e) => {
@@ -70,7 +70,7 @@ impl ApplicationHandler for App {
                 tracing::info!("[app] Close requested, shutting down...");
                 // Cleanup Vulkan resources
                 if let Some(mut engine) = self.vulkan_engine.take() {
-                    engine.cleanup();
+                    let _ = engine.cleanup();
                 }
                 // _event_loop.exit(); // winit 0.29 no tiene exit() en ActiveEventLoop
             }
