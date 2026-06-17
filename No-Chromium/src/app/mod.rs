@@ -21,17 +21,15 @@ use theme::*;
 
 impl NoirApp {
     fn draw_frame(&mut self) {
-        // Cache all state before mutable borrow
         let display_url = self.display_url();
         let url_color = self.url_text_color();
         let url_bar_empty = self.url_bar.is_empty();
         let url_focused = self.url_focused;
         let url_cursor = self.url_cursor;
         let active_tab = self.active_tab;
-        let _tabs_len = self.tabs.len();
         let tab_titles: Vec<String> = self.tabs.iter().map(|t| {
-            if t.title.len() > 24 {
-                format!("{}...", &t.title[..21])
+            if t.title.len() > 20 {
+                format!("{}...", &t.title[..17])
             } else {
                 t.title.clone()
             }
@@ -51,7 +49,6 @@ impl NoirApp {
         let buf = buffer.as_mut();
         let stride = width as usize;
 
-        // Clear
         for pixel in buf.iter_mut() {
             *pixel = BG_CONTENT;
         }
@@ -59,163 +56,170 @@ impl NoirApp {
         let w = width as i32;
         let h = height as i32;
 
-        // ═══════════════ TITLE BAR ═══════════════
+        // ═══════ TITLE BAR (custom, no OS) ═══════
         draw_rect(buf, stride, 0, 0, w, TITLE_BAR_HEIGHT as i32, BG_TITLEBAR);
-        draw_text_noir(buf, stride, w, 14, 9, "Noir Browser", TEXT_DIM, 0.9);
 
-        // Window controls (right side, larger)
-        let ctrl_y = 8;
-        let ctrl_h = 16;
-        let ctrl_w = 20;
-        let gap = 2;
-        let close_x = w - ctrl_w - 8;
-        draw_rect(buf, stride, close_x, ctrl_y, ctrl_w, ctrl_h, CLOSE_RED);
-        let min_x = close_x - ctrl_w - gap;
-        draw_rect(buf, stride, min_x, ctrl_y, ctrl_w, ctrl_h, YELLOW);
-        let max_x = min_x - ctrl_w - gap;
-        draw_rect(buf, stride, max_x, ctrl_y, ctrl_w, ctrl_h, GREEN);
+        // App icon
+        draw_rect(buf, stride, 10, 10, 14, 14, ACCENT);
 
-        // ═══════════════ TAB BAR ═══════════════
+        // Title text
+        draw_text_noir(buf, stride, w, 30, 11, "Noir Browser", TEXT_DIM, 0.85);
+
+        // Window controls (Chrome-style, full height)
+        let ctrl_w = 46;
+        let ctrl_h = TITLE_BAR_HEIGHT as i32;
+
+        let min_x = w - ctrl_w * 3;
+        draw_rect(buf, stride, min_x, 0, ctrl_w, ctrl_h, BTN_BG);
+        draw_text_noir(buf, stride, w, min_x + 18, 11, "-", TEXT_DIM, 1.2);
+
+        let max_x = w - ctrl_w * 2;
+        draw_rect(buf, stride, max_x, 0, ctrl_w, ctrl_h, BTN_BG);
+        draw_rect(buf, stride, max_x + 17, 11, 10, 10, TEXT_DIM);
+        draw_rect(buf, stride, max_x + 18, 12, 8, 8, BG_TITLEBAR);
+
+        let close_x = w - ctrl_w;
+        draw_rect(buf, stride, close_x, 0, ctrl_w, ctrl_h, CLOSE_RED);
+        draw_text_noir(buf, stride, w, close_x + 17, 11, "X", TEXT_WHITE, 1.0);
+
+        // ═══════ TAB BAR ═══════
         let tab_y = TITLE_BAR_HEIGHT as i32;
         draw_rect(buf, stride, 0, tab_y, w, TAB_BAR_HEIGHT as i32, BG_TAB_BAR);
 
-        let mut tx = 6i32;
+        let mut tx = 4i32;
         for (i, title) in tab_titles.iter().enumerate() {
-            let tab_w = TAB_WIDTH.min(w - tx - 80);
-            if tx + tab_w > w - 80 { break; }
+            let tab_w = TAB_WIDTH.min(w - tx - 100);
+            if tx + tab_w > w - 100 { break; }
 
-            let ty = tab_y + 3;
-            let th = TAB_BAR_HEIGHT as i32 - 6;
-            let bg = if i == active_tab { BG_ADDRESS_BAR } else { BG_TAB_BAR };
-            draw_rect(buf, stride, tx, ty, tab_w, th, bg);
+            let ty = tab_y + 4;
+            let th = TAB_BAR_HEIGHT as i32 - 8;
 
-            // Active tab indicator line
             if i == active_tab {
+                draw_rect(buf, stride, tx, ty, tab_w, th, BG_ADDRESS_BAR);
                 draw_rect(buf, stride, tx, ty, tab_w, 2, ACCENT);
+            } else {
+                draw_rect(buf, stride, tx, ty, tab_w, th, BG_TAB_BAR);
             }
 
-            // Tab title
-            let text_x = tx + 12;
-            let text_y_pos = ty + (th / 2) - 4;
-            draw_text_noir(buf, stride, w, text_x, text_y_pos, title, if i == active_tab { TEXT_WHITE } else { TEXT_DIM }, 0.8);
+            // Tab icon dot
+            draw_rect(buf, stride, tx + 8, ty + (th / 2) - 3, 6, 6, ACCENT);
 
-            // Close tab X (small)
-            let close_tab_x = tx + tab_w - 18;
-            draw_text_noir(buf, stride, w, close_tab_x, text_y_pos, "x", TEXT_DIM, 0.7);
+            let text_color = if i == active_tab { TEXT_WHITE } else { TEXT_DIM };
+            draw_text_noir(buf, stride, w, tx + 20, ty + (th / 2) - 4, title, text_color, 0.8);
+
+            // Close X
+            draw_text_noir(buf, stride, w, tx + tab_w - 18, ty + (th / 2) - 4, "x", TEXT_DIM, 0.7);
 
             tx += tab_w + TAB_SPACING;
         }
 
-        // New tab button (+)
-        if tx + 30 < w {
-            let plus_h = TAB_BAR_HEIGHT as i32 - 10;
-            draw_rect(buf, stride, tx + 4, tab_y + 5, 24, plus_h, BTN_BG);
-            draw_text_noir(buf, stride, w, tx + 11, tab_y + 9, "+", TEXT_DIM, 1.1);
+        // New tab button
+        if tx + 34 < w {
+            draw_rect(buf, stride, tx + 2, tab_y + 7, 28, TAB_BAR_HEIGHT as i32 - 14, BTN_BG);
+            draw_text_noir(buf, stride, w, tx + 10, tab_y + 11, "+", TEXT_DIM, 1.2);
         }
 
-        // ═══════════════ NAV BAR ═══════════════
+        // ═══════ NAV BAR ═══════
         let nav_y = (TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT) as i32;
         draw_rect(buf, stride, 0, nav_y, w, NAV_BAR_HEIGHT as i32, BG_DARK);
 
-        // Separator line between tabs and nav
-        draw_rect(buf, stride, 0, nav_y, w, 1, SEPARATOR);
-
-        let btn_h = 32i32;
+        let btn_h = 34i32;
         let btn_y_pos = nav_y + (NAV_BAR_HEIGHT as i32 - btn_h) / 2;
-
-        // Nav buttons with proper spacing
         let mut bx = NAV_START_X;
 
         // Back
         draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
-        draw_text_noir(buf, stride, w, bx + 11, btn_y_pos + 8, "<", TEXT_WHITE, 1.0);
+        draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "<", TEXT_WHITE, 1.2);
         bx += NAV_BTN_SIZE + NAV_BTN_SPACING;
 
         // Forward
         draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
-        draw_text_noir(buf, stride, w, bx + 11, btn_y_pos + 8, ">", TEXT_WHITE, 1.0);
+        draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, ">", TEXT_WHITE, 1.2);
         bx += NAV_BTN_SIZE + NAV_BTN_SPACING;
 
         // Reload
         draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
-        draw_text_noir(buf, stride, w, bx + 11, btn_y_pos + 8, "R", TEXT_WHITE, 1.0);
+        draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "R", TEXT_WHITE, 1.2);
         bx += NAV_BTN_SIZE + NAV_BTN_SPACING;
 
         // Home
         draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
-        draw_text_noir(buf, stride, w, bx + 11, btn_y_pos + 8, "H", TEXT_WHITE, 1.0);
-        bx += NAV_BTN_SIZE + 12;
+        draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "H", TEXT_WHITE, 1.2);
+        bx += NAV_BTN_SIZE + 14;
 
-        // Address bar
+        // ═══════ ADDRESS BAR ═══════
         let ab_w = w - bx - 16;
-        if ab_w > 50 {
+        if ab_w > 80 {
             let ab_bg = if url_focused { BG_ADDRESS_BAR_FOCUS } else { BG_ADDRESS_BAR };
             draw_rect(buf, stride, bx, btn_y_pos, ab_w, btn_h, ab_bg);
 
-            // Lock icon (green padlock) on the right
-            if !url_bar_empty {
-                let lock_x = bx + ab_w - 28;
-                draw_rect(buf, stride, lock_x, btn_y_pos + 9, 8, 12, GREEN);
-                draw_rect(buf, stride, lock_x + 1, btn_y_pos + 7, 6, 3, GREEN);
+            let text_x = bx + 14;
+            let text_y = btn_y_pos + (btn_h / 2) - 4;
+
+            if url_focused || !url_bar_empty {
+                draw_text_noir(buf, stride, w, text_x, text_y, &display_url, url_color, 0.95);
+
+                // Blinking cursor
+                if url_focused {
+                    let cursor_px = (url_cursor as i32) * 8 + text_x;
+                    draw_rect(buf, stride, cursor_px, text_y - 1, 1, 12, TEXT_WHITE);
+                }
+            } else {
+                draw_text_noir(buf, stride, w, text_x, text_y, "Search or enter URL...", TEXT_PLACEHOLDER, 0.95);
             }
 
-            // URL text
-            let text_x = bx + 14;
-            draw_text_noir(buf, stride, w, text_x, btn_y_pos + 10, &display_url, url_color, 0.9);
-
-            // Cursor when focused
-            if url_focused {
-                let cursor_px = (url_cursor as i32) * 8 + text_x;
-                draw_rect(buf, stride, cursor_px, btn_y_pos + 8, 1, btn_h - 16, TEXT_WHITE);
+            // Lock icon
+            if !url_bar_empty {
+                let lock_x = bx + ab_w - 30;
+                let lock_y = btn_y_pos + (btn_h / 2) - 5;
+                draw_rect(buf, stride, lock_x, lock_y + 3, 8, 7, GREEN);
+                draw_rect(buf, stride, lock_x + 1, lock_y, 6, 5, GREEN);
             }
         }
 
-        // ═══════════════ CONTENT ═══════════════
+        // ═══════ CONTENT ═══════
         let content_y = TOOLBAR_HEIGHT as i32;
         let content_h = h - content_y;
 
         if active_url.is_empty() {
-            // === NEW TAB PAGE ===
-            let center_y = content_y + content_h / 2 - 60;
+            let center_y = content_y + content_h / 2 - 80;
 
-            // Logo
-            draw_text_noir(buf, stride, w, w / 2 - 108, center_y, "NOIR", ACCENT, 3.5);
-            draw_text_noir(buf, stride, w, w / 2 - 110, center_y + 55, "BROWSER", TEXT_DIM, 1.8);
+            draw_text_noir(buf, stride, w, w / 2 - 115, center_y, "NOIR", ACCENT, 3.5);
+            draw_text_noir(buf, stride, w, w / 2 - 130, center_y + 55, "BROWSER", TEXT_DIM, 2.0);
 
-            // Tagline
             draw_text_noir(
-                buf, stride, w, w / 2 - 155, center_y + 95,
+                buf, stride, w, w / 2 - 170, center_y + 100,
                 "Ultra-fast  |  Private  |  Vulkan-powered", TEXT_PLACEHOLDER, 0.85,
             );
 
-            // Quick links - centered, with labels below
-            let link_y = center_y + 150;
-            let links = [("Google", LINK_GOOGLE), ("GitHub", LINK_GITHUB), ("YouTube", LINK_YOUTUBE), ("Rust", LINK_RUST)];
+            // Quick links
+            let link_y = center_y + 160;
+            let links = [
+                ("Google", LINK_GOOGLE),
+                ("GitHub", LINK_GITHUB),
+                ("YouTube", LINK_YOUTUBE),
+                ("Rust", LINK_RUST),
+            ];
             let total_w = links.len() as i32 * LINK_CARD_SIZE + (links.len() as i32 - 1) * LINK_CARD_SPACING;
             let start_x = w / 2 - total_w / 2;
 
             for (i, (name, color)) in links.iter().enumerate() {
                 let lx = start_x + i as i32 * (LINK_CARD_SIZE + LINK_CARD_SPACING);
 
-                // Card background
                 draw_rect(buf, stride, lx, link_y, LINK_CARD_SIZE, LINK_CARD_SIZE, BG_LINK_CARD);
-
-                // Color accent bar at top
                 draw_rect(buf, stride, lx, link_y, LINK_CARD_SIZE, 3, *color);
 
-                // Icon placeholder (colored circle-ish)
-                let icon_size = 28;
+                let icon_size = 24;
                 let icon_x = lx + (LINK_CARD_SIZE - icon_size) / 2;
-                let icon_y = link_y + 22;
+                let icon_y = link_y + 24;
                 draw_rect(buf, stride, icon_x, icon_y, icon_size, icon_size, *color);
 
-                // Label below card
-                let label_x = lx + (LINK_CARD_SIZE as i32 - name.len() as i32 * 7) / 2;
-                draw_text_noir(buf, stride, w, label_x, link_y + LINK_CARD_SIZE + 12, name, TEXT_DIM, 0.85);
+                let label_w = name.len() as i32 * 7;
+                let label_x = lx + (LINK_CARD_SIZE - label_w) / 2;
+                draw_text_noir(buf, stride, w, label_x, link_y + LINK_CARD_SIZE + 14, name, TEXT_DIM, 0.85);
             }
         } else {
-            // Loading page
-            draw_text_noir(buf, stride, w, w / 2 - 80, content_y + 40, "Loading...", TEXT_DIM, 1.0);
+            draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Loading...", TEXT_DIM, 1.2);
             draw_text_noir(buf, stride, w, 30, content_y + 80, &active_url, TEXT_PLACEHOLDER, 0.8);
         }
 
@@ -242,7 +246,8 @@ impl ApplicationHandler for NoirApp {
         let attrs = WindowAttributes::default()
             .with_title("Noir Browser")
             .with_inner_size(LogicalSize::new(1280.0, 720.0))
-            .with_min_inner_size(LogicalSize::new(800.0, 500.0));
+            .with_min_inner_size(LogicalSize::new(800.0, 500.0))
+            .with_decorations(false);
 
         let window = Rc::new(event_loop.create_window(attrs).unwrap());
         let size = window.inner_size();
