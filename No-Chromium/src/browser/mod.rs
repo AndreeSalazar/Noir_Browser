@@ -21,7 +21,7 @@ pub use tab_manager::TabState;
 /// Coordinador del proceso Browser
 pub struct BrowserCoordinator {
     tab_manager: tab_manager::TabManager,
-    browser_tx: mpsc::Sender<BrowserMessage>,
+    _browser_tx: mpsc::Sender<BrowserMessage>,
     renderer_tx: mpsc::Sender<RendererMessage>,
 }
 
@@ -33,7 +33,7 @@ impl BrowserCoordinator {
     ) -> Self {
         Self {
             tab_manager: tab_manager::TabManager::new(),
-            browser_tx,
+            _browser_tx: browser_tx,
             renderer_tx,
         }
     }

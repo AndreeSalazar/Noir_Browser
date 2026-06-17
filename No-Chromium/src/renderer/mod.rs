@@ -8,9 +8,8 @@ pub mod js_engine;
 pub mod text;
 
 // Re-exports para uso externo
-pub use html_parser::{HtmlParser, PageDocument};
-pub use css_cascade::ComputedStyle;
-pub use layout_engine::{RenderBox, LayoutFragment, TextFragment, ImageFragment};
+pub use html_parser::PageDocument;
+pub use layout_engine::RenderBox;
 pub use text::{RasterizedAtlas, TextRasterizationOptions};
 
 /// Resultado de renderizado de página

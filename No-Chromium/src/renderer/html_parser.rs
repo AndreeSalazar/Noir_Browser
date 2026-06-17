@@ -67,12 +67,12 @@ impl PageDocument {
 
 /// Parser HTML zero-copy (stub para Fase 0)
 pub struct HtmlParser {
-    buffer: Vec<u8>,
+    _buffer: Vec<u8>,
 }
 
 impl HtmlParser {
     pub fn new() -> Self {
-        Self { buffer: Vec::new() }
+        Self { _buffer: Vec::new() }
     }
 
     pub fn parse(&mut self, _html: &[u8]) -> Result<PageDocument, String> {

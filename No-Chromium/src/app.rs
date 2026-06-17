@@ -18,11 +18,10 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            // Usamos SingleProcess como fallback seguro
             process_model: ProcessModel::SingleProcess,
-            enable_privacy: true,
+            enable_privacy: cfg!(feature = "privacy"),
             enable_tor_mode: false,
-            enable_ultrafast: false,
+            enable_ultrafast: cfg!(feature = "ultrafast"),
             debug_vulkan: false,
             enable_msdf_fonts: false,
             max_tabs: 20,

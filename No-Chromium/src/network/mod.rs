@@ -6,8 +6,10 @@ pub mod socks_proxy;
 pub mod doh_resolver;
 pub mod circuit;
 
-// Re-exports
-pub use fetch::HttpFetcher as Fetcher;
+// Re-exports (stubs disponibles para uso futuro)
+#[allow(unused_imports)]
+pub use fetch::HttpFetcher;
+#[allow(unused_imports)]
 pub use socks_proxy::SocksProxy;
 
 /// Stub para el coordinador de red

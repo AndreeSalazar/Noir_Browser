@@ -12,6 +12,7 @@
 #![deny(clippy::all)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
+#![allow(dead_code)] // Stubs en desarrollo - se habilitará al integrar módulos
 
 // === MÓDULOS PRINCIPALES ===
 mod app;
@@ -27,83 +28,13 @@ mod privacy;
 use std::env;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-use tracing::{info, warn, error};
+use tracing::{info, error};
 
-// === TIPOS DE MODELO DE PROCESOS ===
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProcessModel {
-    /// Todo en un solo proceso/task - para sistemas con ≤2GB RAM
-    SingleProcess,
-    /// Browser + 1 renderer compartido - para 2-4GB RAM
-    Aggregated,
-    /// Browser + renderer por tab - para 4-8GB RAM
-    ModerateIsolation,
-    /// Browser + renderer + GPU + network separados - para ≥8GB RAM
-    FullIsolation,
-}
-
-impl ProcessModel {
-    /// Determina el modelo óptimo basado en la RAM disponible (en MB)
-    pub fn from_available_ram(available_ram_mb: u64) -> Self {
-        match available_ram_mb {
-            0..=2048 => Self::SingleProcess,
-            2049..=4096 => Self::Aggregated,
-            4097..=8192 => Self::ModerateIsolation,
-            _ => Self::FullIsolation,
-        }
-    }
-
-    /// Retorna si debemos usar aislamiento completo de procesos
-    pub fn uses_full_isolation(self) -> bool {
-        matches!(self, Self::FullIsolation)
-    }
-
-    /// Retorna el número máximo de renderer processes permitidos
-    pub fn max_renderer_processes(self) -> usize {
-        match self {
-            Self::SingleProcess => 1,
-            Self::Aggregated => 2,
-            Self::ModerateIsolation => 4,
-            Self::FullIsolation => usize::MAX, // Limitado por RAM dinámica
-        }
-    }
-}
+// Reutilizar ProcessModel desde utils (única definición)
+use crate::utils::process_model::ProcessModel;
 
 // === CONFIGURACIÓN DE LA APLICACIÓN ===
 use crate::app::AppConfig;
-
-// === DETECCIÓN DE MEMORIA DEL SISTEMA ===
-fn detect_available_ram() -> u64 {
-    #[cfg(target_os = "windows")]
-    {
-        use windows::Win32::System::SystemInformation::GlobalMemoryStatusEx;
-        use windows::Win32::System::SystemInformation::MEMORYSTATUSEX;
-        
-        unsafe {
-            let mut status = MEMORYSTATUSEX::default();
-            status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
-            if GlobalMemoryStatusEx(&mut status).is_ok() {
-                return status.ullAvailPhys / (1024 * 1024); // Convertir a MB
-            }
-        }
-    }
-    
-    #[cfg(target_os = "linux")]
-    {
-        if let Ok(info) = sys_info::mem_info() {
-            return info.avail / 1024; // Convertir KB a MB
-        }
-    }
-    
-    #[cfg(target_os = "macos")]
-    {
-        // macOS: usar sysctl para obtener memoria disponible
-        // Implementación simplificada - fallback a valor conservador
-    }
-    
-    // Fallback conservador: asumir 4GB disponibles
-    4096
-}
 
 // === INICIALIZACIÓN DEL TRACING/LOGGING ===
 fn init_tracing(config: &AppConfig) {
@@ -238,10 +169,10 @@ impl AppCoordinator {
         }
         
         // 2. Cerrar conexiones de red limpiamente
-        network::NetworkCoordinator::shutdown().await;
+        let _ = network::NetworkCoordinator::shutdown().await;
         
         // 3. Liberar recursos Vulkan
-        vulkan_engine::UltraFastVulkanEngine::shutdown().await;
+        let _ = vulkan_engine::UltraFastVulkanEngine::shutdown().await;
         
         // 4. El Runtime se limpia automáticamente al salir del scope
         // self.runtime.shutdown_timeout(std::time::Duration::from_secs(5));
@@ -259,6 +190,11 @@ async fn main() -> anyhow::Result<()> {
     
     // Inicializar sistema de logging
     init_tracing(&config);
+    
+    info!("Process model: {:?} (RAM detectada: {} MB)", 
+        config.process_model, 
+        utils::process_model::detect_available_ram()
+    );
     
     // Manejar panic hooks para logging adecuado
     setup_panic_hook();
@@ -278,11 +214,27 @@ async fn main() -> anyhow::Result<()> {
 // === PARSING DE ARGUMENTOS DE LÍNEA DE COMANDOS ===
 fn parse_config_from_args(args: &[String]) -> Option<AppConfig> {
     let mut config = AppConfig::default();
+    let mut explicit_model = false;
     
-    for arg in args.iter().skip(1) {
-        match arg.as_str() {
-            "--single-process" => config.process_model = ProcessModel::SingleProcess,
-            "--full-isolation" => config.process_model = ProcessModel::FullIsolation,
+    let mut i = 1; // Skip argv[0]
+    while i < args.len() {
+        match args[i].as_str() {
+            "--single-process" => {
+                config.process_model = ProcessModel::SingleProcess;
+                explicit_model = true;
+            }
+            "--aggregated" => {
+                config.process_model = ProcessModel::Aggregated;
+                explicit_model = true;
+            }
+            "--moderate-isolation" => {
+                config.process_model = ProcessModel::ModerateIsolation;
+                explicit_model = true;
+            }
+            "--full-isolation" => {
+                config.process_model = ProcessModel::FullIsolation;
+                explicit_model = true;
+            }
             "--no-privacy" => config.enable_privacy = false,
             "--tor-only" => {
                 config.enable_tor_mode = true;
@@ -290,9 +242,14 @@ fn parse_config_from_args(args: &[String]) -> Option<AppConfig> {
             }
             "--no-ultrafast" => config.enable_ultrafast = false,
             "--debug-vulkan" => config.debug_vulkan = true,
+            "--msdf-fonts" => config.enable_msdf_fonts = true,
             "--max-tabs" => {
-                // El siguiente argumento debe ser el número
-                // (implementación simplificada)
+                i += 1;
+                if let Some(val) = args.get(i) {
+                    if let Ok(n) = val.parse::<u32>() {
+                        config.max_tabs = n;
+                    }
+                }
             }
             "--help" | "-h" => {
                 print_help();
@@ -300,6 +257,13 @@ fn parse_config_from_args(args: &[String]) -> Option<AppConfig> {
             }
             _ => {}
         }
+        i += 1;
+    }
+    
+    // Auto-detectar process model basado en RAM si no se especificó uno
+    if !explicit_model {
+        let ram_mb = utils::process_model::detect_available_ram();
+        config.process_model = ProcessModel::from_available_ram(ram_mb);
     }
     
     Some(config)
@@ -310,14 +274,22 @@ fn print_help() {
     println!();
     println!("Usage: noir-browser [OPTIONS]");
     println!();
-    println!("Options:");
-    println!("  --single-process    Force single-process mode (low RAM)");
-    println!("  --full-isolation    Force full process isolation (high RAM)");
-    println!("  --no-privacy        Disable privacy features");
+    println!("Process Model (auto-detected by RAM if not specified):");
+    println!("  --single-process    All in one process (≤2GB RAM)");
+    println!("  --aggregated        Browser + 1 shared renderer (2-4GB RAM)");
+    println!("  --moderate-isolation Browser + renderer per tab (4-8GB RAM)");
+    println!("  --full-isolation    Full process isolation (≥8GB RAM)");
+    println!();
+    println!("Features:");
+    println!("  --no-privacy        Disable privacy features (FPI, anti-fingerprint)");
     println!("  --tor-only          Enable Tor mode with SOCKS5 proxy");
     println!("  --no-ultrafast      Disable Vulkan ultra-fast optimizations");
     println!("  --debug-vulkan      Enable Vulkan debug layers");
+    println!("  --msdf-fonts        Enable MSDF font rendering");
+    println!();
+    println!("Limits:");
     println!("  --max-tabs <N>      Set maximum number of tabs (default: 20)");
+    println!();
     println!("  -h, --help          Show this help message");
     println!();
     println!("Features (compile-time):");
