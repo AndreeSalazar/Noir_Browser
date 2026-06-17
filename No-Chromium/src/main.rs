@@ -26,8 +26,6 @@ mod utils;
 mod privacy;
 
 use std::env;
-use std::sync::Arc;
-use tokio::runtime::Runtime;
 use tracing::{info, error};
 
 // Reutilizar ProcessModel desde utils (única definición)
@@ -63,31 +61,12 @@ fn init_tracing(config: &AppConfig) {
 // === COORDINADOR PRINCIPAL DE LA APLICACIÓN ===
 struct AppCoordinator {
     config: AppConfig,
-    runtime: Arc<Runtime>,
 }
 
 
 impl AppCoordinator {
-    fn new(config: AppConfig) -> anyhow::Result<Self> {
-        // Configurar runtime Tokio según el modelo de procesos
-        let runtime = match config.process_model {
-            ProcessModel::SingleProcess | ProcessModel::Aggregated => {
-                tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()?
-            }
-            ProcessModel::ModerateIsolation | ProcessModel::FullIsolation => {
-                tokio::runtime::Builder::new_multi_thread()
-                    .worker_threads(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4))
-                    .enable_all()
-                    .build()?
-            }
-        };
-        
-        Ok(Self {
-            config,
-            runtime: Arc::new(runtime),
-        })
+    fn new(config: AppConfig) -> Self {
+        Self { config }
     }
     
     /// Ejecuta el ciclo principal de la aplicación
@@ -155,7 +134,7 @@ impl AppCoordinator {
     
     async fn run_ui_loop(&self) -> anyhow::Result<()> {
         // Delegar al módulo app que contiene el event loop de winit
-        app::run(self.config.clone(), self.runtime.clone()).await
+        app::run(self.config.clone()).await
     }
     
     async fn cleanup(&self) -> anyhow::Result<()> {
@@ -200,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
     setup_panic_hook();
     
     // Crear y ejecutar el coordinador de la aplicación
-    let coordinator = AppCoordinator::new(config)?;
+    let coordinator = AppCoordinator::new(config);
     
     match coordinator.run().await {
         Ok(()) => Ok(()),
@@ -302,17 +281,20 @@ fn print_help() {
 
 fn setup_panic_hook() {
     std::panic::set_hook(Box::new(|panic_info| {
-        if let Some(location) = panic_info.location() {
-            error!(
+        let msg = if let Some(location) = panic_info.location() {
+            format!(
                 "🔥 Panic at {}:{}:{} - {}",
                 location.file(),
                 location.line(),
                 location.column(),
                 panic_info
-            );
+            )
         } else {
-            error!("🔥 Panic: {}", panic_info);
-        }
+            format!("🔥 Panic: {}", panic_info)
+        };
+        // Salida directa a stderr + tracing
+        eprintln!("{}", msg);
+        error!("{}", msg);
         
         // Intentar cleanup antes de salir
         #[cfg(feature = "privacy")]

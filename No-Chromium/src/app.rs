@@ -1,7 +1,5 @@
 use crate::utils::process_model::ProcessModel;
 use anyhow::Result;
-use std::sync::Arc;
-use tokio::runtime::Runtime;
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {
@@ -30,8 +28,8 @@ impl Default for AppConfig {
     }
 }
 
-pub async fn run(_config: AppConfig, _runtime: Arc<Runtime>) -> Result<()> {
+pub async fn run(_config: AppConfig) -> Result<()> {
     tracing::info!("🚀 Application loop started...");
-    // Aquí irá el loop principal de la aplicación
+    // Aquí irá el loop principal de la aplicación (winit event loop)
     Ok(())
 }
