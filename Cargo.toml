@@ -17,6 +17,7 @@ ash-window = "0.9"
 gpu-allocator = "0.25"
 winit = { version = "0.30", features = ["rwh_06"] }
 raw-window-handle = "0.6"
+softbuffer = "0.4"
 nom = "7.1"
 memchr = "2.7"
 html5ever = "0.26"

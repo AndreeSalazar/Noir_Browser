@@ -15,6 +15,7 @@ gpu-allocator.workspace = true
 # UI & Windowing
 winit.workspace = true
 raw-window-handle.workspace = true
+softbuffer.workspace = true
 
 # Async Runtime
 tokio.workspace = true
