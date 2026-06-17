@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use winit::window::Window;
+use winit::keyboard::ModifiersState;
 
 use super::theme::*;
 use crate::parsers::page_document::PageDocument;
@@ -53,6 +54,7 @@ pub struct NoirApp {
     pub next_tab_id: u64,
     pub history: Vec<String>,
     pub history_index: usize,
+    pub modifiers: ModifiersState,
 }
 
 impl NoirApp {
@@ -82,6 +84,7 @@ impl NoirApp {
             next_tab_id: 2,
             history: Vec::new(),
             history_index: 0,
+            modifiers: ModifiersState::empty(),
         }
     }
 

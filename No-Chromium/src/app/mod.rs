@@ -488,8 +488,13 @@ impl ApplicationHandler for NoirApp {
                 event: KeyEvent { logical_key, state: ElementState::Pressed, .. },
                 ..
             } => {
-                self.handle_key(&logical_key);
+                let ctrl = self.modifiers.control_key();
+                self.handle_key(&logical_key, ctrl);
                 self.window.as_ref().unwrap().request_redraw();
+            }
+
+            WindowEvent::ModifiersChanged(new_mods) => {
+                self.modifiers = new_mods.state();
             }
 
             _ => {}
@@ -537,9 +542,6 @@ impl ApplicationHandler for NoirApp {
 
                         let title = page.title.clone();
                         let num_links = page.links.len();
-                        let viewport_w = self.width as f32;
-                        let blocks = layout_page(&page, viewport_w);
-                        let content_h = total_content_height(&blocks);
 
                         let nodes = crate::parsers::dom_tree::parse_html(html);
                         crate::js_engine::dom_sync::sync_dom_to_js_engine(&nodes);
@@ -806,8 +808,111 @@ impl NoirApp {
         self.url_focused = false;
     }
 
-    fn handle_key(&mut self, key: &winit::keyboard::Key) {
+    fn handle_key(&mut self, key: &winit::keyboard::Key, ctrl: bool) {
+
+        if ctrl {
+            match key {
+                Key::Character(c) => {
+                    match c.as_str() {
+                        "t" | "T" => {
+                            self.new_tab();
+                            return;
+                        }
+                        "w" | "W" => {
+                            if self.tabs.len() > 1 {
+                                self.tabs.remove(self.active_tab);
+                                if self.active_tab >= self.tabs.len() {
+                                    self.active_tab = self.tabs.len().saturating_sub(1);
+                                }
+                                self.url_bar = self.tabs[self.active_tab].url.clone();
+                                self.url_cursor = self.url_bar.len();
+                            }
+                            return;
+                        }
+                        "l" | "L" => {
+                            self.url_focused = true;
+                            self.url_cursor = self.url_bar.len();
+                            return;
+                        }
+                        "r" | "R" => {
+                            let url = self.tabs[self.active_tab].url.clone();
+                            if !url.is_empty() {
+                                self.navigate(url.clone());
+                                let fetcher = HttpFetcher::new();
+                                let result_holder: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                                let result_clone = result_holder.clone();
+                                let url_for_fetch = url.clone();
+                                tokio::spawn(async move {
+                                    match fetcher.get(&url_for_fetch).await {
+                                        Ok(result) => {
+                                            if let Ok(mut guard) = result_clone.lock() {
+                                                *guard = Some(result.body);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            if let Ok(mut guard) = result_clone.lock() {
+                                                *guard = Some(format!("<html><head><title>Error</title></head><body><h1>Failed to load</h1><p>{}</p></body></html>", e));
+                                            }
+                                        }
+                                    }
+                                });
+                                self.fetch_result = Some(result_holder);
+                            }
+                            return;
+                        }
+                        "d" | "D" => {
+                            self.new_tab();
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+                Key::Named(NamedKey::Tab) => {
+                    if self.tabs.len() > 1 {
+                        let next = (self.active_tab + 1) % self.tabs.len();
+                        self.switch_tab(next);
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         if !self.url_focused {
+            match key {
+                Key::Named(NamedKey::F5) => {
+                    let url = self.tabs[self.active_tab].url.clone();
+                    if !url.is_empty() {
+                        self.navigate(url.clone());
+                        let fetcher = HttpFetcher::new();
+                        let result_holder: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                        let result_clone = result_holder.clone();
+                        let url_for_fetch = url.clone();
+                        tokio::spawn(async move {
+                            match fetcher.get(&url_for_fetch).await {
+                                Ok(result) => {
+                                    if let Ok(mut guard) = result_clone.lock() {
+                                        *guard = Some(result.body);
+                                    }
+                                }
+                                Err(e) => {
+                                    if let Ok(mut guard) = result_clone.lock() {
+                                        *guard = Some(format!("<html><head><title>Error</title></head><body><h1>Failed to load</h1><p>{}</p></body></html>", e));
+                                    }
+                                }
+                            }
+                        });
+                        self.fetch_result = Some(result_holder);
+                    }
+                }
+                Key::Named(NamedKey::F11) => {
+                    self.is_maximized = !self.is_maximized;
+                    if let Some(window) = &self.window {
+                        window.set_maximized(self.is_maximized);
+                    }
+                }
+                _ => {}
+            }
             return;
         }
 

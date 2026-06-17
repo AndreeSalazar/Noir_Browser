@@ -364,7 +364,7 @@ impl PageDocument {
                             let placeholder = attributes.get("placeholder").cloned().unwrap_or_default();
                             let value = attributes.get("value").cloned().unwrap_or_default();
                             let name = attributes.get("name").cloned().unwrap_or_default();
-                            let label_text = if let Some(for_id) = attributes.get("id") {
+                            let label_text = if let Some(_for_id) = attributes.get("id") {
                                 format!("{}: [{}]", name, value.is_empty().then(|| placeholder.as_str()).unwrap_or(value.as_str()))
                             } else {
                                 format!("[{}]", value.is_empty().then(|| placeholder.as_str()).unwrap_or(value.as_str()))

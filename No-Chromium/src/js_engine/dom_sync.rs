@@ -137,7 +137,7 @@ fn render_element_children(
     elem_map: &HashMap<String, crate::js_engine::dom_bridge::DomElement>,
     doc: &mut PageDocument,
     indent: u32,
-    ancestors: &mut Vec<String>,
+    _ancestors: &mut Vec<String>,
     current_href: Option<String>,
 ) {
     if let Some(parent) = elem_map.get(parent_id) {
