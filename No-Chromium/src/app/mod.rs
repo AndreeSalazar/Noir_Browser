@@ -7,6 +7,7 @@ pub mod theme;
 use anyhow::Result;
 use std::num::NonZeroU32;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -18,6 +19,9 @@ pub use config::AppConfig;
 use draw::{draw_rect, draw_text_noir, measure_text_width};
 use state::NoirApp;
 use theme::*;
+
+use crate::network::fetch::HttpFetcher;
+use crate::parsers::page_document::PageDocument;
 
 impl NoirApp {
     fn draw_frame(&mut self) {
@@ -34,6 +38,8 @@ impl NoirApp {
             }
         }).collect();
         let active_url = self.tabs[active_tab].url.clone();
+        let page_ref = self.tabs[active_tab].page.clone();
+        let scroll_y = self.tabs[active_tab].scroll_y;
 
         let (surface, window) = match (&mut self.surface, &self.window) {
             (Some(s), Some(w)) => (s, w),
@@ -179,6 +185,7 @@ impl NoirApp {
         let content_h = h - content_y;
 
         if active_url.is_empty() {
+            // New tab page
             let center_y = content_y + content_h / 2 - 80;
 
             draw_text_noir(buf, stride, w, w / 2 - 115, center_y, "NOIR", ACCENT, 3.5);
@@ -215,9 +222,14 @@ impl NoirApp {
                 let label_x = lx + (LINK_CARD_SIZE - label_w) / 2;
                 draw_text_noir(buf, stride, w, label_x, link_y + LINK_CARD_SIZE + 14, name, TEXT_DIM, 1.0);
             }
-        } else {
+        } else if self.fetching {
+            // Loading state
             draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Loading...", TEXT_DIM, 1.2);
             draw_text_noir(buf, stride, w, 30, content_y + 80, &active_url, TEXT_PLACEHOLDER, 1.0);
+        } else if let Some(page) = &page_ref {
+            render_page_content(buf, stride, w, content_y, content_h, page, scroll_y);
+        } else {
+            draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Empty", TEXT_DIM, 1.2);
         }
 
         buffer.present().unwrap();
@@ -232,6 +244,110 @@ impl NoirApp {
             format!("https://duckduckgo.com/?q={}", self.url_bar.replace(' ', "+"))
         }
     }
+}
+
+fn render_page_content(
+    buf: &mut [u32],
+    stride: usize,
+    screen_w: i32,
+    content_y: i32,
+    content_h: i32,
+    page: &crate::parsers::page_document::PageDocument,
+    scroll_y: f32,
+) {
+    use theme::*;
+    use draw::{draw_rect, draw_text_noir};
+
+    let mut y = content_y + 16 - scroll_y as i32;
+    let margin_left = 30;
+    let max_w = screen_w - margin_left * 2;
+
+    if !page.title.is_empty() {
+        draw_text_noir(buf, stride, screen_w, margin_left, y, &page.title, ACCENT, 1.8);
+        y += 36;
+        draw_rect(buf, stride, margin_left, y, max_w.min(600), 1, TEXT_DIM);
+        y += 12;
+    }
+
+    for block in &page.text_blocks {
+        if y > content_y + content_h + 100 {
+            break;
+        }
+        if y < content_y - 50 {
+            y += estimate_line_height(block.font_size);
+            continue;
+        }
+
+        let color = if block.link.is_some() {
+            0xFF6699FF
+        } else if block.bold {
+            0xFFFFFFFF
+        } else {
+            0xFFCCCCCC
+        };
+
+        let font_scale = block.font_size / 14.0;
+        let indent_x = margin_left + (block.indent_level * 16) as i32;
+
+        let text = &block.text;
+        let char_w = (7.0 * font_scale) as i32;
+        let chars_per_line = (max_w / char_w).max(1) as usize;
+
+        if text.len() <= chars_per_line {
+            draw_text_noir(buf, stride, screen_w, indent_x, y, text, color, font_scale);
+            y += estimate_line_height(block.font_size);
+        } else {
+            let words: Vec<&str> = text.split_whitespace().collect();
+            let mut line = String::new();
+            for word in words {
+                let test = if line.is_empty() {
+                    word.to_string()
+                } else {
+                    format!("{} {}", line, word)
+                };
+                if test.len() > chars_per_line && !line.is_empty() {
+                    draw_text_noir(buf, stride, screen_w, indent_x, y, &line, color, font_scale);
+                    y += estimate_line_height(block.font_size);
+                    line = word.to_string();
+                } else {
+                    line = test;
+                }
+            }
+            if !line.is_empty() {
+                draw_text_noir(buf, stride, screen_w, indent_x, y, &line, color, font_scale);
+                y += estimate_line_height(block.font_size);
+            }
+        }
+
+        if block.tag.starts_with('h') {
+            y += 8;
+        }
+        if block.tag == "p" {
+            y += 4;
+        }
+    }
+
+    if !page.links.is_empty() {
+        y += 16;
+        if y > content_y && y < content_y + content_h {
+            draw_text_noir(buf, stride, screen_w, margin_left, y, "--- Links ---", TEXT_DIM, 1.0);
+            y += 18;
+        }
+        for link in &page.links {
+            if y > content_y + content_h + 50 {
+                break;
+            }
+            if y >= content_y {
+                let link_text = format!("> {} -> {}", link.text, link.href);
+                draw_text_noir(buf, stride, screen_w, margin_left, y, &link_text, 0xFF6699FF, 0.85);
+            }
+            y += 16;
+        }
+    }
+}
+
+fn estimate_line_height(font_size: f32) -> i32 {
+    (font_size * 1.4) as i32
 }
 
 impl ApplicationHandler for NoirApp {
@@ -318,6 +434,31 @@ impl ApplicationHandler for NoirApp {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if self.should_close {
             event_loop.exit();
+        }
+
+        // Check if fetch completed
+        if self.fetching {
+            let mut done = false;
+            if let Some(result) = &self.fetch_result {
+                if let Ok(guard) = result.try_lock() {
+                    if let Some(html) = guard.as_ref() {
+                        let url = self.tabs[self.active_tab].url.clone();
+                        tracing::info!("Parsing HTML for {} ({} bytes)", url, html.len());
+                        let page = PageDocument::from_html(&url, html);
+                        tracing::info!("Parsed: title='{}', {} text blocks, {} links", page.title, page.text_blocks.len(), page.links.len());
+                        self.tabs[self.active_tab].page = Some(page);
+                        self.tabs[self.active_tab].title = self.tabs[self.active_tab].url.clone();
+                        done = true;
+                    }
+                }
+            }
+            if done {
+                self.fetching = false;
+                self.fetch_result = None;
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
         }
     }
 }
@@ -467,6 +608,27 @@ impl NoirApp {
                     let url = self.resolve_url();
                     self.navigate(url.clone());
                     tracing::info!("Navigating to: {}", url);
+
+                    let fetcher = HttpFetcher::new();
+                    let url_clone = url.clone();
+                    let result_holder: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                    let result_clone = result_holder.clone();
+
+                    tokio::spawn(async move {
+                        match fetcher.get(&url_clone).await {
+                            Ok(result) => {
+                                tracing::info!("Fetched {} ({} bytes, status {})", url_clone, result.body.len(), result.status);
+                                if let Ok(mut guard) = result_clone.lock() {
+                                    *guard = Some(result.body);
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Fetch failed: {}", e);
+                            }
+                        }
+                    });
+
+                    self.fetch_result = Some(result_holder);
                 }
                 self.url_focused = false;
             }

@@ -1,11 +1,18 @@
-//! Parsers Module - Placeholder para Fase 1
-//! 
-//! HTML/CSS parsers zero-copy
-//! DOM binario optimizado
+pub mod html_elements;
+pub mod html_lexer_legacy;
+pub mod dom_tree;
+pub mod dom_native;
+pub mod css_simple;
+pub mod css_engine;
+pub mod css_lexer;
+pub mod js_lexer;
+pub mod page_document;
+pub mod events;
+pub mod resource_loader;
+pub mod shaders;
+pub mod style_collector;
+pub mod webidl_bridge;
 
-// TODO: Implementar en Fase 1
-// - HTML5 parser zero-copy con nom
-// - CSS cascade con especificidad
-// - DOM tree binario optimizado
-
-pub struct Parsers;
+pub use page_document::{PageDocument, TextBlock, LinkInfo};
+pub use dom_tree::{DomNode, parse_html};
+pub use css_simple::CssCascade;

@@ -20,6 +20,7 @@ mod browser;
 mod renderer;
 mod vulkan_engine;
 mod network;
+mod parsers;
 mod utils;
 mod js_engine;
 

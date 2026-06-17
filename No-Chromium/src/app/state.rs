@@ -1,11 +1,15 @@
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use winit::window::Window;
 
 use super::theme::*;
+use crate::parsers::page_document::PageDocument;
 
 pub struct TabState {
     pub title: String,
     pub url: String,
+    pub page: Option<PageDocument>,
+    pub scroll_y: f32,
 }
 
 impl Default for TabState {
@@ -13,6 +17,8 @@ impl Default for TabState {
         Self {
             title: "New Tab".into(),
             url: String::new(),
+            page: None,
+            scroll_y: 0.0,
         }
     }
 }
@@ -31,6 +37,8 @@ pub struct NoirApp {
     pub mouse_y: f32,
     pub is_maximized: bool,
     pub should_close: bool,
+    pub fetching: bool,
+    pub fetch_result: Option<Arc<Mutex<Option<String>>>>,
 }
 
 impl NoirApp {
@@ -51,13 +59,19 @@ impl NoirApp {
             mouse_y: 0.0,
             is_maximized: false,
             should_close: false,
+            fetching: false,
+            fetch_result: None,
         }
     }
 
     pub fn navigate(&mut self, url: String) {
         self.tabs[self.active_tab].url = url.clone();
         self.tabs[self.active_tab].title = url;
+        self.tabs[self.active_tab].page = None;
+        self.tabs[self.active_tab].scroll_y = 0.0;
         self.url_focused = false;
+        self.fetching = true;
+        self.fetch_result = None;
     }
 
     pub fn go_home(&mut self) {
@@ -65,6 +79,10 @@ impl NoirApp {
         self.url_cursor = 0;
         self.tabs[self.active_tab].url.clear();
         self.tabs[self.active_tab].title = "New Tab".into();
+        self.tabs[self.active_tab].page = None;
+        self.tabs[self.active_tab].scroll_y = 0.0;
+        self.fetching = false;
+        self.fetch_result = None;
     }
 
     pub fn new_tab(&mut self) {

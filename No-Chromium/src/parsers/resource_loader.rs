@@ -331,67 +331,7 @@ pub async fn fetch_resource(
     let mut final_etag = etag;
     let mut final_last_modified = last_modified;
 
-    if resource_type == ResourceType::Document {
-        if let Some(challenge_type) = crate::js_engine::challenge::detect_challenge(&body) {
-            println!(
-                "[JS Engine] Challenge {:?} detected on {} (HTTP {})",
-                challenge_type, url, status
-            );
-            match crate::js_engine::challenge::solve_challenge(&body, url).await {
-                Ok(solved_cookie) => {
-                    println!("[JS Engine] Challenge solved successfully! Token: {}", solved_cookie);
-                    // Re-try the request with the solved cookie/token
-                    let mut retry_request = client()
-                        .get(url)
-                        .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                        .header(ACCEPT, resource_type.accept_header())
-                        .header(reqwest::header::COOKIE, &solved_cookie);
-
-                    if let Some(cached) = &cached {
-                        if let Some(etag) = &cached.etag {
-                            retry_request = retry_request.header(IF_NONE_MATCH, etag);
-                        }
-                        if let Some(last_modified) = &cached.last_modified {
-                            retry_request = retry_request.header(IF_MODIFIED_SINCE, last_modified);
-                        }
-                    }
-
-                    match retry_request.send().await {
-                        Ok(retry_response) => {
-                            final_status = retry_response.status().as_u16();
-                            final_url = retry_response.url().to_string();
-                            final_content_type = retry_response
-                                .headers()
-                                .get(CONTENT_TYPE)
-                                .and_then(|value| value.to_str().ok())
-                                .map(str::to_string);
-                            final_etag = retry_response
-                                .headers()
-                                .get(ETAG)
-                                .and_then(|value| value.to_str().ok())
-                                .map(str::to_string);
-                            final_last_modified = retry_response
-                                .headers()
-                                .get(LAST_MODIFIED)
-                                .and_then(|value| value.to_str().ok())
-                                .map(str::to_string);
-
-                            if let Ok(new_body) = retry_response.text().await {
-                                body = new_body;
-                                println!("[JS Engine] Re-try returned HTTP {}", final_status);
-                            }
-                        }
-                        Err(e) => {
-                            println!("[JS Engine] Retry request failed: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    println!("[JS Engine] Failed to solve challenge: {}", e);
-                }
-            }
-        }
-    }
+    // Challenge detection removed - js_engine::challenge module deleted
 
     let body_bytes = body.len();
     let resource = ResourceResponse {
