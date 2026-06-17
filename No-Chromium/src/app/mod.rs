@@ -15,7 +15,7 @@ use winit::keyboard::{Key, NamedKey};
 use winit::window::{WindowAttributes, WindowId};
 
 pub use config::AppConfig;
-use draw::{draw_rect, draw_text_noir};
+use draw::{draw_rect, draw_text_noir, measure_text_width};
 use state::NoirApp;
 use theme::*;
 
@@ -25,7 +25,6 @@ impl NoirApp {
         let url_color = self.url_text_color();
         let url_bar_empty = self.url_bar.is_empty();
         let url_focused = self.url_focused;
-        let url_cursor = self.url_cursor;
         let active_tab = self.active_tab;
         let tab_titles: Vec<String> = self.tabs.iter().map(|t| {
             if t.title.len() > 20 {
@@ -63,7 +62,7 @@ impl NoirApp {
         draw_rect(buf, stride, 10, 10, 14, 14, ACCENT);
 
         // Title text
-        draw_text_noir(buf, stride, w, 30, 11, "Noir Browser", TEXT_DIM, 0.85);
+        draw_text_noir(buf, stride, w, 30, 11, "Noir Browser", TEXT_DIM, 1.0);
 
         // Window controls (Chrome-style, full height)
         let ctrl_w = 46;
@@ -105,10 +104,10 @@ impl NoirApp {
             draw_rect(buf, stride, tx + 8, ty + (th / 2) - 3, 6, 6, ACCENT);
 
             let text_color = if i == active_tab { TEXT_WHITE } else { TEXT_DIM };
-            draw_text_noir(buf, stride, w, tx + 20, ty + (th / 2) - 4, title, text_color, 0.8);
+            draw_text_noir(buf, stride, w, tx + 20, ty + (th / 2) - 4, title, text_color, 0.9);
 
             // Close X
-            draw_text_noir(buf, stride, w, tx + tab_w - 18, ty + (th / 2) - 4, "x", TEXT_DIM, 0.7);
+            draw_text_noir(buf, stride, w, tx + tab_w - 18, ty + (th / 2) - 4, "x", TEXT_DIM, 0.8);
 
             tx += tab_w + TAB_SPACING;
         }
@@ -154,21 +153,19 @@ impl NoirApp {
             draw_rect(buf, stride, bx, btn_y_pos, ab_w, btn_h, ab_bg);
 
             let text_x = bx + 14;
-            let text_y = btn_y_pos + (btn_h / 2) - 4;
+            let text_y = btn_y_pos + (btn_h / 2) - 5;
 
             if url_focused || !url_bar_empty {
-                draw_text_noir(buf, stride, w, text_x, text_y, &display_url, url_color, 0.95);
+                draw_text_noir(buf, stride, w, text_x, text_y, &display_url, url_color, 1.0);
 
-                // Blinking cursor
                 if url_focused {
-                    let cursor_px = (url_cursor as i32) * 8 + text_x;
-                    draw_rect(buf, stride, cursor_px, text_y - 1, 1, 12, TEXT_WHITE);
+                    let cursor_px = text_x + measure_text_width(&display_url, 1.0) + 2;
+                    draw_rect(buf, stride, cursor_px, text_y, 2, 10, TEXT_WHITE);
                 }
             } else {
-                draw_text_noir(buf, stride, w, text_x, text_y, "Search or enter URL...", TEXT_PLACEHOLDER, 0.95);
+                draw_text_noir(buf, stride, w, text_x, text_y, "Search or enter URL...", TEXT_PLACEHOLDER, 1.0);
             }
 
-            // Lock icon
             if !url_bar_empty {
                 let lock_x = bx + ab_w - 30;
                 let lock_y = btn_y_pos + (btn_h / 2) - 5;
@@ -189,7 +186,7 @@ impl NoirApp {
 
             draw_text_noir(
                 buf, stride, w, w / 2 - 170, center_y + 100,
-                "Ultra-fast  |  Private  |  Vulkan-powered", TEXT_PLACEHOLDER, 0.85,
+                "Ultra-fast  |  Private  |  Vulkan-powered", TEXT_PLACEHOLDER, 1.0,
             );
 
             // Quick links
@@ -216,11 +213,11 @@ impl NoirApp {
 
                 let label_w = name.len() as i32 * 7;
                 let label_x = lx + (LINK_CARD_SIZE - label_w) / 2;
-                draw_text_noir(buf, stride, w, label_x, link_y + LINK_CARD_SIZE + 14, name, TEXT_DIM, 0.85);
+                draw_text_noir(buf, stride, w, label_x, link_y + LINK_CARD_SIZE + 14, name, TEXT_DIM, 1.0);
             }
         } else {
             draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Loading...", TEXT_DIM, 1.2);
-            draw_text_noir(buf, stride, w, 30, content_y + 80, &active_url, TEXT_PLACEHOLDER, 0.8);
+            draw_text_noir(buf, stride, w, 30, content_y + 80, &active_url, TEXT_PLACEHOLDER, 1.0);
         }
 
         buffer.present().unwrap();
