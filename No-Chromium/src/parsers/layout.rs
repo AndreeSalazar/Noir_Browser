@@ -197,6 +197,24 @@ fn apply_css_to_block(block: &TextBlock, _css: &CssCascade) -> StyledBlock {
             styled.margin_bottom = 6.0;
             styled.color = [0.8, 0.9, 0.8, 1.0];
         }
+        "blockquote" => {
+            styled.font_size = 14.0;
+            styled.margin_top = 8.0;
+            styled.margin_bottom = 8.0;
+            styled.indent += 24.0;
+            styled.padding_left = 12.0;
+            styled.color = [0.65, 0.65, 0.70, 1.0];
+        }
+        "hr" => {
+            styled.margin_top = 12.0;
+            styled.margin_bottom = 12.0;
+            styled.color = [0.35, 0.35, 0.40, 1.0];
+        }
+        "text" => {
+            styled.font_size = 14.0;
+            styled.margin_bottom = 4.0;
+            styled.color = [0.82, 0.82, 0.82, 1.0];
+        }
         _ => {}
     }
 

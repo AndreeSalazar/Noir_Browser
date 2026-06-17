@@ -49,7 +49,10 @@ pub struct NoirApp {
     pub should_close: bool,
     pub fetching: bool,
     pub fetch_result: Option<Arc<Mutex<Option<String>>>>,
+    pub fetch_error: Option<String>,
     pub next_tab_id: u64,
+    pub history: Vec<String>,
+    pub history_index: usize,
 }
 
 impl NoirApp {
@@ -75,13 +78,16 @@ impl NoirApp {
             should_close: false,
             fetching: false,
             fetch_result: None,
+            fetch_error: None,
             next_tab_id: 2,
+            history: Vec::new(),
+            history_index: 0,
         }
     }
 
     pub fn navigate(&mut self, url: String) {
         self.tabs[self.active_tab].url = url.clone();
-        self.tabs[self.active_tab].title = url;
+        self.tabs[self.active_tab].title = url.clone();
         self.tabs[self.active_tab].page = None;
         self.tabs[self.active_tab].layout_blocks.clear();
         self.tabs[self.active_tab].scroll_y = 0.0;
@@ -89,6 +95,10 @@ impl NoirApp {
         self.url_focused = false;
         self.fetching = true;
         self.fetch_result = None;
+        self.fetch_error = None;
+        self.history.truncate(self.history_index + 1);
+        self.history.push(url);
+        self.history_index = self.history.len() - 1;
     }
 
     pub fn go_home(&mut self) {

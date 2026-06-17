@@ -184,14 +184,14 @@ impl PageDocument {
                                 });
                             }
                         }
-                        HtmlTag::B | HtmlTag::Strong => {
+                        HtmlTag::B | HtmlTag::Strong | HtmlTag::Em | HtmlTag::I | HtmlTag::Small | HtmlTag::U | HtmlTag::Cite | HtmlTag::Dfn | HtmlTag::Mark | HtmlTag::Q | HtmlTag::S | HtmlTag::Samp | HtmlTag::Var | HtmlTag::Kbd | HtmlTag::Abbr | HtmlTag::Time | HtmlTag::Data | HtmlTag::Del | HtmlTag::Ins | HtmlTag::Sub | HtmlTag::Sup => {
                             let text = self.collect_text(children);
                             if !text.is_empty() {
                                 self.text_blocks.push(TextBlock {
                                     text,
-                                    tag: "b".into(),
+                                    tag: "text".into(),
                                     font_size: 14.0,
-                                    bold: true,
+                                    bold: matches!(tag, HtmlTag::B | HtmlTag::Strong),
                                     link: current_href.clone(),
                                     indent_level: indent,
                                 });
@@ -239,7 +239,36 @@ impl PageDocument {
                                 });
                             }
                         }
-                        HtmlTag::Div | HtmlTag::Section | HtmlTag::Article | HtmlTag::Main => {
+                        HtmlTag::Blockquote => {
+                            let text = self.collect_text(children);
+                            if !text.is_empty() {
+                                self.text_blocks.push(TextBlock {
+                                    text: format!("> {}", text),
+                                    tag: "blockquote".into(),
+                                    font_size: 14.0,
+                                    bold: false,
+                                    link: current_href.clone(),
+                                    indent_level: indent + 1,
+                                });
+                            }
+                        }
+                        HtmlTag::Hr => {
+                            self.text_blocks.push(TextBlock {
+                                text: "────────────────────────────────".into(),
+                                tag: "hr".into(),
+                                font_size: 14.0,
+                                bold: false,
+                                link: None,
+                                indent_level: indent,
+                            });
+                        }
+                        HtmlTag::Table | HtmlTag::Tbody | HtmlTag::Thead | HtmlTag::Tfoot | HtmlTag::Tr | HtmlTag::Td | HtmlTag::Th | HtmlTag::Caption | HtmlTag::Col | HtmlTag::Colgroup => {
+                            self.extract_from_nodes(children, indent, ancestors, current_href.clone());
+                        }
+                        HtmlTag::Ol | HtmlTag::Ul | HtmlTag::Dl => {
+                            self.extract_from_nodes(children, indent, ancestors, current_href.clone());
+                        }
+                        HtmlTag::Div | HtmlTag::Section | HtmlTag::Article | HtmlTag::Main | HtmlTag::Span | HtmlTag::Header | HtmlTag::Footer | HtmlTag::Nav | HtmlTag::Aside | HtmlTag::Address | HtmlTag::Figure | HtmlTag::Details | HtmlTag::Dialog | HtmlTag::Summary | HtmlTag::Slot => {
                             self.extract_from_nodes(
                                 children,
                                 indent,

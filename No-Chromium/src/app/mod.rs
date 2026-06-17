@@ -223,6 +223,26 @@ impl NoirApp {
                 let label_x = lx + (LINK_CARD_SIZE - label_w) / 2;
                 draw_text_noir(buf, stride, w, label_x, link_y + LINK_CARD_SIZE + 14, name, TEXT_DIM, 1.0);
             }
+            // Search engine shortcuts
+            let shortcuts_y = link_y + LINK_CARD_SIZE + 40;
+            let shortcuts = [
+                ("yt / youtube", "YouTube Search"),
+                ("gg / google", "Google Search"),
+                ("gh / github", "GitHub Search"),
+                ("ddg", "DuckDuckGo"),
+                ("wiki", "Wikipedia"),
+                ("crates", "Crates.io"),
+            ];
+            let sc_total_w = shortcuts.len() as i32 / 2 * 200 + (shortcuts.len() as i32 / 2 - 1) * 16;
+            let sc_start_x = w / 2 - sc_total_w / 2;
+            for (i, (cmd, desc)) in shortcuts.iter().enumerate() {
+                let col = i % 2;
+                let row = i / 2;
+                let sx = sc_start_x + col as i32 * 216;
+                let sy = shortcuts_y + row as i32 * 24;
+                draw_text_noir(buf, stride, w, sx, sy, cmd, ACCENT, 1.0);
+                draw_text_noir(buf, stride, w, sx + measure_text_width(cmd, 1.0) + 8, sy, desc, TEXT_PLACEHOLDER, 1.0);
+            }
         } else if self.fetching {
             // Loading state
             draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Loading...", TEXT_DIM, 1.2);
@@ -250,12 +270,33 @@ impl NoirApp {
     }
 
     fn resolve_url(&self) -> String {
-        if self.url_bar.starts_with("http://") || self.url_bar.starts_with("https://") {
-            self.url_bar.clone()
-        } else if self.url_bar.contains('.') && !self.url_bar.contains(' ') {
-            format!("https://{}", self.url_bar)
+        let input = self.url_bar.trim();
+        if input.starts_with("http://") || input.starts_with("https://") {
+            input.to_string()
+        } else if input.contains('.') && !input.contains(' ') && !input.starts_with("www.") {
+            if input.starts_with("www.") {
+                format!("https://{}", input)
+            } else {
+                format!("https://{}", input)
+            }
         } else {
-            format!("https://duckduckgo.com/?q={}", self.url_bar.replace(' ', "+"))
+            let lower = input.to_lowercase();
+            let parts: Vec<&str> = lower.splitn(2, ' ').collect();
+            let query = if parts.len() > 1 { parts[1] } else { "" };
+            match parts[0] {
+                "yt" | "youtube" => format!("https://www.youtube.com/results?search_query={}", query.replace(' ', "+")),
+                "gg" | "google" => format!("https://www.google.com/search?q={}", query.replace(' ', "+")),
+                "gh" | "github" => format!("https://github.com/search?q={}", query.replace(' ', "+")),
+                "ddg" | "duckduckgo" | "duck" => format!("https://duckduckgo.com/?q={}", query.replace(' ', "+")),
+                "wiki" | "wikipedia" => format!("https://en.wikipedia.org/wiki/Special:Search?search={}", query.replace(' ', "+")),
+                "reddit" => format!("https://www.reddit.com/search/?q={}", query.replace(' ', "+")),
+                "so" | "stackoverflow" => format!("https://stackoverflow.com/search?q={}", query.replace(' ', "+")),
+                "mdn" => format!("https://developer.mozilla.org/en-US/search?q={}", query.replace(' ', "+")),
+                "crates" => format!("https://crates.io/search?q={}", query.replace(' ', "+")),
+                "docs" | "docsrs" => format!("https://docs.rs/releases/search?query={}", query.replace(' ', "+")),
+                "npm" => format!("https://www.npmjs.com/search?q={}", query.replace(' ', "+")),
+                _ => format!("https://duckduckgo.com/?q={}", input.replace(' ', "+")),
+            }
         }
     }
 }
@@ -460,7 +501,6 @@ impl ApplicationHandler for NoirApp {
             event_loop.exit();
         }
 
-        // Check if fetch completed
         if self.fetching {
             let mut done = false;
             if let Some(result) = &self.fetch_result {
@@ -475,11 +515,9 @@ impl ApplicationHandler for NoirApp {
                         let blocks = layout_page(&page, viewport_w);
                         let content_h = total_content_height(&blocks);
 
-                        // Sync DOM to JS engine
                         let nodes = crate::parsers::dom_tree::parse_html(html);
                         crate::js_engine::dom_sync::sync_dom_to_js_engine(&nodes);
 
-                        // Execute inline scripts
                         let scripts = crate::js_engine::dom_sync::extract_inline_scripts(&nodes);
                         let tab_id = self.tabs[self.active_tab].tab_id;
                         for (i, script) in scripts.iter().enumerate() {
@@ -501,7 +539,7 @@ impl ApplicationHandler for NoirApp {
                         self.tabs[self.active_tab].page = Some(page);
                         self.tabs[self.active_tab].layout_blocks = blocks;
                         self.tabs[self.active_tab].content_height = content_h;
-                        self.tabs[self.active_tab].title = if !title.is_empty() { title } else { url };
+                        self.tabs[self.active_tab].title = if !title.is_empty() { title } else { self.tabs[self.active_tab].url.clone() };
                         done = true;
                     }
                 }
@@ -591,21 +629,95 @@ impl NoirApp {
 
             // Back
             if mx >= bx && mx <= bx + NAV_BTN_SIZE as f32 {
-                tracing::info!("Back");
+                if self.history_index > 0 {
+                    self.history_index -= 1;
+                    let url = self.history[self.history_index].clone();
+                    self.url_bar = url.clone();
+                    self.url_cursor = self.url_bar.len();
+                    self.navigate(url);
+                    let fetcher = HttpFetcher::new();
+                    let url_clone = self.tabs[self.active_tab].url.clone();
+                    let result_holder: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                    let result_clone = result_holder.clone();
+                    let url_for_fetch = url_clone.clone();
+                    tokio::spawn(async move {
+                        match fetcher.get(&url_for_fetch).await {
+                            Ok(result) => {
+                                if let Ok(mut guard) = result_clone.lock() {
+                                    *guard = Some(result.body);
+                                }
+                            }
+                            Err(e) => {
+                                if let Ok(mut guard) = result_clone.lock() {
+                                    *guard = Some(format!("<html><head><title>Error</title></head><body><h1>Failed to load</h1><p>{}</p></body></html>", e));
+                                }
+                            }
+                        }
+                    });
+                    self.fetch_result = Some(result_holder);
+                }
                 return;
             }
             bx += NAV_BTN_SIZE as f32 + NAV_BTN_SPACING as f32;
 
             // Forward
             if mx >= bx && mx <= bx + NAV_BTN_SIZE as f32 {
-                tracing::info!("Forward");
+                if self.history_index < self.history.len().saturating_sub(1) {
+                    self.history_index += 1;
+                    let url = self.history[self.history_index].clone();
+                    self.url_bar = url.clone();
+                    self.url_cursor = self.url_bar.len();
+                    self.navigate(url);
+                    let fetcher = HttpFetcher::new();
+                    let url_clone = self.tabs[self.active_tab].url.clone();
+                    let result_holder: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                    let result_clone = result_holder.clone();
+                    let url_for_fetch = url_clone.clone();
+                    tokio::spawn(async move {
+                        match fetcher.get(&url_for_fetch).await {
+                            Ok(result) => {
+                                if let Ok(mut guard) = result_clone.lock() {
+                                    *guard = Some(result.body);
+                                }
+                            }
+                            Err(e) => {
+                                if let Ok(mut guard) = result_clone.lock() {
+                                    *guard = Some(format!("<html><head><title>Error</title></head><body><h1>Failed to load</h1><p>{}</p></body></html>", e));
+                                }
+                            }
+                        }
+                    });
+                    self.fetch_result = Some(result_holder);
+                }
                 return;
             }
             bx += NAV_BTN_SIZE as f32 + NAV_BTN_SPACING as f32;
 
             // Reload
             if mx >= bx && mx <= bx + NAV_BTN_SIZE as f32 {
-                tracing::info!("Reload");
+                let url = self.tabs[self.active_tab].url.clone();
+                if !url.is_empty() {
+                    self.navigate(url.clone());
+                    let fetcher = HttpFetcher::new();
+                    let result_holder: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                    let result_clone = result_holder.clone();
+                    let url_for_fetch = url.clone();
+                    tokio::spawn(async move {
+                        match fetcher.get(&url_for_fetch).await {
+                            Ok(result) => {
+                                if let Ok(mut guard) = result_clone.lock() {
+                                    *guard = Some(result.body);
+                                }
+                            }
+                            Err(e) => {
+                                if let Ok(mut guard) = result_clone.lock() {
+                                    *guard = Some(format!("<html><head><title>Error</title></head><body><h1>Failed to load</h1><p>{}</p></body></html>", e));
+                                }
+                            }
+                        }
+                    });
+                    self.fetch_result = Some(result_holder);
+                }
                 return;
             }
             bx += NAV_BTN_SIZE as f32 + NAV_BTN_SPACING as f32;
@@ -693,6 +805,9 @@ impl NoirApp {
                             }
                             Err(e) => {
                                 tracing::error!("Fetch failed: {}", e);
+                                if let Ok(mut guard) = result_clone.lock() {
+                                    *guard = Some(format!("<html><head><title>Error</title></head><body><h1>Failed to load</h1><p>{}</p><p>URL: {}</p></body></html>", e, url_clone));
+                                }
                             }
                         }
                     });
