@@ -5,6 +5,7 @@ pub mod renderer;
 pub mod network;
 pub mod utils;
 pub mod vulkan_engine;
+pub mod js_engine;
 
 // Luego tus imports...
 use crate::app::AppConfig;

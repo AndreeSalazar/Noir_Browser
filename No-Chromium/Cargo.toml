@@ -38,6 +38,7 @@ boa_engine.workspace = true
 boa_parser.workspace = true
 boa_gc.workspace = true
 boa_ast.workspace = true
+serde_json = "1.0"
 
 # Networking
 reqwest = { version = "0.12", features = ["json", "stream", "socks", "http2"] }

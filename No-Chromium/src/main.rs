@@ -21,6 +21,7 @@ mod renderer;
 mod vulkan_engine;
 mod network;
 mod utils;
+mod js_engine;
 
 #[cfg(feature = "privacy")]
 mod privacy;

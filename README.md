@@ -1,86 +1,198 @@
-# 🌌 Noir Browser (No-Chromium Engine)
+# Noir Browser (No-Chromium Engine)
 
 [![Rust Version](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org/)
 [![Graphics API](https://img.shields.io/badge/Graphics-Vulkan%20%2F%20Ash-red.svg)](https://vulkan.org/)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green.svg)](#)
 
-Un motor de navegación web **ultrarrápido, moderno e independiente** desarrollado desde cero en **Rust y Vulkan (Ash)**, diseñado para romper la hegemonía y la pesadez de los motores basados en Chromium, WebKit y Gecko.
-
-![Noir Browser Showcase](No-Chromium/docs/images/noir_browser_mockup.png)
+Un motor de navegacion web **independiente, ultrarrapido y seguro** desarrollado desde cero en **Rust y Vulkan (Ash)**, sin depender de Chromium, WebKit ni Gecko.
 
 ---
 
-## 🚀 ¿Por qué No-Chromium? (El Potencial y la Misión)
+## Mision
 
-Hoy en día, casi todos los navegadores web modernos (Chrome, Edge, Brave, Opera, Vivaldi) son clones con diferentes pieles que corren bajo el mismo motor masivo y sediento de recursos: **Chromium**. Esto ha creado un monopolio tecnológico de facto, exponiendo a los usuarios a telemetría invasiva, sobrecarga de memoria y un ecosistema web uniforme.
-
-**Noir Browser (No-Chromium)** nace con tres propósitos clave:
-1. **Independencia Tecnológica**: Crear un renderizador web nativo 2D totalmente escrito en Rust, eliminando el C++ heredado de 30 años y reduciendo la superficie de vulnerabilidad.
-2. **Rendimiento de GPU Puro**: Dibujar cada elemento del DOM, imagen, botón y texto usando llamadas a la GPU con **Vulkan**, logrando renderizados pixel-perfect estables a más de 60fps sin sobrecargar la CPU.
-3. **Consumo Eficiente y Seguro**: Menos del 10% del consumo de memoria RAM de un proceso tradicional de Chrome, gracias a una arquitectura concurrente y libre de recolección de basura (Garbage Collector).
-
----
-
-## 🛠️ Arquitectura y Flujo de Renderizado
-
-Noir Browser no utiliza componentes externos de renderizado. Todo el pipeline, desde la lectura de la red hasta el mapeo del framebuffer, está implementado en la base de código:
-
-![Pipeline de Renderizado Vulkan](No-Chromium/docs/images/vulkan_pipeline_infographic.png)
-
-### Orden de los Módulos del Motor:
-1. **Red e Ingesta de Datos (`No-Chromium/src/media/image_manager.rs`, `No-Chromium/src/parsers/`)**: Realiza peticiones asíncronas y gestiona la caché de recursos estáticos en memoria (pre-caching).
-2. **Parser HTML Nativo (`No-Chromium/src/parsers/html_elements.rs`, `No-Chromium/src/parsers/dom_native.rs`)**: Convierte el código HTML bruto en una estructura de árbol DOM binaria optimizada.
-3. **Parser CSS Cascading (`No-Chromium/src/parsers/css_simple.rs`)**: Escanea las hojas de estilo y calcula la especificidad de los selectores, aplicando cascada y herencia a los elementos.
-4. **Motor de Layout Modular (`No-Chromium/src/browser/page_modular/mod.rs`)**:
-   - Resuelve el tamaño de las cajas de diseño.
-   - Aplica un algoritmo de alineación por línea (Line-Level Alignment) que agrupa elementos inline y calcula traslaciones (`shift_x`) para centrado perfecto de inputs y textos.
-   - Corrige el orden de capas mediante placeholder buffers (`render_box_idx`) para asegurar que los fondos de bloque se rendericen debajo del contenido.
-5. **Vulkan 2D Graphics Engine (`No-Chromium/src/vulkan_engine/`)**: Utiliza `Ash` (bindings de Vulkan en Rust) para transferir los vectores de cajas, imágenes y solicitudes de texto hacia búferes de la GPU y dibujarlos con antialiasing a tasa de refresco nativa.
+Noir Browser es un motor de navegacion 100% independiente:
+- **Sin Codigo de Chrome/Chromium** - Toda la base es Rust puro
+- **Renderizado GPU con Vulkan** - Pipeline grafico nativo con Ash
+- **Motor JavaScript propio** - Boa Engine (ECMAScript nativo en Rust)
+- **Privacidad por defecto** - Sin telemetria, anti-fingerprint, aislamiento por tab
 
 ---
 
-## 📁 Estructura del Proyecto
+## Arquitectura del Motor
 
-```bash
+### Pipeline de Renderizado
+```
+Red (reqwest) -> Parser HTML (html5ever) -> Parser CSS -> Layout -> Vulkan GPU -> Framebuffer
+```
+
+### Modulos Principales
+
+| Modulo | Descripcion |
+|--------|-------------|
+| `app/` | Ventana winit, UI Chrome-like, softbuffer para Phase 0 |
+| `browser/` | Coordinador de tabs, navegacion, historial |
+| `js_engine/` | Motor JavaScript completo (Boa 0.18) |
+| `network/` | Stack de red con reqwest + DNS-over-HTTPS |
+| `parsers/` | HTML5, CSS, DOM nativos |
+| `vulkan_engine/` | Renderizador Vulkan 2D con Ash |
+| `renderer/` | Pipeline de renderizado GPU |
+| `utils/` | IPC, process model, utilidades |
+
+---
+
+## Motor JavaScript (js_engine/)
+
+100% independiente, basado en **Boa Engine 0.18** (ECMAScript en Rust puro).
+
+### Modulos del Motor JS
+
+| Archivo | Funcion |
+|---------|---------|
+| `runtime.rs` | Contexto Boa por tab, evaluacion de scripts, task queue (setTimeout/setInterval) |
+| `web_apis.rs` | `console.log/warn/error/info`, `JSON.parse/stringify` |
+| `dom_bridge.rs` | `document.getElementById()`, `querySelector()`, `createElement()`, `addEventListener()` |
+| `events.rs` | Sistema de eventos: `addEventListener`, `removeEventListener`, `dispatchEvent` |
+| `sandbox.rs` | Aislamiento por tab, permisos, CSP, timeouts de scripts |
+| `modules.rs` | Sistema de modulos ES con import/export y resolucion de specifiers |
+| `bindings.rs` | `navigator.userAgent/platform/language`, `location.href/assign/reload`, `window.alert/confirm/prompt` |
+
+### API Publica (JsEngine)
+
+```rust
+use no_chromium::js_engine::JsEngine;
+
+let mut engine = JsEngine::new();
+
+// Inicializar contexto JS para un tab
+engine.init_tab(1)?;
+
+// Evaluar JavaScript
+let result = engine.eval_script(1, "console.log('Hello from Noir!')")?;
+
+// Cargar modulo ES
+engine.register_module("./utils.js", "export function foo() {}");
+engine.load_module(1, "./utils.js")?;
+
+// Procesar eventos pendientes
+engine.process_events(1)?;
+
+// Cleanup
+engine.destroy_tab(1);
+```
+
+### Web APIs Soportadas
+
+- **console**: `log()`, `warn()`, `error()`, `info()`, `clear()`
+- **JSON**: `parse()`, `stringify()`
+- **document**: `getElementById()`, `querySelector()`, `createElement()`, `addEventListener()`
+- **navigator**: `userAgent`, `platform`, `language`, `onLine`, `cookieEnabled`
+- **location**: `href`, `assign()`, `reload()`
+- **window**: `title`, `close()`, `alert()`, `confirm()`, `prompt()`
+- **Eventos**: `addEventListener()`, `removeEventListener()`, `dispatchEvent()`
+- **Modulos**: ES modules con `import`/`export`
+
+---
+
+## Dependencias Clave (Sin Chromium)
+
+| Dependencia | Uso |
+|-------------|-----|
+| `boa_engine` 0.18 | Motor JavaScript ECMAScript nativo en Rust |
+| `ash` 0.37 | Bindings Vulkan de bajo nivel |
+| `softbuffer` 0.4 | Framebuffer por software (Phase 0) |
+| `winit` 0.30 | Ventana y eventos cross-platform |
+| `reqwest` 0.12 | HTTP/2 client con TLS |
+| `html5ever` 0.26 | Parser HTML5 |
+| `cssparser` 0.31 | Parser CSS |
+| `tokio` 1.35 | Runtime async multi-thread |
+
+---
+
+## Estructura del Proyecto
+
+```
 Noir_Browser/
-├── No-Chromium/               # Subdirectorio principal del navegador.
-│   ├── assets/                # Recursos y assets estáticos locales.
-│   │   └── pre_cache/         # Imágenes pre-cargadas en el Atlas (Logos, favicons).
-│   ├── docs/                  # Documentación del proyecto.
-│   │   └── images/            # Infografías y capturas de pantalla del motor.
-│   ├── src/                   # Código fuente en Rust.
-│   │   ├── app.rs             # Inicializador del loop de la aplicación y ciclo de vida de winit.
-│   │   ├── browser/           # Motor lógico de navegación.
-│   │   │   ├── page_modular/  # Motor de Layout, Noir Dark Theme y cálculo de hitboxes.
-│   │   │   └── page.rs        # Estructura del manejador de pestañas.
-│   │   ├── vulkan_engine/     # Renderizador Vulkan (Ash) 2D con Shaders propios.
-│   │   ├── parsers/           # Lexers y Parsers para DOM, CSS y JS (sin V8).
-│   │   └── media/             # Gestión de decodificación asíncrona de imágenes.
-│   └── Cargo.toml             # Dependencias del proyecto.
-├── parsers/                   # Módulo independiente de parsing.
-├── .gitignore                 # Exclusión de archivos en git.
-└── README.md                  # Este documento explicativo (en la raíz del repositorio).
+├── Cargo.toml                    # Workspace config
+├── No-Chromium/
+│   ├── Cargo.toml                # Dependencias del navegador
+│   └── src/
+│       ├── main.rs               # Entry point, CLI, process model
+│       ├── lib.rs                # Lib publica
+│       ├── app/                  # UI y ventana
+│       │   ├── mod.rs            # ApplicationHandler, draw_frame
+│       │   ├── config.rs         # AppConfig
+│       │   ├── state.rs          # NoirApp state
+│       │   ├── draw.rs           # Primitivas de dibujo
+│       │   ├── glyphs.rs         # Bitmap font (95 caracteres)
+│       │   └── theme.rs          # Colores y layout
+│       ├── js_engine/            # Motor JavaScript
+│       │   ├── mod.rs            # JsEngine API publica
+│       │   ├── runtime.rs        # Boa context + task queue
+│       │   ├── web_apis.rs       # console, JSON
+│       │   ├── dom_bridge.rs     # DOM API bridge
+│       │   ├── events.rs         # Event system
+│       │   ├── sandbox.rs        # Per-tab isolation
+│       │   ├── modules.rs        # ES modules
+│       │   └── bindings.rs       # navigator, location, window
+│       ├── browser/              # Navegacion y tabs
+│       ├── network/              # Stack de red
+│       ├── parsers/              # HTML, CSS, DOM
+│       ├── renderer/             # Pipeline de renderizado
+│       ├── vulkan_engine/        # Vulkan GPU engine
+│       └── utils/                # IPC, process model
+└── README.md
 ```
 
 ---
 
-## 🌓 Características Especiales del Motor
+## Roadmap
 
-- **Tema Oscuro Inteligente (Noir Dark Theme)**: Analiza en tiempo real la luminancia de los fondos y textos CSS. Los fondos claros se convierten en un gris oscuro premium (`#1f2023`), y los textos oscuros se iluminan suavemente para evitar destellos oculares, conservando el diseño original.
-- **Pre-Cache Off-line de Recursos**: Evita retardos e hilos bloqueados al arrancar. Los recursos más comunes (como logos y favicons de Google, DuckDuckGo y YouTube) se pre-cargan y decodifican de forma asíncrona en memoria mediante `Tokio` antes del primer frame de Vulkan.
-- **Alineación de Texto e Inputs en Píldora**: El buscador es tratado automáticamente con estilo de píldora moderno (`border-radius: 22px`), centrado perfecto en su viewport e interactivo con cursor de enfoque.
+### Fase 0 (Actual) - UI y Motor JS
+- [x] Ventana con winit + softbuffer
+- [x] UI Chrome-like con tema oscuro
+- [x] Bitmap font renderer (95 glyphs)
+- [x] Controles de ventana (minimizar/maximizar/cerrar)
+- [x] Dragging de ventana
+- [x] Motor JavaScript Boa integrado
+- [x] Web APIs: console, JSON, document, navigator, location, window
+- [x] Sandbox por tab
+- [x] Sistema de modulos ES
+
+### Fase 1 - Renderizado y Layout
+- [ ] Pipeline Vulkan completo (shaders, textures)
+- [ ] Layout engine: CSS Flexbox & Grid
+- [ ] MSDF font rendering (texto GPU)
+- [ ] Decodificacion de imagenes (PNG, JPEG, WebP)
+
+### Fase 2 - Stack de Red
+- [ ] HTTP/2 completo con reqwest
+- [ ] DNS-over-HTTPS (hickory-resolver)
+- [ ] Cache de recursos (LRU)
+- [ ] Soporte CORS
+
+### Fase 3 - Features Avanzadas
+- [ ] Decodificacion de video acelerada por hardware
+- [ ] Service Workers
+- [ ] WebAssembly (wasm-bindgen)
+- [ ] Extensions/Plugins system
 
 ---
 
-## 📈 Hoja de Ruta (Roadmap) - ¿Qué falta más?
+## Construccion
 
-Para alcanzar un nivel de soporte y versatilidad equivalente a estándares modernos, el roadmap contempla:
+```bash
+# Build release
+cargo build --release
 
-1. **Motor de Layout Advanced (CSS Flexbox & Grid)**:
-   - *Motivo*: Permitir el diseño nativo de páginas web complejas sin depender de simulaciones de inline-block.
-2. **Motor JavaScript Integrado (Boa o V8)**:
-   - *Motivo*: Dar soporte a páginas dinámicas e interactivas complejas (reproducción en YouTube, buscador dinámico en tiempo real).
-3. **Decodificación de Video Acelerada por Hardware (NVDEC / Vulkan Video)**:
-   - *Motivo*: Permitir la reproducción fluida de streams de video directamente en el renderizador 2D sin sobrecargar la CPU.
-4. **Rasterización de Fuentes Basada en MSDF (Multi-channel Signed Distance Fields)**:
-   - *Motivo*: Texto ultra-definido sin importar el nivel de zoom de la pantalla, dibujado directamente por shaders en la GPU.
+# Run
+cargo run
+
+# Tests
+cargo test
+```
+
+---
+
+## Licencia
+
+MIT / Apache-2.0
