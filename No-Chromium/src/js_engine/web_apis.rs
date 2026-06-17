@@ -161,7 +161,7 @@ fn timestamp_ms() -> u64 {
         .as_millis() as u64
 }
 
-fn json_value_to_js(val: &serde_json::Value, ctx: &mut Context) -> JsResult<JsValue> {
+pub fn json_value_to_js(val: &serde_json::Value, ctx: &mut Context) -> JsResult<JsValue> {
     match val {
         serde_json::Value::Null => Ok(JsValue::Null),
         serde_json::Value::Bool(b) => Ok(JsValue::from(*b)),

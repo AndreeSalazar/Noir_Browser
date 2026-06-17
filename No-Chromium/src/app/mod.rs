@@ -22,8 +22,7 @@ use theme::*;
 
 use crate::network::fetch::HttpFetcher;
 use crate::parsers::page_document::PageDocument;
-use crate::parsers::layout::{LayoutItem, layout_page, total_content_height, hit_test_link};
-use crate::media;
+use crate::parsers::layout::{layout_page, total_content_height, hit_test_link};
 
 impl NoirApp {
     fn draw_frame(&mut self) {

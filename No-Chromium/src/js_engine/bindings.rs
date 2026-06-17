@@ -4,6 +4,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 pub struct BrowserBindings;
 
 static BINDINGS_DATA: OnceLock<Arc<Mutex<BindingsData>>> = OnceLock::new();
+static LAST_FETCH_BODY: OnceLock<Arc<Mutex<String>>> = OnceLock::new();
+
+fn get_last_fetch_body() -> &'static Arc<Mutex<String>> {
+    LAST_FETCH_BODY.get_or_init(|| Arc::new(Mutex::new(String::new())))
+}
 
 struct BindingsData {
     user_agent: String,
@@ -92,6 +97,66 @@ fn js_window_prompt(_this: &JsValue, _args: &[JsValue], _ctx: &mut Context) -> J
     Ok(JsValue::Null)
 }
 
+fn js_fetch(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let url = args.get_or_undefined(0)
+        .to_string(ctx)
+        .map(|s| s.to_std_string_escaped())
+        .map_err(|e| JsNativeError::typ().with_message(format!("fetch: {}", e)))?;
+
+    tracing::info!("[JS] fetch: {}", url);
+
+    let rt = tokio::runtime::Handle::current();
+    let result = rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_default();
+        match client.get(&url).send().await {
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                match resp.text().await {
+                    Ok(body) => Ok((status, body)),
+                    Err(e) => Err(format!("fetch body error: {}", e)),
+                }
+            }
+            Err(e) => Err(format!("fetch error: {}", e)),
+        }
+    });
+
+    match result {
+        Ok((status, body)) => {
+            *get_last_fetch_body().lock().unwrap() = body;
+            let response_obj = boa_engine::JsObject::with_null_proto();
+            let _ = response_obj.set(boa_engine::js_string!("status"), JsValue::from(status as i32), false, ctx);
+            let _ = response_obj.set(boa_engine::js_string!("ok"), JsValue::from(status >= 200 && status < 300), false, ctx);
+            let _ = response_obj.set(boa_engine::js_string!("url"), JsValue::from(boa_engine::JsString::from(url.as_str())), false, ctx);
+            let text_fn = NativeFunction::from_fn_ptr(js_fetch_text).to_js_function(ctx.realm());
+            let _ = response_obj.set(boa_engine::js_string!("text"), text_fn, false, ctx);
+            let json_fn = NativeFunction::from_fn_ptr(js_fetch_json).to_js_function(ctx.realm());
+            let _ = response_obj.set(boa_engine::js_string!("json"), json_fn, false, ctx);
+            Ok(JsValue::Object(response_obj))
+        }
+        Err(e) => {
+            let err_obj = boa_engine::JsObject::with_null_proto();
+            let _ = err_obj.set(boa_engine::js_string!("message"), JsValue::from(boa_engine::JsString::from(e.as_str())), false, ctx);
+            Ok(JsValue::Object(err_obj))
+        }
+    }
+}
+
+fn js_fetch_text(_this: &JsValue, _args: &[JsValue], _ctx: &mut Context) -> JsResult<JsValue> {
+    let body = get_last_fetch_body().lock().unwrap().clone();
+    Ok(JsValue::from(boa_engine::JsString::from(body.as_str())))
+}
+
+fn js_fetch_json(_this: &JsValue, _args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let body = get_last_fetch_body().lock().unwrap().clone();
+    match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(val) => crate::js_engine::web_apis::json_value_to_js(&val, ctx),
+        Err(e) => Err(JsNativeError::typ().with_message(format!("JSON parse error: {}", e)).into()),
+    }
+}
+
 impl BrowserBindings {
     pub fn new() -> Self {
         Self
@@ -157,7 +222,11 @@ impl BrowserBindings {
         let prompt_fn = NativeFunction::from_fn_ptr(js_window_prompt).to_js_function(context.realm());
         let _ = window_obj.set(boa_engine::js_string!("prompt"), prompt_fn, false, context);
 
-        let _ = context.register_global_property(boa_engine::js_string!("window"), boa_engine::JsValue::Object(window_obj), boa_engine::property::Attribute::all());
+        let _ = context.register_global_property(boa_engine::js_string!("window"), boa_engine::JsValue::Object(window_obj.clone()), boa_engine::property::Attribute::all());
+
+        let fetch_fn = NativeFunction::from_fn_ptr(js_fetch).to_js_function(context.realm());
+        let _ = window_obj.set(boa_engine::js_string!("fetch"), fetch_fn.clone(), false, context);
+        let _ = context.register_global_property(boa_engine::js_string!("fetch"), boa_engine::JsValue::Object(fetch_fn.into()), boa_engine::property::Attribute::all());
     }
 
     pub fn update_url(url: &str) {

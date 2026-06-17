@@ -84,7 +84,7 @@ pub fn draw_image_to_buffer(
                 let b = img.rgba[src_idx + 2] as u32;
                 let a = img.rgba[src_idx + 3] as u32;
 
-                let dst_idx = (screen_y as usize * stride + screen_x as usize);
+                let dst_idx = screen_y as usize * stride + screen_x as usize;
                 if dst_idx < buf.len() {
                     if a > 128 {
                         buf[dst_idx] = (255 << 24) | (r << 16) | (g << 8) | b;

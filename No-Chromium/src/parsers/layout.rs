@@ -1,5 +1,5 @@
-use crate::parsers::css_simple::{CssCascade, CssDeclarations, parse_color, parse_px};
-use crate::parsers::page_document::{PageDocument, TextBlock, ImageBlock};
+use crate::parsers::css_simple::CssCascade;
+use crate::parsers::page_document::{PageDocument, TextBlock};
 
 #[derive(Clone, Debug)]
 pub enum LayoutItem {
@@ -84,7 +84,6 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
         if text_idx < doc.text_blocks.len() {
             let text_block = &doc.text_blocks[text_idx];
             let styled = apply_css_to_block(text_block, &ctx.css);
-            let before_y = ctx.cursor_y;
             layout_block(text_block, &styled, &mut ctx, &mut items);
             text_idx += 1;
         }
@@ -123,7 +122,7 @@ struct StyledBlock {
     indent: f32,
 }
 
-fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
+fn apply_css_to_block(block: &TextBlock, _css: &CssCascade) -> StyledBlock {
     let default_color = [0.85, 0.85, 0.85, 1.0];
 
     let mut styled = StyledBlock {

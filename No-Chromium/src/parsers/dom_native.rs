@@ -1,8 +1,7 @@
 // AUTO-GENERATED NATIVE DOM
 // Based on official WebIDL ADN
+#![allow(non_snake_case, dead_code)]
 
-#[allow(dead_code)]
-/// Event Interface (Inherits: Base)
 pub struct Event {
     pub id: u64,
 }

@@ -31,7 +31,7 @@ fn collect_elements(
                     .get("id")
                     .cloned()
                     .unwrap_or_else(|| format!("elem_{}", rand::random::<u32>()));
-                let class = attributes.get("class").cloned().unwrap_or_default();
+                let _class = attributes.get("class").cloned().unwrap_or_default();
                 let text_content = collect_text_content(children);
 
                 let mut attrs = attributes.clone();

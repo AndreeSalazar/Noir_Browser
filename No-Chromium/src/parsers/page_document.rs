@@ -49,9 +49,31 @@ impl PageDocument {
 
     pub fn from_html(url: &str, html: &str) -> Self {
         let mut doc = PageDocument::new(url);
+        doc.extract_style_blocks(html);
         let nodes = parse_html(html);
         doc.extract_from_nodes(&nodes, 0, &mut Vec::new(), None);
         doc
+    }
+
+    fn extract_style_blocks(&mut self, html: &str) {
+        let mut remaining = html;
+        while let Some(start) = remaining.find("<style") {
+            let after_tag = &remaining[start..];
+            if let Some(gt) = after_tag.find('>') {
+                let content_start = gt + 1;
+                if let Some(end) = remaining[start + content_start..].find("</style>") {
+                    let css = &remaining[start + content_start..start + content_start + end];
+                    if !css.trim().is_empty() {
+                        self.style_blocks.push(css.to_string());
+                    }
+                    remaining = &remaining[start + content_start + end..];
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
     }
 
     fn extract_from_nodes(
@@ -73,10 +95,7 @@ impl PageDocument {
                             self.title = self.collect_text(children);
                         }
                         HtmlTag::Style => {
-                            let css = self.collect_text(children);
-                            if !css.is_empty() {
-                                self.style_blocks.push(css);
-                            }
+                            // Style blocks are now extracted from raw HTML
                         }
                         HtmlTag::H1 => {
                             let text = self.collect_text(children);
@@ -230,6 +249,12 @@ impl PageDocument {
                         }
                         HtmlTag::Body | HtmlTag::Html => {
                             self.extract_from_nodes(children, indent, ancestors, current_href.clone());
+                        }
+                        HtmlTag::Custom(ref name) if name == "head" || name == "meta" || name == "link" => {
+                            // Skip head metadata
+                        }
+                        HtmlTag::Custom(ref name) if name == "script" || name == "noscript" => {
+                            // Skip scripts (already skipped in dom_tree but just in case)
                         }
                         _ => {
                             self.extract_from_nodes(children, indent, ancestors, current_href.clone());

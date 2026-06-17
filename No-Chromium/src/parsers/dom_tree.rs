@@ -35,8 +35,8 @@ fn visit_node(handle: &Handle) -> Option<DomNode> {
             let tag_name = name.local.as_ref();
             let tag = map_tag_name(tag_name);
 
-            // Skip script and noscript elements completely so their styles don't break our CSS renderer
-            if matches!(tag, HtmlTag::Noscript | HtmlTag::Script) {
+            // Skip script, noscript, and style elements completely
+            if matches!(tag, HtmlTag::Noscript | HtmlTag::Script | HtmlTag::Style) {
                 return None;
             }
 
@@ -150,6 +150,11 @@ fn map_tag_name(name: &str) -> HtmlTag {
         "canvas" => HtmlTag::Canvas,
         "noscript" => HtmlTag::Noscript,
         "script" => HtmlTag::Script,
+        "style" => HtmlTag::Style,
+        "meta" => HtmlTag::Custom("meta".into()),
+        "link" => HtmlTag::Custom("link".into()),
+        "head" => HtmlTag::Custom("head".into()),
+        "title" => HtmlTag::Title,
         "del" => HtmlTag::Del,
         "ins" => HtmlTag::Ins,
         "caption" => HtmlTag::Caption,
