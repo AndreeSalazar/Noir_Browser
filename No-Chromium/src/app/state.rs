@@ -29,6 +29,8 @@ pub struct NoirApp {
     pub active_tab: usize,
     pub mouse_x: f32,
     pub mouse_y: f32,
+    pub is_maximized: bool,
+    pub should_close: bool,
 }
 
 impl NoirApp {
@@ -47,6 +49,8 @@ impl NoirApp {
             active_tab: 0,
             mouse_x: 0.0,
             mouse_y: 0.0,
+            is_maximized: false,
+            should_close: false,
         }
     }
 

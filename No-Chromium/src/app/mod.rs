@@ -299,6 +299,10 @@ impl ApplicationHandler for NoirApp {
                     return;
                 }
                 self.handle_click();
+                if self.should_close {
+                    event_loop.exit();
+                    return;
+                }
                 self.window.as_ref().unwrap().request_redraw();
             }
 
@@ -313,12 +317,58 @@ impl ApplicationHandler for NoirApp {
             _ => {}
         }
     }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.should_close {
+            event_loop.exit();
+        }
+    }
 }
 
 impl NoirApp {
     fn handle_click(&mut self) {
         let mx = self.mouse_x;
         let my = self.mouse_y;
+        let w = self.width as f32;
+
+        // Window controls (title bar)
+        if my <= TITLE_BAR_HEIGHT as f32 {
+            let ctrl_w = 46.0f32;
+
+            // Close button
+            let close_x = w - ctrl_w;
+            if mx >= close_x {
+                self.should_close = true;
+                return;
+            }
+
+            // Maximize button
+            let max_x = w - ctrl_w * 2.0;
+            if mx >= max_x && mx < close_x {
+                if let Some(window) = &self.window {
+                    self.is_maximized = !self.is_maximized;
+                    window.set_maximized(self.is_maximized);
+                }
+                return;
+            }
+
+            // Minimize button
+            let min_x = w - ctrl_w * 3.0;
+            if mx >= min_x && mx < max_x {
+                if let Some(window) = &self.window {
+                    window.set_minimized(true);
+                }
+                return;
+            }
+
+            // Title bar drag area (not on controls)
+            if mx < min_x {
+                if let Some(window) = &self.window {
+                    let _ = window.drag_window();
+                }
+                return;
+            }
+        }
 
         let nav_y = (TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT) as f32;
         let btn_h = 32.0f32;
