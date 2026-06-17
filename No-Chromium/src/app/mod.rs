@@ -21,16 +21,17 @@ use theme::*;
 
 impl NoirApp {
     fn draw_frame(&mut self) {
+        // Cache all state before mutable borrow
         let display_url = self.display_url();
         let url_color = self.url_text_color();
         let url_bar_empty = self.url_bar.is_empty();
         let url_focused = self.url_focused;
         let url_cursor = self.url_cursor;
         let active_tab = self.active_tab;
-        let tabs_len = self.tabs.len();
+        let _tabs_len = self.tabs.len();
         let tab_titles: Vec<String> = self.tabs.iter().map(|t| {
-            if t.title.len() > 22 {
-                format!("{}...", &t.title[..19])
+            if t.title.len() > 24 {
+                format!("{}...", &t.title[..21])
             } else {
                 t.title.clone()
             }
@@ -50,7 +51,7 @@ impl NoirApp {
         let buf = buffer.as_mut();
         let stride = width as usize;
 
-        // Clear background
+        // Clear
         for pixel in buf.iter_mut() {
             *pixel = BG_CONTENT;
         }
@@ -58,113 +59,164 @@ impl NoirApp {
         let w = width as i32;
         let h = height as i32;
 
-        // === TITLE BAR ===
+        // ═══════════════ TITLE BAR ═══════════════
         draw_rect(buf, stride, 0, 0, w, TITLE_BAR_HEIGHT as i32, BG_TITLEBAR);
-        draw_text_noir(buf, stride, w, 12, 12, "Noir Browser", TEXT_WHITE, 1.0);
+        draw_text_noir(buf, stride, w, 14, 9, "Noir Browser", TEXT_DIM, 0.9);
 
-        // Window controls (top right)
-        let btn_size = 14;
-        let btn_y = 13;
-        let close_x = w - 20;
-        draw_rect(buf, stride, close_x, btn_y, btn_size, btn_size, ACCENT);
-        let min_x = close_x - 24;
-        draw_rect(buf, stride, min_x, btn_y, btn_size, btn_size, YELLOW);
-        let max_x = min_x - 24;
-        draw_rect(buf, stride, max_x, btn_y, btn_size, btn_size, GREEN);
+        // Window controls (right side, larger)
+        let ctrl_y = 8;
+        let ctrl_h = 16;
+        let ctrl_w = 20;
+        let gap = 2;
+        let close_x = w - ctrl_w - 8;
+        draw_rect(buf, stride, close_x, ctrl_y, ctrl_w, ctrl_h, CLOSE_RED);
+        let min_x = close_x - ctrl_w - gap;
+        draw_rect(buf, stride, min_x, ctrl_y, ctrl_w, ctrl_h, YELLOW);
+        let max_x = min_x - ctrl_w - gap;
+        draw_rect(buf, stride, max_x, ctrl_y, ctrl_w, ctrl_h, GREEN);
 
-        // === TAB BAR ===
+        // ═══════════════ TAB BAR ═══════════════
         let tab_y = TITLE_BAR_HEIGHT as i32;
         draw_rect(buf, stride, 0, tab_y, w, TAB_BAR_HEIGHT as i32, BG_TAB_BAR);
 
-        let tab_width = 180i32;
-        let tab_margin = 4i32;
+        let mut tx = 6i32;
         for (i, title) in tab_titles.iter().enumerate() {
-            let tx = 8 + (i as i32) * (tab_width + tab_margin);
-            let ty = tab_y + 4;
-            let th = TAB_BAR_HEIGHT as i32 - 8;
+            let tab_w = TAB_WIDTH.min(w - tx - 80);
+            if tx + tab_w > w - 80 { break; }
+
+            let ty = tab_y + 3;
+            let th = TAB_BAR_HEIGHT as i32 - 6;
             let bg = if i == active_tab { BG_ADDRESS_BAR } else { BG_TAB_BAR };
-            draw_rect(buf, stride, tx, ty, tab_width, th, bg);
-            draw_text_noir(buf, stride, w, tx + 10, ty + 8, title, TEXT_DIM, 0.8);
+            draw_rect(buf, stride, tx, ty, tab_w, th, bg);
+
+            // Active tab indicator line
+            if i == active_tab {
+                draw_rect(buf, stride, tx, ty, tab_w, 2, ACCENT);
+            }
+
+            // Tab title
+            let text_x = tx + 12;
+            let text_y_pos = ty + (th / 2) - 4;
+            draw_text_noir(buf, stride, w, text_x, text_y_pos, title, if i == active_tab { TEXT_WHITE } else { TEXT_DIM }, 0.8);
+
+            // Close tab X (small)
+            let close_tab_x = tx + tab_w - 18;
+            draw_text_noir(buf, stride, w, close_tab_x, text_y_pos, "x", TEXT_DIM, 0.7);
+
+            tx += tab_w + TAB_SPACING;
         }
 
         // New tab button (+)
-        let plus_x = 8 + (tabs_len as i32) * (tab_width + tab_margin) + 4;
-        draw_rect(buf, stride, plus_x, tab_y + 4, 28, TAB_BAR_HEIGHT as i32 - 8, BG_TAB_BAR);
-        draw_text_noir(buf, stride, w, plus_x + 9, tab_y + 10, "+", TEXT_WHITE, 1.2);
+        if tx + 30 < w {
+            let plus_h = TAB_BAR_HEIGHT as i32 - 10;
+            draw_rect(buf, stride, tx + 4, tab_y + 5, 24, plus_h, BTN_BG);
+            draw_text_noir(buf, stride, w, tx + 11, tab_y + 9, "+", TEXT_DIM, 1.1);
+        }
 
-        // === NAV BAR ===
+        // ═══════════════ NAV BAR ═══════════════
         let nav_y = (TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT) as i32;
         draw_rect(buf, stride, 0, nav_y, w, NAV_BAR_HEIGHT as i32, BG_DARK);
 
-        let btn_w = 32i32;
-        let btn_h = 28i32;
-        let btn_y_pos = nav_y + 8;
+        // Separator line between tabs and nav
+        draw_rect(buf, stride, 0, nav_y, w, 1, SEPARATOR);
 
-        // Navigation buttons
-        draw_rect(buf, stride, 10, btn_y_pos, btn_w, btn_h, BTN_HOVER);
-        draw_text_noir(buf, stride, w, 20, btn_y_pos + 6, "<", TEXT_WHITE, 1.0);
+        let btn_h = 32i32;
+        let btn_y_pos = nav_y + (NAV_BAR_HEIGHT as i32 - btn_h) / 2;
 
-        draw_rect(buf, stride, 48, btn_y_pos, btn_w, btn_h, BTN_HOVER);
-        draw_text_noir(buf, stride, w, 58, btn_y_pos + 6, ">", TEXT_WHITE, 1.0);
+        // Nav buttons with proper spacing
+        let mut bx = NAV_START_X;
 
-        draw_rect(buf, stride, 86, btn_y_pos, btn_w, btn_h, BTN_HOVER);
-        draw_text_noir(buf, stride, w, 96, btn_y_pos + 6, "R", TEXT_WHITE, 1.0);
+        // Back
+        draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
+        draw_text_noir(buf, stride, w, bx + 11, btn_y_pos + 8, "<", TEXT_WHITE, 1.0);
+        bx += NAV_BTN_SIZE + NAV_BTN_SPACING;
 
-        draw_rect(buf, stride, 124, btn_y_pos, btn_w, btn_h, BTN_HOVER);
-        draw_text_noir(buf, stride, w, 134, btn_y_pos + 6, "H", TEXT_WHITE, 1.0);
+        // Forward
+        draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
+        draw_text_noir(buf, stride, w, bx + 11, btn_y_pos + 8, ">", TEXT_WHITE, 1.0);
+        bx += NAV_BTN_SIZE + NAV_BTN_SPACING;
+
+        // Reload
+        draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
+        draw_text_noir(buf, stride, w, bx + 11, btn_y_pos + 8, "R", TEXT_WHITE, 1.0);
+        bx += NAV_BTN_SIZE + NAV_BTN_SPACING;
+
+        // Home
+        draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
+        draw_text_noir(buf, stride, w, bx + 11, btn_y_pos + 8, "H", TEXT_WHITE, 1.0);
+        bx += NAV_BTN_SIZE + 12;
 
         // Address bar
-        let ab_x = 168;
-        let ab_w = w - ab_x - 20;
-        draw_rect(buf, stride, ab_x, btn_y_pos, ab_w, btn_h, BG_ADDRESS_BAR);
-        draw_rect(buf, stride, ab_x, btn_y_pos, ab_w, 1, BORDER);
+        let ab_w = w - bx - 16;
+        if ab_w > 50 {
+            let ab_bg = if url_focused { BG_ADDRESS_BAR_FOCUS } else { BG_ADDRESS_BAR };
+            draw_rect(buf, stride, bx, btn_y_pos, ab_w, btn_h, ab_bg);
 
-        draw_text_noir(buf, stride, w, ab_x + 12, btn_y_pos + 8, &display_url, url_color, 0.9);
+            // Lock icon (green padlock) on the right
+            if !url_bar_empty {
+                let lock_x = bx + ab_w - 28;
+                draw_rect(buf, stride, lock_x, btn_y_pos + 9, 8, 12, GREEN);
+                draw_rect(buf, stride, lock_x + 1, btn_y_pos + 7, 6, 3, GREEN);
+            }
 
-        // Cursor line when focused
-        if url_focused {
-            let cursor_px = (url_cursor as i32) * 8 + ab_x + 12;
-            draw_rect(buf, stride, cursor_px, btn_y_pos + 6, 1, btn_h - 12, ACCENT);
+            // URL text
+            let text_x = bx + 14;
+            draw_text_noir(buf, stride, w, text_x, btn_y_pos + 10, &display_url, url_color, 0.9);
+
+            // Cursor when focused
+            if url_focused {
+                let cursor_px = (url_cursor as i32) * 8 + text_x;
+                draw_rect(buf, stride, cursor_px, btn_y_pos + 8, 1, btn_h - 16, TEXT_WHITE);
+            }
         }
 
-        // Lock icon
-        if !url_bar_empty {
-            draw_rect(buf, stride, ab_x + ab_w - 20, btn_y_pos + 8, 10, 14, GREEN);
-        }
-
-        // Border bottom
-        draw_rect(buf, stride, 0, nav_y + NAV_BAR_HEIGHT as i32 - 1, w, 1, BORDER);
-
-        // === CONTENT AREA ===
+        // ═══════════════ CONTENT ═══════════════
         let content_y = TOOLBAR_HEIGHT as i32;
         let content_h = h - content_y;
-        draw_rect(buf, stride, 0, content_y, w, content_h, BG_CONTENT);
 
         if active_url.is_empty() {
-            // Default new tab page
-            let center_y = content_y + content_h / 2 - 40;
-            draw_text_noir(buf, stride, w, w / 2 - 100, center_y, "NOIR", ACCENT, 3.0);
-            draw_text_noir(buf, stride, w, w / 2 - 90, center_y + 50, "BROWSER", TEXT_DIM, 1.5);
+            // === NEW TAB PAGE ===
+            let center_y = content_y + content_h / 2 - 60;
+
+            // Logo
+            draw_text_noir(buf, stride, w, w / 2 - 108, center_y, "NOIR", ACCENT, 3.5);
+            draw_text_noir(buf, stride, w, w / 2 - 110, center_y + 55, "BROWSER", TEXT_DIM, 1.8);
+
+            // Tagline
             draw_text_noir(
-                buf, stride, w, w / 2 - 130, center_y + 90,
-                "Ultra-fast | Private | Vulkan-powered", TEXT_DIM, 0.8,
+                buf, stride, w, w / 2 - 155, center_y + 95,
+                "Ultra-fast  |  Private  |  Vulkan-powered", TEXT_PLACEHOLDER, 0.85,
             );
 
-            // Quick links
-            let link_y = center_y + 140;
-            let links = ["Google", "GitHub", "YouTube", "Rust Lang"];
-            let link_colors = [LINK_GOOGLE, LINK_GITHUB, LINK_YOUTUBE, LINK_RUST];
-            let spacing = 140;
-            let start_x = w / 2 - (links.len() as i32 * spacing) / 2;
-            for (i, (name, color)) in links.iter().zip(link_colors.iter()).enumerate() {
-                let lx = start_x + (i as i32) * spacing;
-                draw_rect(buf, stride, lx, link_y, 100, 100, BG_LINK_CARD);
-                draw_rect(buf, stride, lx, link_y, 100, 4, *color);
-                draw_text_noir(buf, stride, w, lx + 10, link_y + 40, name, TEXT_WHITE, 0.85);
+            // Quick links - centered, with labels below
+            let link_y = center_y + 150;
+            let links = [("Google", LINK_GOOGLE), ("GitHub", LINK_GITHUB), ("YouTube", LINK_YOUTUBE), ("Rust", LINK_RUST)];
+            let total_w = links.len() as i32 * LINK_CARD_SIZE + (links.len() as i32 - 1) * LINK_CARD_SPACING;
+            let start_x = w / 2 - total_w / 2;
+
+            for (i, (name, color)) in links.iter().enumerate() {
+                let lx = start_x + i as i32 * (LINK_CARD_SIZE + LINK_CARD_SPACING);
+
+                // Card background
+                draw_rect(buf, stride, lx, link_y, LINK_CARD_SIZE, LINK_CARD_SIZE, BG_LINK_CARD);
+
+                // Color accent bar at top
+                draw_rect(buf, stride, lx, link_y, LINK_CARD_SIZE, 3, *color);
+
+                // Icon placeholder (colored circle-ish)
+                let icon_size = 28;
+                let icon_x = lx + (LINK_CARD_SIZE - icon_size) / 2;
+                let icon_y = link_y + 22;
+                draw_rect(buf, stride, icon_x, icon_y, icon_size, icon_size, *color);
+
+                // Label below card
+                let label_x = lx + (LINK_CARD_SIZE as i32 - name.len() as i32 * 7) / 2;
+                draw_text_noir(buf, stride, w, label_x, link_y + LINK_CARD_SIZE + 12, name, TEXT_DIM, 0.85);
             }
         } else {
-            let url_text = format!("Loading: {}", active_url);
-            draw_text_noir(buf, stride, w, 20, content_y + 30, &url_text, TEXT_DIM, 0.9);
+            // Loading page
+            draw_text_noir(buf, stride, w, w / 2 - 80, content_y + 40, "Loading...", TEXT_DIM, 1.0);
+            draw_text_noir(buf, stride, w, 30, content_y + 80, &active_url, TEXT_PLACEHOLDER, 0.8);
         }
 
         buffer.present().unwrap();
@@ -264,47 +316,70 @@ impl NoirApp {
         let my = self.mouse_y;
 
         let nav_y = (TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT) as f32;
-        let btn_y = nav_y + 8.0;
-
-        // Address bar click
-        if my >= btn_y && my <= btn_y + 28.0 && mx >= 168.0 {
-            self.url_focused = true;
-            self.url_cursor = self.url_bar.len();
-            return;
-        }
+        let btn_h = 32.0f32;
+        let btn_y = nav_y + (NAV_BAR_HEIGHT as f32 - btn_h) / 2.0;
+        let btn_bottom = btn_y + btn_h;
 
         // Tab bar clicks
         if my >= TITLE_BAR_HEIGHT as f32 && my <= (TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT) as f32 {
-            let tab_width = 184.0;
-            let idx = ((mx - 8.0) / tab_width) as usize;
-            if idx < self.tabs.len() {
-                self.switch_tab(idx);
-                return;
+            let mut tx = 6.0f32;
+            for i in 0..self.tabs.len() {
+                let tab_w = TAB_WIDTH as f32;
+                if mx >= tx && mx <= tx + tab_w {
+                    self.switch_tab(i);
+                    return;
+                }
+                tx += tab_w + TAB_SPACING as f32;
             }
             // New tab button
-            let plus_x = 8.0 + (self.tabs.len() as f32) * tab_width + 4.0;
-            if mx >= plus_x && mx <= plus_x + 28.0 {
+            if mx >= tx && mx <= tx + 28.0 {
                 self.new_tab();
             }
             return;
         }
 
-        // Nav buttons
-        if my >= btn_y && my <= btn_y + 28.0 {
-            if mx >= 10.0 && mx <= 42.0 {
+        // Nav bar clicks
+        if my >= btn_y && my <= btn_bottom {
+            let mut bx = NAV_START_X as f32;
+
+            // Back
+            if mx >= bx && mx <= bx + NAV_BTN_SIZE as f32 {
                 tracing::info!("Back");
-            } else if mx >= 48.0 && mx <= 80.0 {
+                return;
+            }
+            bx += NAV_BTN_SIZE as f32 + NAV_BTN_SPACING as f32;
+
+            // Forward
+            if mx >= bx && mx <= bx + NAV_BTN_SIZE as f32 {
                 tracing::info!("Forward");
-            } else if mx >= 86.0 && mx <= 118.0 {
+                return;
+            }
+            bx += NAV_BTN_SIZE as f32 + NAV_BTN_SPACING as f32;
+
+            // Reload
+            if mx >= bx && mx <= bx + NAV_BTN_SIZE as f32 {
                 tracing::info!("Reload");
-            } else if mx >= 124.0 && mx <= 156.0 {
+                return;
+            }
+            bx += NAV_BTN_SIZE as f32 + NAV_BTN_SPACING as f32;
+
+            // Home
+            if mx >= bx && mx <= bx + NAV_BTN_SIZE as f32 {
                 self.go_home();
                 tracing::info!("Home");
+                return;
             }
-            return;
+            bx += NAV_BTN_SIZE as f32 + 12.0;
+
+            // Address bar
+            if mx >= bx {
+                self.url_focused = true;
+                self.url_cursor = self.url_bar.len();
+                return;
+            }
         }
 
-        // Click outside address bar unfocuses
+        // Click outside unfocuses address bar
         self.url_focused = false;
     }
 
