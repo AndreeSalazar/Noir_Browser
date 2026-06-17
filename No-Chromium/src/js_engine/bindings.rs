@@ -5,6 +5,15 @@ pub struct BrowserBindings;
 
 static BINDINGS_DATA: OnceLock<Arc<Mutex<BindingsData>>> = OnceLock::new();
 static LAST_FETCH_BODY: OnceLock<Arc<Mutex<String>>> = OnceLock::new();
+static PENDING_TIMERS: OnceLock<Arc<Mutex<Vec<PendingTimer>>>> = OnceLock::new();
+
+pub struct PendingTimer {
+    pub id: u64,
+    pub callback_id: u32,
+    pub delay_ms: u64,
+    pub repeating: bool,
+    pub created_at: std::time::Instant,
+}
 
 fn get_last_fetch_body() -> &'static Arc<Mutex<String>> {
     LAST_FETCH_BODY.get_or_init(|| Arc::new(Mutex::new(String::new())))
@@ -95,6 +104,69 @@ fn js_window_confirm(_this: &JsValue, _args: &[JsValue], _ctx: &mut Context) -> 
 
 fn js_window_prompt(_this: &JsValue, _args: &[JsValue], _ctx: &mut Context) -> JsResult<JsValue> {
     Ok(JsValue::Null)
+}
+
+fn js_set_timeout(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let delay = args.get_or_undefined(1).to_number(ctx).unwrap_or(0.0).max(0.0) as u64;
+    let callback_id = rand::random::<u32>();
+    let timer_id = rand::random::<u64>();
+
+    let timers = PENDING_TIMERS.get_or_init(|| Arc::new(Mutex::new(Vec::new())));
+    timers.lock().unwrap().push(PendingTimer {
+        id: timer_id,
+        callback_id,
+        delay_ms: delay,
+        repeating: false,
+        created_at: std::time::Instant::now(),
+    });
+
+    Ok(JsValue::from(timer_id as i32))
+}
+
+fn js_set_interval(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let delay = args.get_or_undefined(1).to_number(ctx).unwrap_or(0.0).max(1.0) as u64;
+    let callback_id = rand::random::<u32>();
+    let timer_id = rand::random::<u64>();
+
+    let timers = PENDING_TIMERS.get_or_init(|| Arc::new(Mutex::new(Vec::new())));
+    timers.lock().unwrap().push(PendingTimer {
+        id: timer_id,
+        callback_id,
+        delay_ms: delay,
+        repeating: true,
+        created_at: std::time::Instant::now(),
+    });
+
+    Ok(JsValue::from(timer_id as i32))
+}
+
+fn js_clear_timeout(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    if let Ok(id) = args.get_or_undefined(0).to_number(ctx) {
+        let timer_id = id as u64;
+        if let Some(timers) = PENDING_TIMERS.get() {
+            timers.lock().unwrap().retain(|t| t.id != timer_id);
+        }
+    }
+    Ok(JsValue::undefined())
+}
+
+pub fn get_pending_timers() -> Vec<PendingTimer> {
+    if let Some(timers) = PENDING_TIMERS.get() {
+        let now = std::time::Instant::now();
+        let mut ready = Vec::new();
+        let mut remaining = Vec::new();
+        for t in timers.lock().unwrap().drain(..) {
+            if now.duration_since(t.created_at).as_millis() >= t.delay_ms as u128 {
+                ready.push(t);
+            } else {
+                remaining.push(t);
+            }
+        }
+        timers.lock().unwrap().extend(remaining);
+        ready
+    } else {
+        Vec::new()
+    }
 }
 
 fn js_fetch(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
@@ -222,7 +294,22 @@ impl BrowserBindings {
         let prompt_fn = NativeFunction::from_fn_ptr(js_window_prompt).to_js_function(context.realm());
         let _ = window_obj.set(boa_engine::js_string!("prompt"), prompt_fn, false, context);
 
+        let set_timeout_fn = NativeFunction::from_fn_ptr(js_set_timeout).to_js_function(context.realm());
+        let _ = window_obj.set(boa_engine::js_string!("setTimeout"), set_timeout_fn, false, context);
+        let set_interval_fn = NativeFunction::from_fn_ptr(js_set_interval).to_js_function(context.realm());
+        let _ = window_obj.set(boa_engine::js_string!("setInterval"), set_interval_fn, false, context);
+        let clear_timeout_fn = NativeFunction::from_fn_ptr(js_clear_timeout).to_js_function(context.realm());
+        let _ = window_obj.set(boa_engine::js_string!("clearTimeout"), clear_timeout_fn.clone(), false, context);
+        let _ = window_obj.set(boa_engine::js_string!("clearInterval"), clear_timeout_fn, false, context);
+
         let _ = context.register_global_property(boa_engine::js_string!("window"), boa_engine::JsValue::Object(window_obj.clone()), boa_engine::property::Attribute::all());
+
+        let set_timeout_global = NativeFunction::from_fn_ptr(js_set_timeout).to_js_function(context.realm());
+        let _ = context.register_global_property(boa_engine::js_string!("setTimeout"), set_timeout_global, boa_engine::property::Attribute::all());
+        let set_interval_global = NativeFunction::from_fn_ptr(js_set_interval).to_js_function(context.realm());
+        let _ = context.register_global_property(boa_engine::js_string!("setInterval"), set_interval_global, boa_engine::property::Attribute::all());
+        let clear_timeout_global = NativeFunction::from_fn_ptr(js_clear_timeout).to_js_function(context.realm());
+        let _ = context.register_global_property(boa_engine::js_string!("clearTimeout"), clear_timeout_global, boa_engine::property::Attribute::all());
 
         let fetch_fn = NativeFunction::from_fn_ptr(js_fetch).to_js_function(context.realm());
         let _ = window_obj.set(boa_engine::js_string!("fetch"), fetch_fn.clone(), false, context);

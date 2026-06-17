@@ -560,6 +560,15 @@ impl ApplicationHandler for NoirApp {
                             }
                         }
 
+                        if crate::js_engine::dom_bridge::take_mutated_flag() {
+                            tracing::info!("DOM mutated by JS, rebuilding layout");
+                            crate::js_engine::dom_sync::rebuild_page_from_dom(&mut page);
+                        }
+
+                        let viewport_w2 = self.width as f32;
+                        let blocks = layout_page(&page, viewport_w2);
+                        let content_h = total_content_height(&blocks);
+
                         tracing::info!("Parsed: title='{}', {} links, {} layout blocks, {} scripts, content height: {:.0}",
                             title, num_links, blocks.len(), scripts.len(), content_h);
                         self.tabs[self.active_tab].page = Some(page);
@@ -576,6 +585,20 @@ impl ApplicationHandler for NoirApp {
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
+            }
+        }
+
+        let pending = crate::js_engine::bindings::get_pending_timers();
+        if !pending.is_empty() {
+            let tab_id = self.tabs[self.active_tab].tab_id;
+            for timer in pending {
+                let callback_name = format!("__callback_{}", timer.callback_id);
+                let _ = self.tabs[self.active_tab].js_engine.eval_script(tab_id, &format!(
+                    "if (typeof {} === 'function') {}();", callback_name, callback_name
+                ));
+            }
+            if let Some(window) = &self.window {
+                window.request_redraw();
             }
         }
     }

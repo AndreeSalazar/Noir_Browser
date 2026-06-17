@@ -285,6 +285,25 @@ fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
             if decls.margin_bottom.is_none() { styled.margin_bottom = 4.0; }
             if decls.color.is_none() { styled.color = [0.82, 0.82, 0.82, 1.0]; }
         }
+        "input" => {
+            styled.font_size = 14.0;
+            styled.margin_bottom = 6.0;
+            styled.bg_color = Some([0.18, 0.18, 0.22, 1.0]);
+            styled.padding_top = 6.0;
+            styled.padding_bottom = 6.0;
+            styled.padding_left = 8.0;
+            styled.color = [0.9, 0.9, 0.9, 1.0];
+        }
+        "button" => {
+            styled.font_size = 14.0;
+            styled.margin_bottom = 6.0;
+            styled.bg_color = Some([0.20, 0.35, 0.60, 1.0]);
+            styled.padding_top = 6.0;
+            styled.padding_bottom = 6.0;
+            styled.padding_left = 12.0;
+            styled.color = [1.0, 1.0, 1.0, 1.0];
+            styled.bold = true;
+        }
         _ => {}
     }
 

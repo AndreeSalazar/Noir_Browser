@@ -359,6 +359,53 @@ impl PageDocument {
                                 attributes: HashMap::new(),
                             });
                         }
+                        HtmlTag::Input => {
+                            let input_type = attributes.get("type").cloned().unwrap_or_else(|| "text".into());
+                            let placeholder = attributes.get("placeholder").cloned().unwrap_or_default();
+                            let value = attributes.get("value").cloned().unwrap_or_default();
+                            let name = attributes.get("name").cloned().unwrap_or_default();
+                            let label_text = if let Some(for_id) = attributes.get("id") {
+                                format!("{}: [{}]", name, value.is_empty().then(|| placeholder.as_str()).unwrap_or(value.as_str()))
+                            } else {
+                                format!("[{}]", value.is_empty().then(|| placeholder.as_str()).unwrap_or(value.as_str()))
+                            };
+                            self.text_blocks.push(TextBlock {
+                                text: label_text,
+                                tag: "input".into(),
+                                font_size: 14.0,
+                                bold: false,
+                                link: None,
+                                indent_level: indent,
+                                attributes: {
+                                    let mut a = attributes.clone();
+                                    a.insert("__input_type".into(), input_type);
+                                    a.insert("__input_value".into(), value);
+                                    a.insert("__placeholder".into(), placeholder);
+                                    a
+                                },
+                            });
+                        }
+                        HtmlTag::Button => {
+                            let text = self.collect_text(children);
+                            let btn_text = if text.is_empty() { "Button".into() } else { text };
+                            self.text_blocks.push(TextBlock {
+                                text: format!("[ {} ]", btn_text),
+                                tag: "button".into(),
+                                font_size: 14.0,
+                                bold: true,
+                                link: None,
+                                indent_level: indent,
+                                attributes: attributes.clone(),
+                            });
+                        }
+                        HtmlTag::Form => {
+                            let action = attributes.get("action").cloned().unwrap_or_default();
+                            let method = attributes.get("method").cloned().unwrap_or_else(|| "GET".into());
+                            let mut form_attrs = attributes.clone();
+                            form_attrs.insert("__form_action".into(), action);
+                            form_attrs.insert("__form_method".into(), method);
+                            self.extract_from_nodes(children, indent, ancestors, current_href.clone());
+                        }
                         HtmlTag::Table | HtmlTag::Tbody | HtmlTag::Thead | HtmlTag::Tfoot | HtmlTag::Tr | HtmlTag::Td | HtmlTag::Th | HtmlTag::Caption | HtmlTag::Col | HtmlTag::Colgroup => {
                             self.extract_from_nodes(children, indent, ancestors, current_href.clone());
                         }
@@ -440,5 +487,9 @@ impl PageDocument {
         } else {
             href.to_string()
         }
+    }
+
+    pub fn resolve_href_simple(&self, href: &str) -> String {
+        self.resolve_href(href)
     }
 }
