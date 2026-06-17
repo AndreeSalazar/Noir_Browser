@@ -508,7 +508,33 @@ impl ApplicationHandler for NoirApp {
                     if let Some(html) = guard.as_ref() {
                         let url = self.tabs[self.active_tab].url.clone();
                         tracing::info!("Parsing HTML for {} ({} bytes)", url, html.len());
-                        let page = PageDocument::from_html(&url, html);
+                        let mut page = PageDocument::from_html(&url, html);
+
+                        if !page.css_urls.is_empty() {
+                            tracing::info!("Fetching {} external CSS files", page.css_urls.len());
+                            let rt = tokio::runtime::Handle::current();
+                            for css_url in &page.css_urls {
+                                let css_url_clone = css_url.clone();
+                                let result = rt.block_on(async {
+                                    let client = reqwest::Client::builder()
+                                        .timeout(std::time::Duration::from_secs(5))
+                                        .build()
+                                        .unwrap_or_default();
+                                    match client.get(&css_url_clone).send().await {
+                                        Ok(resp) => match resp.text().await {
+                                            Ok(css) => Some(css),
+                                            Err(_) => None,
+                                        },
+                                        Err(_) => None,
+                                    }
+                                });
+                                if let Some(css) = result {
+                                    tracing::info!("Loaded CSS from {} ({} bytes)", css_url, css.len());
+                                    page.style_blocks.push(css);
+                                }
+                            }
+                        }
+
                         let title = page.title.clone();
                         let num_links = page.links.len();
                         let viewport_w = self.width as f32;

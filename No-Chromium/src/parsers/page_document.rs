@@ -1,5 +1,6 @@
 use crate::parsers::dom_tree::{DomNode, parse_html};
 use crate::parsers::html_elements::HtmlTag;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct TextBlock {
@@ -9,6 +10,7 @@ pub struct TextBlock {
     pub bold: bool,
     pub link: Option<String>,
     pub indent_level: u32,
+    pub attributes: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug)]
@@ -33,6 +35,8 @@ pub struct PageDocument {
     pub image_blocks: Vec<ImageBlock>,
     pub links: Vec<LinkInfo>,
     pub style_blocks: Vec<String>,
+    pub css_urls: Vec<String>,
+    pub viewport_width: Option<f32>,
 }
 
 impl PageDocument {
@@ -44,12 +48,16 @@ impl PageDocument {
             image_blocks: Vec::new(),
             links: Vec::new(),
             style_blocks: Vec::new(),
+            css_urls: Vec::new(),
+            viewport_width: None,
         }
     }
 
     pub fn from_html(url: &str, html: &str) -> Self {
         let mut doc = PageDocument::new(url);
         doc.extract_style_blocks(html);
+        doc.extract_css_links(html);
+        doc.extract_viewport(html);
         let nodes = parse_html(html);
         doc.extract_from_nodes(&nodes, 0, &mut Vec::new(), None);
         doc
@@ -72,6 +80,84 @@ impl PageDocument {
                 }
             } else {
                 break;
+            }
+        }
+    }
+
+    fn extract_viewport(&mut self, html: &str) {
+        if let Some(meta_pos) = html.to_lowercase().find("<meta") {
+            let tag_area = &html[meta_pos..];
+            if let Some(gt) = tag_area.find('>') {
+                let tag = &tag_area[..gt + 1].to_lowercase();
+                if tag.contains("viewport") {
+                    if let Some(content_start) = tag.find("content=\"") {
+                        let val_start = content_start + 9;
+                        if let Some(val_end) = tag[val_start..].find('"') {
+                            let content = &tag[val_start..val_start + val_end];
+                            for part in content.split(',') {
+                                let part = part.trim();
+                                if part.starts_with("width=") {
+                                    if let Some(w) = part.strip_prefix("width=") {
+                                        if let Ok(v) = w.trim().parse::<f32>() {
+                                            self.viewport_width = Some(v);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn extract_css_links(&mut self, html: &str) {
+        let mut remaining = html;
+        while let Some(pos) = remaining.find("<link") {
+            let tag_start = pos;
+            if let Some(gt) = remaining[tag_start..].find('>') {
+                let tag_content = &remaining[tag_start..tag_start + gt + 1];
+                let lower = tag_content.to_lowercase();
+                if lower.contains("rel=\"stylesheet\"") || lower.contains("rel='stylesheet'") || lower.contains("rel=stylesheet") {
+                    if let Some(href_start) = lower.find("href=\"") {
+                        let href_val_start = href_start + 6;
+                        if let Some(href_end) = remaining[tag_start + href_val_start..].find('"') {
+                            let href = &remaining[tag_start + href_val_start..tag_start + href_val_start + href_end];
+                            if !href.is_empty() {
+                                if let Ok(resolved) = self.resolve_href_url(href) {
+                                    self.css_urls.push(resolved);
+                                }
+                            }
+                        }
+                    }
+                }
+                remaining = &remaining[tag_start + gt + 1..];
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn resolve_href_url(&self, href: &str) -> Result<String, ()> {
+        if href.starts_with("http://") || href.starts_with("https://") {
+            Ok(href.to_string())
+        } else if href.starts_with("//") {
+            Ok(format!("https:{}", href))
+        } else if href.starts_with('/') {
+            if let Ok(parsed) = url::Url::parse(&self.url) {
+                Ok(format!("{}://{}{}", parsed.scheme(), parsed.host_str().unwrap_or(""), href))
+            } else {
+                Err(())
+            }
+        } else {
+            if let Ok(parsed) = url::Url::parse(&self.url) {
+                if let Ok(base) = parsed.join(href) {
+                    Ok(base.to_string())
+                } else {
+                    Err(())
+                }
+            } else {
+                Err(())
             }
         }
     }
@@ -107,6 +193,7 @@ impl PageDocument {
                                     bold: true,
                                     link: current_href.clone(),
                                     indent_level: indent,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -120,6 +207,7 @@ impl PageDocument {
                                     bold: true,
                                     link: current_href.clone(),
                                     indent_level: indent,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -133,6 +221,7 @@ impl PageDocument {
                                     bold: true,
                                     link: current_href.clone(),
                                     indent_level: indent,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -146,6 +235,7 @@ impl PageDocument {
                                     bold: true,
                                     link: current_href.clone(),
                                     indent_level: indent,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -159,6 +249,7 @@ impl PageDocument {
                                     bold: false,
                                     link: current_href.clone(),
                                     indent_level: indent,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -181,6 +272,7 @@ impl PageDocument {
                                     bold: false,
                                     link: Some(resolved),
                                     indent_level: indent,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -194,6 +286,7 @@ impl PageDocument {
                                     bold: matches!(tag, HtmlTag::B | HtmlTag::Strong),
                                     link: current_href.clone(),
                                     indent_level: indent,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -207,6 +300,7 @@ impl PageDocument {
                                     bold: false,
                                     link: current_href.clone(),
                                     indent_level: indent + 1,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -220,6 +314,7 @@ impl PageDocument {
                                     bold: false,
                                     link: current_href.clone(),
                                     indent_level: indent,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -249,6 +344,7 @@ impl PageDocument {
                                     bold: false,
                                     link: current_href.clone(),
                                     indent_level: indent + 1,
+                                    attributes: attributes.clone(),
                                 });
                             }
                         }
@@ -260,6 +356,7 @@ impl PageDocument {
                                 bold: false,
                                 link: None,
                                 indent_level: indent,
+                                attributes: HashMap::new(),
                             });
                         }
                         HtmlTag::Table | HtmlTag::Tbody | HtmlTag::Thead | HtmlTag::Tfoot | HtmlTag::Tr | HtmlTag::Td | HtmlTag::Th | HtmlTag::Caption | HtmlTag::Col | HtmlTag::Colgroup => {
@@ -300,6 +397,7 @@ impl PageDocument {
                             bold: false,
                             link: current_href.clone(),
                             indent_level: indent,
+                            attributes: HashMap::new(),
                         });
                     }
                 }

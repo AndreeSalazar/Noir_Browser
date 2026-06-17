@@ -65,10 +65,11 @@ impl LayoutContext {
 }
 
 pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
+    let effective_w = doc.viewport_width.unwrap_or(viewport_w);
     let content_x = 40.0;
-    let content_w = (viewport_w - 80.0).max(200.0);
+    let content_w = (effective_w - 80.0).max(200.0);
 
-    let mut ctx = LayoutContext::new(viewport_w, content_x, content_w)
+    let mut ctx = LayoutContext::new(effective_w, content_x, content_w)
         .with_css(&doc.style_blocks);
 
     let mut items = Vec::new();
@@ -122,7 +123,10 @@ struct StyledBlock {
     indent: f32,
 }
 
-fn apply_css_to_block(block: &TextBlock, _css: &CssCascade) -> StyledBlock {
+fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
+    use crate::parsers::css_simple::{parse_color, parse_px};
+    use crate::parsers::html_elements::HtmlTag;
+
     let default_color = [0.85, 0.85, 0.85, 1.0];
 
     let mut styled = StyledBlock {
@@ -138,82 +142,148 @@ fn apply_css_to_block(block: &TextBlock, _css: &CssCascade) -> StyledBlock {
         indent: block.indent_level as f32 * 20.0,
     };
 
+    let tag = match block.tag.as_str() {
+        "h1" => HtmlTag::H1,
+        "h2" => HtmlTag::H2,
+        "h3" => HtmlTag::H3,
+        "h4" => HtmlTag::H4,
+        "p" => HtmlTag::P,
+        "a" => HtmlTag::A,
+        "b" => HtmlTag::B,
+        "li" => HtmlTag::Li,
+        "code" => HtmlTag::Code,
+        "blockquote" => HtmlTag::Blockquote,
+        "hr" => HtmlTag::Hr,
+        _ => HtmlTag::Custom(block.tag.clone()),
+    };
+
+    let decls = css.declarations_for(&tag, &block.attributes);
+
+    if let Some(ref bg) = decls.background_color {
+        if let Some(c) = parse_color(bg) {
+            styled.bg_color = Some(c);
+        }
+    }
+    if let Some(ref color) = decls.color {
+        if let Some(c) = parse_color(color) {
+            styled.color = c;
+        }
+    }
+    if let Some(ref fs) = decls.font_size {
+        if let Some(v) = parse_px(fs, 14.0) {
+            styled.font_size = v;
+        }
+    }
+    if let Some(ref fw) = decls.font_weight {
+        styled.bold = matches!(fw.as_str(), "bold" | "bolder" | "700" | "800" | "900");
+    }
+    if let Some(ref mt) = decls.margin_top {
+        if let Some(v) = parse_px(mt, 0.0) {
+            styled.margin_top = v;
+        }
+    }
+    if let Some(ref mb) = decls.margin_bottom {
+        if let Some(v) = parse_px(mb, 4.0) {
+            styled.margin_bottom = v;
+        }
+    }
+    if let Some(ref pt) = decls.padding_top {
+        if let Some(v) = parse_px(pt, 0.0) {
+            styled.padding_top = v;
+        }
+    }
+    if let Some(ref pb) = decls.padding_bottom {
+        if let Some(v) = parse_px(pb, 0.0) {
+            styled.padding_bottom = v;
+        }
+    }
+    if let Some(ref pl) = decls.padding_left {
+        if let Some(v) = parse_px(pl, 0.0) {
+            styled.padding_left = v;
+        }
+    }
+    if decls.display.as_deref() == Some("none") {
+        styled.font_size = 0.0;
+        styled.margin_top = 0.0;
+        styled.margin_bottom = 0.0;
+    }
+
     match block.tag.as_str() {
         "h1" => {
-            styled.font_size = 28.0;
-            styled.bold = true;
-            styled.margin_top = 20.0;
-            styled.margin_bottom = 12.0;
-            styled.color = [1.0, 1.0, 1.0, 1.0];
+            if decls.font_size.is_none() { styled.font_size = 28.0; }
+            if decls.font_weight.is_none() { styled.bold = true; }
+            if decls.margin_top.is_none() { styled.margin_top = 20.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 12.0; }
+            if decls.color.is_none() { styled.color = [1.0, 1.0, 1.0, 1.0]; }
         }
         "h2" => {
-            styled.font_size = 22.0;
-            styled.bold = true;
-            styled.margin_top = 16.0;
-            styled.margin_bottom = 8.0;
-            styled.color = [1.0, 1.0, 1.0, 1.0];
+            if decls.font_size.is_none() { styled.font_size = 22.0; }
+            if decls.font_weight.is_none() { styled.bold = true; }
+            if decls.margin_top.is_none() { styled.margin_top = 16.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 8.0; }
+            if decls.color.is_none() { styled.color = [1.0, 1.0, 1.0, 1.0]; }
         }
         "h3" => {
-            styled.font_size = 18.0;
-            styled.bold = true;
-            styled.margin_top = 14.0;
-            styled.margin_bottom = 6.0;
-            styled.color = [0.95, 0.95, 0.95, 1.0];
+            if decls.font_size.is_none() { styled.font_size = 18.0; }
+            if decls.font_weight.is_none() { styled.bold = true; }
+            if decls.margin_top.is_none() { styled.margin_top = 14.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 6.0; }
+            if decls.color.is_none() { styled.color = [0.95, 0.95, 0.95, 1.0]; }
         }
         "h4" => {
-            styled.font_size = 16.0;
-            styled.bold = true;
-            styled.margin_top = 12.0;
-            styled.margin_bottom = 4.0;
-            styled.color = [0.9, 0.9, 0.9, 1.0];
+            if decls.font_size.is_none() { styled.font_size = 16.0; }
+            if decls.font_weight.is_none() { styled.bold = true; }
+            if decls.margin_top.is_none() { styled.margin_top = 12.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 4.0; }
+            if decls.color.is_none() { styled.color = [0.9, 0.9, 0.9, 1.0]; }
         }
         "p" => {
-            styled.font_size = 14.0;
-            styled.margin_bottom = 8.0;
-            styled.color = [0.82, 0.82, 0.82, 1.0];
+            if decls.font_size.is_none() { styled.font_size = 14.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 8.0; }
+            if decls.color.is_none() { styled.color = [0.82, 0.82, 0.82, 1.0]; }
         }
         "a" => {
-            styled.font_size = 14.0;
-            styled.color = [0.4, 0.6, 1.0, 1.0];
-            styled.margin_bottom = 2.0;
+            if decls.font_size.is_none() { styled.font_size = 14.0; }
+            if decls.color.is_none() { styled.color = [0.4, 0.6, 1.0, 1.0]; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 2.0; }
         }
         "b" => {
-            styled.font_size = 14.0;
-            styled.bold = true;
-            styled.color = [1.0, 1.0, 1.0, 1.0];
+            if decls.font_size.is_none() { styled.font_size = 14.0; }
+            if decls.font_weight.is_none() { styled.bold = true; }
+            if decls.color.is_none() { styled.color = [1.0, 1.0, 1.0, 1.0]; }
         }
         "li" => {
-            styled.font_size = 14.0;
-            styled.margin_bottom = 2.0;
+            if decls.font_size.is_none() { styled.font_size = 14.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 2.0; }
             styled.indent += 16.0;
-            styled.color = [0.82, 0.82, 0.82, 1.0];
+            if decls.color.is_none() { styled.color = [0.82, 0.82, 0.82, 1.0]; }
         }
         "code" => {
-            styled.font_size = 12.0;
-            styled.bg_color = Some([0.12, 0.12, 0.14, 1.0]);
-            styled.padding_top = 4.0;
-            styled.padding_bottom = 4.0;
-            styled.padding_left = 8.0;
-            styled.margin_bottom = 6.0;
-            styled.color = [0.8, 0.9, 0.8, 1.0];
+            if decls.font_size.is_none() { styled.font_size = 12.0; }
+            if styled.bg_color.is_none() { styled.bg_color = Some([0.12, 0.12, 0.14, 1.0]); }
+            if decls.padding_top.is_none() { styled.padding_top = 4.0; }
+            if decls.padding_bottom.is_none() { styled.padding_bottom = 4.0; }
+            if decls.padding_left.is_none() { styled.padding_left = 8.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 6.0; }
+            if decls.color.is_none() { styled.color = [0.8, 0.9, 0.8, 1.0]; }
         }
         "blockquote" => {
-            styled.font_size = 14.0;
-            styled.margin_top = 8.0;
-            styled.margin_bottom = 8.0;
+            if decls.font_size.is_none() { styled.font_size = 14.0; }
+            if decls.margin_top.is_none() { styled.margin_top = 8.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 8.0; }
             styled.indent += 24.0;
-            styled.padding_left = 12.0;
-            styled.color = [0.65, 0.65, 0.70, 1.0];
+            if decls.padding_left.is_none() { styled.padding_left = 12.0; }
+            if decls.color.is_none() { styled.color = [0.65, 0.65, 0.70, 1.0]; }
         }
         "hr" => {
-            styled.margin_top = 12.0;
-            styled.margin_bottom = 12.0;
-            styled.color = [0.35, 0.35, 0.40, 1.0];
+            if decls.margin_top.is_none() { styled.margin_top = 12.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 12.0; }
+            if decls.color.is_none() { styled.color = [0.35, 0.35, 0.40, 1.0]; }
         }
         "text" => {
-            styled.font_size = 14.0;
-            styled.margin_bottom = 4.0;
-            styled.color = [0.82, 0.82, 0.82, 1.0];
+            if decls.font_size.is_none() { styled.font_size = 14.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 4.0; }
+            if decls.color.is_none() { styled.color = [0.82, 0.82, 0.82, 1.0]; }
         }
         _ => {}
     }
