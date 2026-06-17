@@ -4,12 +4,15 @@ use winit::window::Window;
 
 use super::theme::*;
 use crate::parsers::page_document::PageDocument;
+use crate::parsers::layout::LayoutBlock;
 
 pub struct TabState {
     pub title: String,
     pub url: String,
     pub page: Option<PageDocument>,
+    pub layout_blocks: Vec<LayoutBlock>,
     pub scroll_y: f32,
+    pub content_height: f32,
 }
 
 impl Default for TabState {
@@ -18,7 +21,9 @@ impl Default for TabState {
             title: "New Tab".into(),
             url: String::new(),
             page: None,
+            layout_blocks: Vec::new(),
             scroll_y: 0.0,
+            content_height: 0.0,
         }
     }
 }
@@ -68,7 +73,9 @@ impl NoirApp {
         self.tabs[self.active_tab].url = url.clone();
         self.tabs[self.active_tab].title = url;
         self.tabs[self.active_tab].page = None;
+        self.tabs[self.active_tab].layout_blocks.clear();
         self.tabs[self.active_tab].scroll_y = 0.0;
+        self.tabs[self.active_tab].content_height = 0.0;
         self.url_focused = false;
         self.fetching = true;
         self.fetch_result = None;
@@ -80,7 +87,9 @@ impl NoirApp {
         self.tabs[self.active_tab].url.clear();
         self.tabs[self.active_tab].title = "New Tab".into();
         self.tabs[self.active_tab].page = None;
+        self.tabs[self.active_tab].layout_blocks.clear();
         self.tabs[self.active_tab].scroll_y = 0.0;
+        self.tabs[self.active_tab].content_height = 0.0;
         self.fetching = false;
         self.fetch_result = None;
     }
@@ -103,6 +112,13 @@ impl NoirApp {
             self.url_cursor = self.url_bar.len();
             self.url_focused = false;
         }
+    }
+
+    pub fn scroll(&mut self, delta: f32) {
+        let tab = &mut self.tabs[self.active_tab];
+        tab.scroll_y = (tab.scroll_y - delta * 40.0).max(0.0);
+        let max_scroll = (tab.content_height - self.height as f32 + TOOLBAR_HEIGHT as f32).max(0.0);
+        tab.scroll_y = tab.scroll_y.min(max_scroll);
     }
 
     pub fn display_url(&self) -> String {

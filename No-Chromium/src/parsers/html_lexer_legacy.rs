@@ -150,7 +150,7 @@ impl<'a> HtmlLexer<'a> {
             return HtmlToken::EOF;
         }
         
-        let mut ch = *self.input.peek().unwrap();
+        let ch = *self.input.peek().unwrap();
         if ch == '<' {
             self.input.next(); // consume '<'
             let is_closing = if let Some(&'/') = self.input.peek() {

@@ -22,6 +22,7 @@ use theme::*;
 
 use crate::network::fetch::HttpFetcher;
 use crate::parsers::page_document::PageDocument;
+use crate::parsers::layout::{layout_page, total_content_height, hit_test_link};
 
 impl NoirApp {
     fn draw_frame(&mut self) {
@@ -38,7 +39,7 @@ impl NoirApp {
             }
         }).collect();
         let active_url = self.tabs[active_tab].url.clone();
-        let page_ref = self.tabs[active_tab].page.clone();
+        let layout_blocks = self.tabs[active_tab].layout_blocks.clone();
         let scroll_y = self.tabs[active_tab].scroll_y;
 
         let (surface, window) = match (&mut self.surface, &self.window) {
@@ -226,10 +227,23 @@ impl NoirApp {
             // Loading state
             draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Loading...", TEXT_DIM, 1.2);
             draw_text_noir(buf, stride, w, 30, content_y + 80, &active_url, TEXT_PLACEHOLDER, 1.0);
-        } else if let Some(page) = &page_ref {
-            render_page_content(buf, stride, w, content_y, content_h, page, scroll_y);
+        } else if !layout_blocks.is_empty() {
+            // Render layout blocks
+            render_layout_blocks(buf, stride, w, content_y, content_h, &layout_blocks, scroll_y);
         } else {
             draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Empty", TEXT_DIM, 1.2);
+        }
+
+        // Scroll indicator
+        if layout_blocks.is_empty() == false {
+            let total_h = layout_blocks.iter().map(|b| b.y + b.h).fold(0.0f32, f32::max);
+            if total_h > content_h as f32 {
+                let view_ratio = content_h as f32 / total_h;
+                let scroll_ratio = scroll_y / (total_h - content_h as f32).max(1.0);
+                let bar_h = (content_h as f32 * view_ratio).max(20.0);
+                let bar_y = content_y as f32 + scroll_ratio * (content_h as f32 - bar_h);
+                draw_rect(buf, stride, w - 6, bar_y as i32, 4, bar_h as i32, 0x40FFFFFF);
+            }
         }
 
         buffer.present().unwrap();
@@ -246,108 +260,79 @@ impl NoirApp {
     }
 }
 
-fn render_page_content(
+fn render_layout_blocks(
     buf: &mut [u32],
     stride: usize,
     screen_w: i32,
     content_y: i32,
     content_h: i32,
-    page: &crate::parsers::page_document::PageDocument,
+    blocks: &[crate::parsers::layout::LayoutBlock],
     scroll_y: f32,
 ) {
     use theme::*;
     use draw::{draw_rect, draw_text_noir};
 
-    let mut y = content_y + 16 - scroll_y as i32;
-    let margin_left = 30;
-    let max_w = screen_w - margin_left * 2;
+    for block in blocks {
+        let screen_block_y = block.y - scroll_y + content_y as f32;
 
-    if !page.title.is_empty() {
-        draw_text_noir(buf, stride, screen_w, margin_left, y, &page.title, ACCENT, 1.8);
-        y += 36;
-        draw_rect(buf, stride, margin_left, y, max_w.min(600), 1, TEXT_DIM);
-        y += 12;
-    }
-
-    for block in &page.text_blocks {
-        if y > content_y + content_h + 100 {
-            break;
+        // Skip blocks outside viewport
+        if screen_block_y + block.h < content_y as f32 - 10.0 {
+            continue;
         }
-        if y < content_y - 50 {
-            y += estimate_line_height(block.font_size);
+        if screen_block_y > content_y as f32 + content_h as f32 + 10.0 {
             continue;
         }
 
-        let color = if block.link.is_some() {
-            0xFF6699FF
-        } else if block.bold {
-            0xFFFFFFFF
-        } else {
-            0xFFCCCCCC
-        };
+        // Draw background if present
+        if let Some(bg) = &block.bg_color {
+            let bg_u32 = rgba_to_u32(bg[0], bg[1], bg[2], bg[3]);
+            draw_rect(
+                buf,
+                stride,
+                block.x as i32 - 4,
+                screen_block_y as i32 - 2,
+                (block.w + block.padding_left + 8.0) as i32,
+                (block.h + block.padding_top + 4.0) as i32,
+                bg_u32,
+            );
+        }
 
+        // Draw link underline
+        if block.is_link {
+            let underline_y = screen_block_y as i32 + block.h as i32 - 1;
+            draw_rect(
+                buf,
+                stride,
+                block.x as i32,
+                underline_y,
+                block.w as i32,
+                1,
+                0xFF6699FF,
+            );
+        }
+
+        // Draw text
+        let color_u32 = rgba_to_u32(block.color[0], block.color[1], block.color[2], block.color[3]);
         let font_scale = block.font_size / 14.0;
-        let indent_x = margin_left + (block.indent_level * 16) as i32;
-
-        let text = &block.text;
-        let char_w = (7.0 * font_scale) as i32;
-        let chars_per_line = (max_w / char_w).max(1) as usize;
-
-        if text.len() <= chars_per_line {
-            draw_text_noir(buf, stride, screen_w, indent_x, y, text, color, font_scale);
-            y += estimate_line_height(block.font_size);
-        } else {
-            let words: Vec<&str> = text.split_whitespace().collect();
-            let mut line = String::new();
-            for word in words {
-                let test = if line.is_empty() {
-                    word.to_string()
-                } else {
-                    format!("{} {}", line, word)
-                };
-                if test.len() > chars_per_line && !line.is_empty() {
-                    draw_text_noir(buf, stride, screen_w, indent_x, y, &line, color, font_scale);
-                    y += estimate_line_height(block.font_size);
-                    line = word.to_string();
-                } else {
-                    line = test;
-                }
-            }
-            if !line.is_empty() {
-                draw_text_noir(buf, stride, screen_w, indent_x, y, &line, color, font_scale);
-                y += estimate_line_height(block.font_size);
-            }
-        }
-
-        if block.tag.starts_with('h') {
-            y += 8;
-        }
-        if block.tag == "p" {
-            y += 4;
-        }
-    }
-
-    if !page.links.is_empty() {
-        y += 16;
-        if y > content_y && y < content_y + content_h {
-            draw_text_noir(buf, stride, screen_w, margin_left, y, "--- Links ---", TEXT_DIM, 1.0);
-            y += 18;
-        }
-        for link in &page.links {
-            if y > content_y + content_h + 50 {
-                break;
-            }
-            if y >= content_y {
-                let link_text = format!("> {} -> {}", link.text, link.href);
-                draw_text_noir(buf, stride, screen_w, margin_left, y, &link_text, 0xFF6699FF, 0.85);
-            }
-            y += 16;
-        }
+        draw_text_noir(
+            buf,
+            stride,
+            screen_w,
+            block.x as i32,
+            screen_block_y as i32,
+            &block.text,
+            color_u32,
+            font_scale,
+        );
     }
 }
 
-fn estimate_line_height(font_size: f32) -> i32 {
-    (font_size * 1.4) as i32
+fn rgba_to_u32(r: f32, g: f32, b: f32, a: f32) -> u32 {
+    let ri = (r * 255.0) as u32;
+    let gi = (g * 255.0) as u32;
+    let bi = (b * 255.0) as u32;
+    let ai = (a * 255.0) as u32;
+    (ai << 24) | (ri << 16) | (gi << 8) | bi
 }
 
 impl ApplicationHandler for NoirApp {
@@ -419,6 +404,15 @@ impl ApplicationHandler for NoirApp {
                 self.window.as_ref().unwrap().request_redraw();
             }
 
+            WindowEvent::MouseWheel { delta, .. } => {
+                let scroll_amount = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => y,
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+                };
+                self.scroll(scroll_amount);
+                self.window.as_ref().unwrap().request_redraw();
+            }
+
             WindowEvent::KeyboardInput {
                 event: KeyEvent { logical_key, state: ElementState::Pressed, .. },
                 ..
@@ -445,9 +439,16 @@ impl ApplicationHandler for NoirApp {
                         let url = self.tabs[self.active_tab].url.clone();
                         tracing::info!("Parsing HTML for {} ({} bytes)", url, html.len());
                         let page = PageDocument::from_html(&url, html);
-                        tracing::info!("Parsed: title='{}', {} text blocks, {} links", page.title, page.text_blocks.len(), page.links.len());
+                        let title = page.title.clone();
+                        let num_links = page.links.len();
+                        let viewport_w = self.width as f32;
+                        let blocks = layout_page(&page, viewport_w);
+                        let content_h = total_content_height(&blocks);
+                        tracing::info!("Parsed: title='{}', {} links, {} layout blocks, content height: {:.0}", title, num_links, blocks.len(), content_h);
                         self.tabs[self.active_tab].page = Some(page);
-                        self.tabs[self.active_tab].title = self.tabs[self.active_tab].url.clone();
+                        self.tabs[self.active_tab].layout_blocks = blocks;
+                        self.tabs[self.active_tab].content_height = content_h;
+                        self.tabs[self.active_tab].title = if !title.is_empty() { title } else { url };
                         done = true;
                     }
                 }
@@ -568,6 +569,21 @@ impl NoirApp {
             if mx >= bx {
                 self.url_focused = true;
                 self.url_cursor = self.url_bar.len();
+                return;
+            }
+        }
+
+        // Content area click - check for link hit
+        let content_top = TOOLBAR_HEIGHT as f32;
+        if my > content_top {
+            let layout_blocks = self.tabs[self.active_tab].layout_blocks.clone();
+            let scroll_y = self.tabs[self.active_tab].scroll_y;
+            if let Some(href) = hit_test_link(&layout_blocks, mx, my, scroll_y) {
+                tracing::info!("Link clicked: {}", href);
+                self.url_bar = href.clone();
+                self.url_cursor = self.url_bar.len();
+                self.navigate(href);
+                self.window.as_ref().unwrap().request_redraw();
                 return;
             }
         }

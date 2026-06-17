@@ -324,12 +324,12 @@ pub async fn fetch_resource(
         }
     }
 
-    let mut body = response.text().await?;
-    let mut final_status = status;
-    let mut final_url = final_url;
-    let mut final_content_type = content_type;
-    let mut final_etag = etag;
-    let mut final_last_modified = last_modified;
+    let body = response.text().await?;
+    let final_status = status;
+    let final_url = final_url;
+    let final_content_type = content_type;
+    let final_etag = etag;
+    let final_last_modified = last_modified;
 
     // Challenge detection removed - js_engine::challenge module deleted
 
