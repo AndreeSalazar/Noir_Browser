@@ -27,6 +27,10 @@ fn get_elements() -> &'static Arc<Mutex<HashMap<ElementId, DomElement>>> {
     DOM_ELEMENTS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
 }
 
+pub fn get_elements_static() -> Option<&'static Arc<Mutex<HashMap<ElementId, DomElement>>>> {
+    DOM_ELEMENTS.get()
+}
+
 fn get_events() -> &'static Arc<Mutex<Vec<DomEvent>>> {
     DOM_EVENTS.get_or_init(|| Arc::new(Mutex::new(Vec::new())))
 }
@@ -115,6 +119,42 @@ fn js_add_event_listener(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -
     Ok(JsValue::undefined())
 }
 
+fn js_set_text_content(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let text = args.get_or_undefined(0)
+        .to_string(ctx)
+        .map(|s| s.to_std_string_escaped())
+        .map_err(|e| JsNativeError::typ().with_message(format!("textContent: {}", e)))?;
+
+    if let Some(obj) = this.as_object() {
+        if let Ok(id_val) = obj.get(boa_engine::js_string!("id"), ctx) {
+            if let Ok(id_str) = id_val.to_string(ctx) {
+                let id = id_str.to_std_string_escaped();
+                let mut elements = get_elements().lock().unwrap();
+                if let Some(elem) = elements.get_mut(&id) {
+                    elem.text_content = text.clone();
+                    elem.inner_html = text;
+                }
+            }
+        }
+    }
+    Ok(JsValue::undefined())
+}
+
+fn js_get_text_content(this: &JsValue, _args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    if let Some(obj) = this.as_object() {
+        if let Ok(id_val) = obj.get(boa_engine::js_string!("id"), ctx) {
+            if let Ok(id_str) = id_val.to_string(ctx) {
+                let id = id_str.to_std_string_escaped();
+                let elements = get_elements().lock().unwrap();
+                if let Some(elem) = elements.get(&id) {
+                    return Ok(JsValue::from(boa_engine::JsString::from(elem.text_content.as_str())));
+                }
+            }
+        }
+    }
+    Ok(JsValue::from(boa_engine::JsString::from("")))
+}
+
 pub struct DomBridge;
 
 impl DomBridge {
@@ -147,6 +187,17 @@ impl DomBridge {
         let _ = doc_obj.set(boa_engine::js_string!("addEventListener"), add_event_listener_fn, false, context);
 
         let _ = context.register_global_property(boa_engine::js_string!("document"), boa_engine::JsValue::Object(doc_obj), boa_engine::property::Attribute::all());
+
+        let helper_obj = boa_engine::JsObject::with_null_proto();
+        {
+            let set_text_fn = NativeFunction::from_fn_ptr(js_set_text_content).to_js_function(context.realm());
+            let _ = helper_obj.set(boa_engine::js_string!("set"), set_text_fn, false, context);
+        }
+        {
+            let get_text_fn = NativeFunction::from_fn_ptr(js_get_text_content).to_js_function(context.realm());
+            let _ = helper_obj.set(boa_engine::js_string!("get"), get_text_fn, false, context);
+        }
+        let _ = context.register_global_property(boa_engine::js_string!("__set_text_content"), boa_engine::JsValue::Object(helper_obj), boa_engine::property::Attribute::all());
     }
 
     pub fn set_element_text(&self, id: &str, text: &str) {

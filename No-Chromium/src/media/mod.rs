@@ -1,11 +1,4 @@
-//! Media Module - Placeholder
-//! 
-//! Gestión asíncrona de imágenes, fuentes y video
-//! Pre-caching con Tokio
+pub mod image_support;
+pub mod image_manager;
 
-// TODO: Implementar
-// - Image decoder async
-// - Font loader (MSDF en Fase 6)
-// - Video decoder (NVDEC en Fase hw_video)
-
-pub struct MediaManager;
+pub use image_support::{DecodedImage, decode_image_bytes, get_cached_image, cache_image, draw_image_to_buffer};

@@ -21,6 +21,7 @@ mod renderer;
 mod vulkan_engine;
 mod network;
 mod parsers;
+mod media;
 mod utils;
 mod js_engine;
 

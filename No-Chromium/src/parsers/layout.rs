@@ -1,5 +1,21 @@
 use crate::parsers::css_simple::{CssCascade, CssDeclarations, parse_color, parse_px};
-use crate::parsers::page_document::{PageDocument, TextBlock};
+use crate::parsers::page_document::{PageDocument, TextBlock, ImageBlock};
+
+#[derive(Clone, Debug)]
+pub enum LayoutItem {
+    Text(LayoutBlock),
+    Image(ImageLayoutBlock),
+}
+
+#[derive(Clone, Debug)]
+pub struct ImageLayoutBlock {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub src: String,
+    pub alt: String,
+}
 
 #[derive(Clone, Debug)]
 pub struct LayoutBlock {
@@ -48,21 +64,50 @@ impl LayoutContext {
     }
 }
 
-pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutBlock> {
+pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
     let content_x = 40.0;
     let content_w = (viewport_w - 80.0).max(200.0);
 
     let mut ctx = LayoutContext::new(viewport_w, content_x, content_w)
         .with_css(&doc.style_blocks);
 
-    let mut blocks = Vec::new();
+    let mut items = Vec::new();
 
-    for text_block in &doc.text_blocks {
-        let styled = apply_css_to_block(text_block, &ctx.css);
-        layout_block(text_block, &styled, &mut ctx, &mut blocks);
+    let mut text_idx = 0;
+    let mut img_idx = 0;
+
+    loop {
+        if text_idx >= doc.text_blocks.len() && img_idx >= doc.image_blocks.len() {
+            break;
+        }
+
+        if text_idx < doc.text_blocks.len() {
+            let text_block = &doc.text_blocks[text_idx];
+            let styled = apply_css_to_block(text_block, &ctx.css);
+            let before_y = ctx.cursor_y;
+            layout_block(text_block, &styled, &mut ctx, &mut items);
+            text_idx += 1;
+        }
+
+        if img_idx < doc.image_blocks.len() {
+            let img_block = &doc.image_blocks[img_idx];
+            let img_w = img_block.width.unwrap_or(300.0).min(content_w);
+            let img_h = img_block.height.unwrap_or(200.0).min(400.0);
+            ctx.cursor_y += 8.0;
+            items.push(LayoutItem::Image(ImageLayoutBlock {
+                x: ctx.content_x,
+                y: ctx.cursor_y,
+                w: img_w,
+                h: img_h,
+                src: img_block.src.clone(),
+                alt: img_block.alt.clone(),
+            }));
+            ctx.cursor_y += img_h + 8.0;
+            img_idx += 1;
+        }
     }
 
-    blocks
+    items
 }
 
 struct StyledBlock {
@@ -159,7 +204,7 @@ fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
     styled
 }
 
-fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext, out: &mut Vec<LayoutBlock>) {
+fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext, out: &mut Vec<LayoutItem>) {
     let text = &block.text;
     if text.is_empty() {
         return;
@@ -174,7 +219,7 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
 
     if text.len() <= chars_per_line {
         let h = styled.font_size * ctx.line_height;
-        out.push(LayoutBlock {
+        out.push(LayoutItem::Text(LayoutBlock {
             x,
             y: ctx.cursor_y,
             w: measure_text_width_approx(text, styled.font_size),
@@ -191,7 +236,7 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
             padding_left: styled.padding_left,
             margin_top: 0.0,
             margin_bottom: 0.0,
-        });
+        }));
         ctx.cursor_y += h;
     } else {
         let words: Vec<&str> = text.split_whitespace().collect();
@@ -205,7 +250,7 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
             };
             if test.len() > chars_per_line && !line.is_empty() {
                 let h = styled.font_size * ctx.line_height;
-                out.push(LayoutBlock {
+                out.push(LayoutItem::Text(LayoutBlock {
                     x,
                     y: ctx.cursor_y,
                     w: measure_text_width_approx(&line, styled.font_size),
@@ -222,7 +267,7 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
                     padding_left: styled.padding_left,
                     margin_top: 0.0,
                     margin_bottom: 0.0,
-                });
+                }));
                 ctx.cursor_y += h;
                 line = word.to_string();
             } else {
@@ -231,7 +276,7 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
         }
         if !line.is_empty() {
             let h = styled.font_size * ctx.line_height;
-            out.push(LayoutBlock {
+            out.push(LayoutItem::Text(LayoutBlock {
                 x,
                 y: ctx.cursor_y,
                 w: measure_text_width_approx(&line, styled.font_size),
@@ -248,7 +293,7 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
                 padding_left: styled.padding_left,
                 margin_top: 0.0,
                 margin_bottom: 0.0,
-            });
+            }));
             ctx.cursor_y += h;
         }
     }
@@ -260,20 +305,25 @@ pub fn measure_text_width_approx(text: &str, font_size: f32) -> f32 {
     text.len() as f32 * font_size * 0.58
 }
 
-pub fn total_content_height(blocks: &[LayoutBlock]) -> f32 {
-    blocks.iter().map(|b| b.y + b.h).fold(0.0f32, f32::max)
+pub fn total_content_height(items: &[LayoutItem]) -> f32 {
+    items.iter().map(|item| match item {
+        LayoutItem::Text(b) => b.y + b.h,
+        LayoutItem::Image(i) => i.y + i.h,
+    }).fold(0.0f32, f32::max)
 }
 
-pub fn hit_test_link(blocks: &[LayoutBlock], mx: f32, my: f32, scroll_y: f32) -> Option<String> {
+pub fn hit_test_link(items: &[LayoutItem], mx: f32, my: f32, scroll_y: f32) -> Option<String> {
     let adjusted_y = my + scroll_y;
-    for block in blocks {
-        if block.is_link {
-            if mx >= block.x
-                && mx <= block.x + block.w + 20.0
-                && adjusted_y >= block.y
-                && adjusted_y <= block.y + block.h
-            {
-                return block.href.clone();
+    for item in items {
+        if let LayoutItem::Text(block) = item {
+            if block.is_link {
+                if mx >= block.x
+                    && mx <= block.x + block.w + 20.0
+                    && adjusted_y >= block.y
+                    && adjusted_y <= block.y + block.h
+                {
+                    return block.href.clone();
+                }
             }
         }
     }

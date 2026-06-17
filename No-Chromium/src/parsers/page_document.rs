@@ -12,6 +12,14 @@ pub struct TextBlock {
 }
 
 #[derive(Clone, Debug)]
+pub struct ImageBlock {
+    pub src: String,
+    pub alt: String,
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+}
+
+#[derive(Clone, Debug)]
 pub struct LinkInfo {
     pub text: String,
     pub href: String,
@@ -22,6 +30,7 @@ pub struct PageDocument {
     pub url: String,
     pub title: String,
     pub text_blocks: Vec<TextBlock>,
+    pub image_blocks: Vec<ImageBlock>,
     pub links: Vec<LinkInfo>,
     pub style_blocks: Vec<String>,
 }
@@ -32,6 +41,7 @@ impl PageDocument {
             url: url.to_string(),
             title: String::new(),
             text_blocks: Vec::new(),
+            image_blocks: Vec::new(),
             links: Vec::new(),
             style_blocks: Vec::new(),
         }
@@ -191,6 +201,22 @@ impl PageDocument {
                                     bold: false,
                                     link: current_href.clone(),
                                     indent_level: indent,
+                                });
+                            }
+                        }
+                        HtmlTag::Img => {
+                            if let Some(src) = attributes.get("src") {
+                                let resolved = self.resolve_href(src);
+                                let alt = attributes.get("alt").cloned().unwrap_or_default();
+                                let width = attributes.get("width")
+                                    .and_then(|w| w.trim().parse::<f32>().ok());
+                                let height = attributes.get("height")
+                                    .and_then(|h| h.trim().parse::<f32>().ok());
+                                self.image_blocks.push(ImageBlock {
+                                    src: resolved,
+                                    alt,
+                                    width,
+                                    height,
                                 });
                             }
                         }

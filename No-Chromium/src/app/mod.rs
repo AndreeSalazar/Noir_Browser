@@ -22,7 +22,8 @@ use theme::*;
 
 use crate::network::fetch::HttpFetcher;
 use crate::parsers::page_document::PageDocument;
-use crate::parsers::layout::{layout_page, total_content_height, hit_test_link};
+use crate::parsers::layout::{LayoutItem, layout_page, total_content_height, hit_test_link};
+use crate::media;
 
 impl NoirApp {
     fn draw_frame(&mut self) {
@@ -235,8 +236,8 @@ impl NoirApp {
         }
 
         // Scroll indicator
-        if layout_blocks.is_empty() == false {
-            let total_h = layout_blocks.iter().map(|b| b.y + b.h).fold(0.0f32, f32::max);
+        if !layout_blocks.is_empty() {
+            let total_h = total_content_height(&layout_blocks);
             if total_h > content_h as f32 {
                 let view_ratio = content_h as f32 / total_h;
                 let scroll_ratio = scroll_y / (total_h - content_h as f32).max(1.0);
@@ -266,64 +267,94 @@ fn render_layout_blocks(
     screen_w: i32,
     content_y: i32,
     content_h: i32,
-    blocks: &[crate::parsers::layout::LayoutBlock],
+    items: &[crate::parsers::layout::LayoutItem],
     scroll_y: f32,
 ) {
     use theme::*;
     use draw::{draw_rect, draw_text_noir};
 
-    for block in blocks {
-        let screen_block_y = block.y - scroll_y + content_y as f32;
+    for item in items {
+        match item {
+            crate::parsers::layout::LayoutItem::Text(block) => {
+                let screen_block_y = block.y - scroll_y + content_y as f32;
 
-        // Skip blocks outside viewport
-        if screen_block_y + block.h < content_y as f32 - 10.0 {
-            continue;
-        }
-        if screen_block_y > content_y as f32 + content_h as f32 + 10.0 {
-            continue;
-        }
+                if screen_block_y + block.h < content_y as f32 - 10.0 {
+                    continue;
+                }
+                if screen_block_y > content_y as f32 + content_h as f32 + 10.0 {
+                    continue;
+                }
 
-        // Draw background if present
-        if let Some(bg) = &block.bg_color {
-            let bg_u32 = rgba_to_u32(bg[0], bg[1], bg[2], bg[3]);
-            draw_rect(
-                buf,
-                stride,
-                block.x as i32 - 4,
-                screen_block_y as i32 - 2,
-                (block.w + block.padding_left + 8.0) as i32,
-                (block.h + block.padding_top + 4.0) as i32,
-                bg_u32,
-            );
-        }
+                if let Some(bg) = &block.bg_color {
+                    let bg_u32 = rgba_to_u32(bg[0], bg[1], bg[2], bg[3]);
+                    draw_rect(
+                        buf,
+                        stride,
+                        block.x as i32 - 4,
+                        screen_block_y as i32 - 2,
+                        (block.w + block.padding_left + 8.0) as i32,
+                        (block.h + block.padding_top + 4.0) as i32,
+                        bg_u32,
+                    );
+                }
 
-        // Draw link underline
-        if block.is_link {
-            let underline_y = screen_block_y as i32 + block.h as i32 - 1;
-            draw_rect(
-                buf,
-                stride,
-                block.x as i32,
-                underline_y,
-                block.w as i32,
-                1,
-                0xFF6699FF,
-            );
-        }
+                if block.is_link {
+                    let underline_y = screen_block_y as i32 + block.h as i32 - 1;
+                    draw_rect(
+                        buf,
+                        stride,
+                        block.x as i32,
+                        underline_y,
+                        block.w as i32,
+                        1,
+                        0xFF6699FF,
+                    );
+                }
 
-        // Draw text
-        let color_u32 = rgba_to_u32(block.color[0], block.color[1], block.color[2], block.color[3]);
-        let font_scale = block.font_size / 14.0;
-        draw_text_noir(
-            buf,
-            stride,
-            screen_w,
-            block.x as i32,
-            screen_block_y as i32,
-            &block.text,
-            color_u32,
-            font_scale,
-        );
+                let color_u32 = rgba_to_u32(block.color[0], block.color[1], block.color[2], block.color[3]);
+                let font_scale = block.font_size / 14.0;
+                draw_text_noir(
+                    buf,
+                    stride,
+                    screen_w,
+                    block.x as i32,
+                    screen_block_y as i32,
+                    &block.text,
+                    color_u32,
+                    font_scale,
+                );
+            }
+            crate::parsers::layout::LayoutItem::Image(img) => {
+                let screen_img_y = img.y - scroll_y + content_y as f32;
+
+                if screen_img_y + img.h < content_y as f32 - 10.0 {
+                    continue;
+                }
+                if screen_img_y > content_y as f32 + content_h as f32 + 10.0 {
+                    continue;
+                }
+
+                let ix = img.x as i32;
+                let iy = screen_img_y as i32;
+                let iw = img.w as i32;
+                let ih = img.h as i32;
+
+                draw_rect(buf, stride, ix, iy, iw, ih, 0xFF1A1A1E);
+
+                if let Some(cached) = crate::media::get_cached_image(&img.src) {
+                    crate::media::draw_image_to_buffer(
+                        buf, stride, &cached,
+                        ix, iy, iw, ih,
+                        screen_w, content_y + content_h,
+                    );
+                } else {
+                    let placeholder = if img.alt.is_empty() { "Loading image..." } else { &img.alt };
+                    draw_text_noir(buf, stride, screen_w, ix + 4, iy + ih / 2 - 6, placeholder, TEXT_DIM, 0.8);
+                    let src_text = if img.src.len() > 40 { format!("{}...", &img.src[..37]) } else { img.src.clone() };
+                    draw_text_noir(buf, stride, screen_w, ix + 4, iy + ih / 2 + 8, &src_text, 0xFF666666, 0.7);
+                }
+            }
+        }
     }
 }
 
@@ -444,7 +475,30 @@ impl ApplicationHandler for NoirApp {
                         let viewport_w = self.width as f32;
                         let blocks = layout_page(&page, viewport_w);
                         let content_h = total_content_height(&blocks);
-                        tracing::info!("Parsed: title='{}', {} links, {} layout blocks, content height: {:.0}", title, num_links, blocks.len(), content_h);
+
+                        // Sync DOM to JS engine
+                        let nodes = crate::parsers::dom_tree::parse_html(html);
+                        crate::js_engine::dom_sync::sync_dom_to_js_engine(&nodes);
+
+                        // Execute inline scripts
+                        let scripts = crate::js_engine::dom_sync::extract_inline_scripts(&nodes);
+                        let tab_id = self.tabs[self.active_tab].tab_id;
+                        for (i, script) in scripts.iter().enumerate() {
+                            tracing::info!("Executing inline script #{} ({} bytes)", i + 1, script.len());
+                            match self.tabs[self.active_tab].js_engine.eval_script(tab_id, script) {
+                                Ok(result) => {
+                                    if !result.is_empty() && result != "undefined" {
+                                        tracing::info!("Script result: {}", result);
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Script error: {}", e);
+                                }
+                            }
+                        }
+
+                        tracing::info!("Parsed: title='{}', {} links, {} layout blocks, {} scripts, content height: {:.0}",
+                            title, num_links, blocks.len(), scripts.len(), content_h);
                         self.tabs[self.active_tab].page = Some(page);
                         self.tabs[self.active_tab].layout_blocks = blocks;
                         self.tabs[self.active_tab].content_height = content_h;

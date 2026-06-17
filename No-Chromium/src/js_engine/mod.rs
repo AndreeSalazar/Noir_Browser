@@ -1,6 +1,7 @@
 pub mod runtime;
 pub mod web_apis;
 pub mod dom_bridge;
+pub mod dom_sync;
 pub mod events;
 pub mod sandbox;
 pub mod modules;

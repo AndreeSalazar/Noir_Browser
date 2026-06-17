@@ -4,15 +4,18 @@ use winit::window::Window;
 
 use super::theme::*;
 use crate::parsers::page_document::PageDocument;
-use crate::parsers::layout::LayoutBlock;
+use crate::parsers::layout::LayoutItem;
+use crate::js_engine::JsEngine;
 
 pub struct TabState {
     pub title: String,
     pub url: String,
     pub page: Option<PageDocument>,
-    pub layout_blocks: Vec<LayoutBlock>,
+    pub layout_blocks: Vec<LayoutItem>,
     pub scroll_y: f32,
     pub content_height: f32,
+    pub js_engine: JsEngine,
+    pub tab_id: u64,
 }
 
 impl Default for TabState {
@@ -24,6 +27,8 @@ impl Default for TabState {
             layout_blocks: Vec::new(),
             scroll_y: 0.0,
             content_height: 0.0,
+            js_engine: JsEngine::new(),
+            tab_id: 0,
         }
     }
 }
@@ -44,12 +49,16 @@ pub struct NoirApp {
     pub should_close: bool,
     pub fetching: bool,
     pub fetch_result: Option<Arc<Mutex<Option<String>>>>,
+    pub next_tab_id: u64,
 }
 
 impl NoirApp {
     pub fn new() -> Self {
         let mut tabs = Vec::new();
-        tabs.push(TabState::default());
+        let mut first_tab = TabState::default();
+        first_tab.tab_id = 1;
+        let _ = first_tab.js_engine.init_tab(1);
+        tabs.push(first_tab);
         Self {
             window: None,
             surface: None,
@@ -66,6 +75,7 @@ impl NoirApp {
             should_close: false,
             fetching: false,
             fetch_result: None,
+            next_tab_id: 2,
         }
     }
 
@@ -98,7 +108,11 @@ impl NoirApp {
         use super::config::AppConfig;
         let max = AppConfig::default().max_tabs as usize;
         if self.tabs.len() < max {
-            self.tabs.push(TabState::default());
+            let mut tab = TabState::default();
+            tab.tab_id = self.next_tab_id;
+            self.next_tab_id += 1;
+            let _ = tab.js_engine.init_tab(tab.tab_id);
+            self.tabs.push(tab);
             self.active_tab = self.tabs.len() - 1;
             self.url_bar.clear();
             self.url_cursor = 0;
