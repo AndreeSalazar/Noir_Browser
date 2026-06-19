@@ -19,6 +19,7 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, String> {
+        if self.is_eof() { return Err("Unexpected end of input".to_string()); }
         match self.peek().kind {
             TokenKind::KwLet | TokenKind::KwConst | TokenKind::KwVar => self.parse_var_decl(),
             TokenKind::KwFunction => self.parse_function_decl(),
@@ -32,6 +33,10 @@ impl Parser {
             TokenKind::KwThrow => self.parse_throw(),
             _ => {
                 let expr = self.parse_expr()?;
+                // Consume optional semicolon
+                if !self.is_eof() && matches!(self.peek().kind, TokenKind::PunctSemi) {
+                    self.advance();
+                }
                 Ok(Stmt::Expr(expr))
             }
         }
@@ -41,10 +46,14 @@ impl Parser {
         let is_const = matches!(self.peek().kind, TokenKind::KwConst);
         self.advance();
         let name = self.expect_identifier()?;
-        let value = if matches!(self.peek().kind, TokenKind::OpAssign) {
+        let value = if !self.is_eof() && matches!(self.peek().kind, TokenKind::OpAssign) {
             self.advance();
             Some(self.parse_expr()?)
         } else { None };
+        // Consume optional semicolon
+        if !self.is_eof() && matches!(self.peek().kind, TokenKind::PunctSemi) {
+            self.advance();
+        }
         Ok(Stmt::VarDecl { name, value, is_const })
     }
 
@@ -53,16 +62,20 @@ impl Parser {
         let name = self.expect_identifier()?;
         let params = self.parse_params()?;
         let body_stmts = self.parse_block_body()?;
+        // Consume optional semicolon
+        if !self.is_eof() && matches!(self.peek().kind, TokenKind::PunctSemi) {
+            self.advance();
+        }
         Ok(Stmt::FunctionDecl { name, params, body: body_stmts })
     }
 
     fn parse_params(&mut self) -> Result<Vec<String>, String> {
-        if !matches!(self.peek().kind, TokenKind::PunctLParen) {
+        if self.is_eof() || !matches!(self.peek().kind, TokenKind::PunctLParen) {
             return Err("Expected (".to_string());
         }
         self.advance();
         let mut params = Vec::new();
-        while !matches!(self.peek().kind, TokenKind::PunctRParen) {
+        while !self.is_eof() && !matches!(self.peek().kind, TokenKind::PunctRParen) {
             if matches!(self.peek().kind, TokenKind::PunctSpread) { self.advance(); }
             params.push(self.expect_identifier()?);
             if matches!(self.peek().kind, TokenKind::PunctComma) { self.advance(); }
@@ -72,15 +85,15 @@ impl Parser {
     }
 
     fn parse_block_body(&mut self) -> Result<Vec<Stmt>, String> {
-        if !matches!(self.peek().kind, TokenKind::PunctLBrace) {
+        if self.is_eof() || !matches!(self.peek().kind, TokenKind::PunctLBrace) {
             return Err("Expected {".to_string());
         }
         self.advance();
         let mut stmts = Vec::new();
-        while !matches!(self.peek().kind, TokenKind::PunctRBrace) && !self.is_eof() {
+        while !self.is_eof() && !matches!(self.peek().kind, TokenKind::PunctRBrace) {
             stmts.push(self.parse_stmt()?);
         }
-        self.advance();
+        if !self.is_eof() { self.advance(); }
         Ok(stmts)
     }
 
@@ -88,7 +101,7 @@ impl Parser {
         self.advance();
         let condition = self.parse_expr()?;
         let then_branch = self.parse_block_body()?;
-        let else_branch = if matches!(self.peek().kind, TokenKind::KwElse) {
+        let else_branch = if !self.is_eof() && matches!(self.peek().kind, TokenKind::KwElse) {
             self.advance();
             Some(self.parse_block_body()?)
         } else { None };
@@ -104,9 +117,11 @@ impl Parser {
 
     fn parse_for(&mut self) -> Result<Stmt, String> {
         self.advance();
-        if !matches!(self.peek().kind, TokenKind::PunctLParen) { return Err("Expected (".to_string()); }
+        if self.is_eof() || !matches!(self.peek().kind, TokenKind::PunctLParen) { return Err("Expected (".to_string()); }
         self.advance();
-        let init = if matches!(self.peek().kind, TokenKind::PunctSemi) {
+        let init = if self.is_eof() {
+            return Err("Unexpected EOF in for".to_string());
+        } else if matches!(self.peek().kind, TokenKind::PunctSemi) {
             None
         } else if matches!(self.peek().kind, TokenKind::KwLet | TokenKind::KwConst | TokenKind::KwVar) {
             Some(Box::new(self.parse_var_decl()?))
@@ -114,17 +129,21 @@ impl Parser {
             let e = self.parse_expr()?;
             Some(Box::new(Stmt::Expr(e)))
         };
-        if !matches!(self.peek().kind, TokenKind::PunctSemi) { return Err("Expected ;".to_string()); }
+        if self.is_eof() || !matches!(self.peek().kind, TokenKind::PunctSemi) { return Err("Expected ;".to_string()); }
         self.advance();
-        let condition = if matches!(self.peek().kind, TokenKind::PunctSemi) {
+        let condition = if self.is_eof() {
+            return Err("Unexpected EOF in for".to_string());
+        } else if matches!(self.peek().kind, TokenKind::PunctSemi) {
             None
         } else { Some(self.parse_expr()?) };
-        if !matches!(self.peek().kind, TokenKind::PunctSemi) { return Err("Expected ;".to_string()); }
+        if self.is_eof() || !matches!(self.peek().kind, TokenKind::PunctSemi) { return Err("Expected ;".to_string()); }
         self.advance();
-        let update = if matches!(self.peek().kind, TokenKind::PunctRParen) {
+        let update = if self.is_eof() {
+            return Err("Unexpected EOF in for".to_string());
+        } else if matches!(self.peek().kind, TokenKind::PunctRParen) {
             None
         } else { Some(self.parse_expr()?) };
-        if !matches!(self.peek().kind, TokenKind::PunctRParen) { return Err("Expected )".to_string()); }
+        if self.is_eof() || !matches!(self.peek().kind, TokenKind::PunctRParen) { return Err("Expected )".to_string()); }
         self.advance();
         let body = self.parse_block_body()?;
         Ok(Stmt::For { init, condition, update, body })
@@ -132,9 +151,12 @@ impl Parser {
 
     fn parse_return(&mut self) -> Result<Stmt, String> {
         self.advance();
-        let value = if matches!(self.peek().kind, TokenKind::PunctSemi) || self.is_eof() {
+        let value = if self.is_eof() || matches!(self.peek().kind, TokenKind::PunctSemi) {
             None
         } else { Some(self.parse_expr()?) };
+        if !self.is_eof() && matches!(self.peek().kind, TokenKind::PunctSemi) {
+            self.advance();
+        }
         Ok(Stmt::Return(value))
     }
 
@@ -197,7 +219,7 @@ impl Parser {
 
     fn parse_or(&mut self) -> Result<Expr, String> {
         let mut left = self.parse_and()?;
-        while matches!(self.peek().kind, TokenKind::OpOr) {
+        while !self.is_eof() && matches!(self.peek().kind, TokenKind::OpOr) {
             self.advance();
             let right = self.parse_and()?;
             left = Expr::Binary { op: BinaryOp::Or, left: Box::new(left), right: Box::new(right) };
@@ -207,7 +229,7 @@ impl Parser {
 
     fn parse_and(&mut self) -> Result<Expr, String> {
         let mut left = self.parse_equality()?;
-        while matches!(self.peek().kind, TokenKind::OpAnd) {
+        while !self.is_eof() && matches!(self.peek().kind, TokenKind::OpAnd) {
             self.advance();
             let right = self.parse_equality()?;
             left = Expr::Binary { op: BinaryOp::And, left: Box::new(left), right: Box::new(right) };
@@ -255,7 +277,7 @@ impl Parser {
 
     fn parse_additive(&mut self) -> Result<Expr, String> {
         let mut left = self.parse_multiplicative()?;
-        while matches!(self.peek().kind, TokenKind::OpAdd | TokenKind::OpSub) {
+        while !self.is_eof() && matches!(self.peek().kind, TokenKind::OpAdd | TokenKind::OpSub) {
             let op = match self.peek().kind {
                 TokenKind::OpAdd => BinaryOp::Add,
                 _ => BinaryOp::Sub,
@@ -269,7 +291,7 @@ impl Parser {
 
     fn parse_multiplicative(&mut self) -> Result<Expr, String> {
         let mut left = self.parse_unary()?;
-        while matches!(self.peek().kind, TokenKind::OpMul | TokenKind::OpDiv | TokenKind::OpMod) {
+        while !self.is_eof() && matches!(self.peek().kind, TokenKind::OpMul | TokenKind::OpDiv | TokenKind::OpMod) {
             let op = match self.peek().kind {
                 TokenKind::OpMul => BinaryOp::Mul,
                 TokenKind::OpDiv => BinaryOp::Div,
@@ -321,6 +343,7 @@ impl Parser {
     fn parse_postfix(&mut self) -> Result<Expr, String> {
         let mut expr = self.parse_primary()?;
         loop {
+            if self.is_eof() { break; }
             match self.peek().kind {
                 TokenKind::PunctDot => {
                     self.advance();
@@ -329,8 +352,9 @@ impl Parser {
                 }
                 TokenKind::PunctLBracket => {
                     self.advance();
+                    if self.is_eof() { return Err("Unexpected EOF in [".to_string()); }
                     let _prop_expr = self.parse_expr()?;
-                    if !matches!(self.peek().kind, TokenKind::PunctRBracket) { return Err("Expected ]".to_string()); }
+                    if self.is_eof() || !matches!(self.peek().kind, TokenKind::PunctRBracket) { return Err("Expected ]".to_string()); }
                     self.advance();
                     let prop_str = String::from("[computed]");
                     expr = Expr::Member { object: Box::new(expr), property: prop_str, computed: true };
@@ -338,10 +362,11 @@ impl Parser {
                 TokenKind::PunctLParen => {
                     self.advance();
                     let mut args = Vec::new();
-                    while !matches!(self.peek().kind, TokenKind::PunctRParen) {
+                    while !self.is_eof() && !matches!(self.peek().kind, TokenKind::PunctRParen) {
                         args.push(self.parse_expr()?);
-                        if matches!(self.peek().kind, TokenKind::PunctComma) { self.advance(); }
+                        if !self.is_eof() && matches!(self.peek().kind, TokenKind::PunctComma) { self.advance(); }
                     }
+                    if self.is_eof() { return Err("Expected )".to_string()); }
                     self.advance();
                     expr = Expr::Call { callee: Box::new(expr), args };
                 }
@@ -380,24 +405,25 @@ impl Parser {
             TokenKind::PunctLParen => {
                 self.advance();
                 let expr = self.parse_expr()?;
-                if !matches!(self.peek().kind, TokenKind::PunctRParen) { return Err("Expected )".to_string()); }
+                if self.is_eof() || !matches!(self.peek().kind, TokenKind::PunctRParen) { return Err("Expected )".to_string()); }
                 self.advance();
                 Ok(expr)
             }
             TokenKind::PunctLBracket => {
                 self.advance();
                 let mut elements = Vec::new();
-                while !matches!(self.peek().kind, TokenKind::PunctRBracket) {
+                while !self.is_eof() && !matches!(self.peek().kind, TokenKind::PunctRBracket) {
                     elements.push(self.parse_expr()?);
-                    if matches!(self.peek().kind, TokenKind::PunctComma) { self.advance(); }
+                    if !self.is_eof() && matches!(self.peek().kind, TokenKind::PunctComma) { self.advance(); }
                 }
+                if self.is_eof() { return Err("Expected ]".to_string()); }
                 self.advance();
                 Ok(Expr::Array(elements))
             }
             TokenKind::PunctLBrace => {
                 self.advance();
                 let mut pairs = Vec::new();
-                while !matches!(self.peek().kind, TokenKind::PunctRBrace) {
+                while !self.is_eof() && !matches!(self.peek().kind, TokenKind::PunctRBrace) {
                     let key = if let TokenKind::String = self.peek().kind {
                         let s = self.peek().value.clone();
                         self.advance();
@@ -415,16 +441,38 @@ impl Parser {
                     pairs.push((key, value));
                     if matches!(self.peek().kind, TokenKind::PunctComma) { self.advance(); }
                 }
+                if self.is_eof() { return Err("Expected }".to_string()); }
                 self.advance();
                 Ok(Expr::Object(pairs))
             }
+            TokenKind::Eof => Err("Unexpected end of input".to_string()),
             _ => Err(format!("Unexpected token: {:?}", token.kind)),
         }
     }
 
-    fn peek(&self) -> &Token { &self.tokens[self.pos] }
-    fn advance(&mut self) { if self.pos < self.tokens.len().saturating_sub(1) { self.pos += 1; } }
-    fn is_eof(&self) -> bool { self.pos >= self.tokens.len() || matches!(self.peek().kind, TokenKind::Eof) }
+    fn peek(&self) -> &Token {
+        if self.pos >= self.tokens.len() {
+            // Return Eof token by referencing a static empty string
+            const EOF_VALUE: &str = "";
+            static EOF: std::sync::OnceLock<Token> = std::sync::OnceLock::new();
+            EOF.get_or_init(|| Token {
+                kind: TokenKind::Eof,
+                value: EOF_VALUE.to_string(),
+                line: 0,
+                col: 0,
+            })
+        } else {
+            &self.tokens[self.pos]
+        }
+    }
+    fn advance(&mut self) { if self.pos < self.tokens.len() { self.pos += 1; } }
+    fn is_eof(&self) -> bool {
+        if self.pos >= self.tokens.len() {
+            true
+        } else {
+            matches!(self.tokens[self.pos].kind, TokenKind::Eof)
+        }
+    }
     fn expect_identifier(&mut self) -> Result<String, String> {
         let token = self.peek().clone();
         if matches!(token.kind, TokenKind::Identifier) {

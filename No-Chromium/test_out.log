@@ -1,0 +1,268 @@
+﻿cargo : warning: unused import: `super::config::AppConfig`
+En línea: 1 Carácter: 55
++ ... o-Chromium; cargo test --test integration_test test_eval_script_neste ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: unused...fig::AppConfig`:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  --> No-Chromium\src\app\event_loop.rs:14:5
+   |
+14 | use super::config::AppConfig;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::sync::Mutex`
+ --> No-Chromium\src\js_engine_v3\console.rs:5:5
+  |
+5 | use std::sync::Mutex;
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::rc::Rc`
+ --> No-Chromium\src\js_engine_v3\timer.rs:6:5
+  |
+6 | use std::rc::Rc;
+  |     ^^^^^^^^^^^
+
+warning: unused import: `Duration`
+ --> No-Chromium\src\js_engine_v3\timer.rs:7:17
+  |
+7 | use std::time::{Duration, Instant};
+  |                 ^^^^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> No-Chromium\src\js_engine_v3\fetch.rs:7:17
+  |
+7 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unused import: `std::rc::Rc`
+ --> No-Chromium\src\wasm_v2\arena.rs:5:5
+  |
+5 | use std::rc::Rc;
+  |     ^^^^^^^^^^^
+
+warning: unused import: `super::value::Value`
+ --> No-Chromium\src\wasm_v2\compiler.rs:5:5
+  |
+5 | use super::value::Value;
+  |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::interpreter::Interpreter`
+ --> No-Chromium\src\wasm_v2\compiler.rs:9:5
+  |
+9 | use super::interpreter::Interpreter;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::types::*`
+  --> No-Chromium\src\wasm_v2\wasi.rs:11:5
+   |
+11 | use super::types::*;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `std::sync::Arc`
+ --> No-Chromium\src\webgpu\device.rs:4:5
+  |
+4 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused import: `std::sync::Mutex`
+ --> No-Chromium\src\webgpu\device.rs:5:5
+  |
+5 | use std::sync::Mutex;
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TextureFormat` and `TextureUsage`
+ --> No-Chromium\src\webgpu\renderer.rs:6:31
+  |
+6 | use super::texture::{Texture, TextureFormat, TextureUsage};
+  |                               ^^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused imports: `ShaderModule` and `create_standard_shaders`
+ --> No-Chromium\src\webgpu\renderer.rs:8:22
+  |
+8 | use super::shaders::{ShaderModule, create_standard_shaders};
+  |                      ^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BufferUsage`
+  --> No-Chromium\src\webgpu\bridge.rs:10:29
+   |
+10 | use super::buffer::{Buffer, BufferUsage};
+   |                             ^^^^^^^^^^^
+
+warning: unused import: `super::buffer::BufferUsage`
+ --> No-Chromium\src\webgpu\compute.rs:6:5
+  |
+6 | use super::buffer::BufferUsage;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unreachable pattern
+   --> No-Chromium\src\app\glyphs.rs:129:9
+    |
+127 |         '#' => [0b01010, 0b01010, 0b11111, 0b01010, 0b11111, 0b01010, 0b01010, 0, 0, 0, 0, 0],
+    |         --- matches all the relevant values
+128 |         '@' => [0b01110, 0b10001, 0b10111, 0b10101, 0b10110, 0b10000, 0b10001, 0b01110, 0, 0, 0, 0],
+129 |         '#' => [0b01010, 0b01010, 0b11111, 0b01010, 0b11111, 0b01010, 0b01010, 0, 0, 0, 0, 0],
+    |         ^^^ no value can reach this
+    |
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `interp`
+  --> No-Chromium\src\bridge\mod.rs:73:32
+   |
+73 |     fn call_js_function(&self, interp: &mut Interpreter, _module: &str, func: &str, _args: &[JsValue]) -> 
+Result<JsValue, String> {
+   |                                ^^^^^^ help: if this is intentional, prefix it with an underscore: `_interp`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> No-Chromium\src\js_engine_v3\interpreter.rs:47:13
+   |
+47 |         let mut result = JsValue::Undefined;
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `name`
+   --> No-Chromium\src\js_engine_v3\interpreter.rs:324:33
+    |
+324 |             JsValue::Function { name, params, body, closure } => {
+    |                                 ^^^^ help: try ignoring the field: `name: _`
+
+warning: unused variable: `name`
+   --> No-Chromium\src\js_engine_v3\interpreter.rs:340:39
+    |
+340 |             JsValue::NativeFunction { name, func } => {
+    |                                       ^^^^ help: try ignoring the field: `name: _`
+
+warning: unused variable: `next_id`
+  --> No-Chromium\src\js_engine_v3\dom.rs:67:13
+   |
+67 |         let next_id = Rc::new(RefCell::new(0));
+   |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_next_id`
+
+warning: unused variable: `delay`
+  --> No-Chromium\src\js_engine_v3\timer.rs:84:9
+   |
+84 |     let delay = args[1].to_number() as u64;
+   |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_delay`
+
+warning: unused variable: `args`
+  --> No-Chromium\src\js_engine_v3\timer.rs:96:25
+   |
+96 | pub fn js_clear_timeout(args: &[JsValue]) -> Result<JsValue, String> {
+   |                         ^^^^ help: if this is intentional, prefix it with an underscore: `_args`
+
+warning: unused variable: `radix`
+   --> No-Chromium\src\js_engine_v3\builtins.rs:128:13
+    |
+128 |         let radix = if args.len() > 1 { args[1].to_number() as u32 } else { 10 };
+    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_radix`
+
+warning: unused variable: `func`
+   --> No-Chromium\src\wasm_v2\jit.rs:118:37
+    |
+118 |     fn instruction_combining(&self, func: &mut CompiledFunction) {
+    |                                     ^^^^ help: if this is intentional, prefix it with an underscore: `_func`
+
+warning: unused variable: `func`
+   --> No-Chromium\src\wasm_v2\jit.rs:123:30
+    |
+123 |     fn loop_unrolling(&self, func: &mut CompiledFunction) {
+    |                              ^^^^ help: if this is intentional, prefix it with an underscore: `_func`
+
+warning: unused variable: `global`
+  --> No-Chromium\src\wasm_v2\runtime.rs:60:13
+   |
+60 |         for global in &module.globals {
+   |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_global`
+
+warning: variable `ptr` is assigned to, but never used
+  --> No-Chromium\src\wasm_v2\wasi.rs:46:17
+   |
+46 |             let mut ptr = argv_ptr;
+   |                 ^^^^^^^
+   |
+   = note: consider using `_ptr` instead
+
+warning: variable `buf_ptr` is assigned to, but never used
+  --> No-Chromium\src\wasm_v2\wasi.rs:47:17
+   |
+47 |             let mut buf_ptr = argv_buf_ptr;
+   |                 ^^^^^^^^^^^
+   |
+   = note: consider using `_buf_ptr` instead
+
+warning: value assigned to `ptr` is never read
+  --> No-Chromium\src\wasm_v2\wasi.rs:50:17
+   |
+50 |                 ptr += arg.len() as u32 + 1;
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `buf_ptr` is never read
+  --> No-Chromium\src\wasm_v2\wasi.rs:51:17
+   |
+51 |                 buf_ptr += arg.len() as u32 + 1;
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+
+warning: field `next_node_id` is never read
+  --> No-Chromium\src\js_engine_v3\dom.rs:50:5
+   |
+46 | pub struct Dom {
+   |            --- field in this struct
+...
+50 |     next_node_id: u64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `width` and `height` are never read
+  --> No-Chromium\src\renderer_trait.rs:29:5
+   |
+28 | pub struct CpuBackend {
+   |            ---------- fields in this struct
+29 |     width: u32,
+   |     ^^^^^
+30 |     height: u32,
+   |     ^^^^^^
+
+warning: comparison is useless due to type limits
+   --> No-Chromium\src\wasm_v2\opcodes.rs:128:25
+    |
+128 |         if b <= 0x78 && b >= 0x00 {
+    |                         ^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: `no-chromium` (lib) generated 34 warnings (run `cargo fix --lib -p no-chromium` to apply 26 suggestions)
+   Compiling no-chromium v0.2.0 (C:\Users\andre\Documents\Noir_Browser\No-Chromium)
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.83s
+     Running tests\integration_test.rs 
+(C:\Users\andre\Documents\Noir_Browser\target\debug\deps\integration_test-83f2bc9f9d8a48e1.exe)
+
+running 1 test
+test test_eval_script_nested_blocks ... FAILED
+
+failures:
+
+---- test_eval_script_nested_blocks stdout ----
+
+thread 'test_eval_script_nested_blocks' (13988) panicked at No-Chromium\tests\integration_test.rs:306:5:
+assertion failed: result.is_ok()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    test_eval_script_nested_blocks
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 35 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test integration_test`
