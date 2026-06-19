@@ -88,7 +88,81 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
 
     let mut items = Vec::new();
 
-    // Process text blocks, images, and videos together
+    // Detect if this is a gallery/grid layout (many images = YouTube-like)
+    let is_grid = doc.image_blocks.len() >= 3 && doc.video_blocks.is_empty();
+
+    if is_grid {
+        // Grid layout: 2-3 columns
+        let cols = if content_w > 1400.0 { 3 } else { 2 };
+        let gap = 16.0;
+        let cell_w = (content_w - gap * (cols as f32 - 1.0)) / cols as f32;
+        let cell_h = cell_w * 9.0 / 16.0 + 60.0; // 16:9 thumb + 60px for text
+
+        let mut row = 0;
+        let mut col = 0;
+
+        for (idx, img_block) in doc.image_blocks.iter().enumerate() {
+            let cell_x = ctx.content_x + col as f32 * (cell_w + gap);
+            let cell_y = ctx.cursor_y + row as f32 * (cell_h + gap);
+
+            // Image
+            items.push(LayoutItem::Image(ImageLayoutBlock {
+                x: cell_x,
+                y: cell_y,
+                w: cell_w,
+                h: cell_w * 9.0 / 16.0, // 16:9
+                src: img_block.src.clone(),
+                alt: img_block.alt.clone(),
+                lazy: img_block.lazy,
+            }));
+
+            // Add associated title text below
+            if idx < doc.text_blocks.len() {
+                let title = &doc.text_blocks[idx].text;
+                if !title.is_empty() && title.as_str() != img_block.alt.as_str() {
+                    let title_y = cell_y + cell_w * 9.0 / 16.0 + 4.0;
+                    items.push(LayoutItem::Text(LayoutBlock {
+                        x: cell_x,
+                        y: title_y,
+                        w: cell_w,
+                        h: 16.0,
+                        text: title.clone(),
+                        font_size: 13.0,
+                        bold: true,
+                        color: [0.9, 0.9, 0.9, 1.0],
+                        bg_color: None,
+                        href: doc.text_blocks[idx].link.clone(),
+                        is_link: doc.text_blocks[idx].link.is_some(),
+                        padding_top: 0.0,
+                        padding_bottom: 0.0,
+                        padding_left: 0.0,
+                        margin_top: 0.0,
+                        margin_bottom: 0.0,
+                    }));
+                }
+            }
+
+            col += 1;
+            if col >= cols {
+                col = 0;
+                row += 1;
+            }
+        }
+
+        let total_rows = (doc.image_blocks.len() + cols - 1) / cols;
+        ctx.cursor_y += total_rows as f32 * (cell_h + gap);
+
+        // Add remaining text after grid
+        let skip_count = doc.image_blocks.len();
+        for text_block in doc.text_blocks.iter().skip(skip_count) {
+            let styled = apply_css_to_block(text_block, &ctx.css);
+            layout_block(text_block, &styled, &mut ctx, &mut items);
+        }
+
+        return items;
+    }
+
+    // Process text blocks, images, and videos together (non-grid layout)
     let mut text_idx = 0;
     let mut img_idx = 0;
     let mut vid_idx = 0;
