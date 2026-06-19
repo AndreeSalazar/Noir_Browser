@@ -114,6 +114,19 @@ impl AppContext {
         renderer::draw(self);
     }
 
+    /// Recalcula el layout del tab activo
+    pub fn recalculate_layout(&mut self) {
+        let active = self.active_tab;
+        if let Some(page) = &self.tabs[active].page {
+            let viewport_w = self.width as f32;
+            let blocks = crate::parsers::layout::layout_page(page, viewport_w);
+            let content_h = crate::parsers::layout::total_content_height(&blocks);
+            self.tabs[active].layout_blocks = blocks;
+            self.tabs[active].content_height = content_h;
+            self.tabs[active].scroll_y = 0.0;
+        }
+    }
+
     /// Procesa el resultado de un fetch
     pub fn process_fetch_result(&mut self) {
         navigation::process_fetch_result(self);

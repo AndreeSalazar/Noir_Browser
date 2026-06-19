@@ -109,6 +109,7 @@ impl ApplicationHandler for NoirApp {
                             }
                         }
                     }
+                    self.context.recalculate_layout();
                     if let Some(window) = &self.context.window {
                         window.request_redraw();
                     }
