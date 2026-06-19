@@ -43,10 +43,31 @@ impl ApplicationHandler for NoirApp {
             return;
         }
 
+        // Get the primary monitor size to limit the window
+        let monitor_size = event_loop
+            .primary_monitor()
+            .map(|m| {
+                let sf = m.scale_factor();
+                let logical = m.size();
+                LogicalSize::new(
+                    (logical.width as f64 / sf) as f64,
+                    (logical.height as f64 / sf) as f64,
+                )
+            })
+            .unwrap_or(LogicalSize::new(1920.0, 1080.0));
+
+        // Limit window to 90% of monitor size
+        let target_w = (monitor_size.width * 0.9).min(1920.0).max(800.0);
+        let target_h = (monitor_size.height * 0.9).min(1080.0).max(500.0);
+
         let attrs = WindowAttributes::default()
             .with_title("Noir Browser")
-            .with_inner_size(LogicalSize::new(1280.0, 720.0))
+            .with_inner_size(LogicalSize::new(target_w, target_h))
             .with_min_inner_size(LogicalSize::new(800.0, 500.0))
+            .with_max_inner_size(LogicalSize::new(
+                (monitor_size.width * 0.95).min(2560.0),
+                (monitor_size.height * 0.95).min(1440.0),
+            ))
             .with_decorations(false);
 
         let window = match event_loop.create_window(attrs) {
@@ -57,6 +78,21 @@ impl ApplicationHandler for NoirApp {
                 return;
             }
         };
+
+        // Center window on screen
+        if let Some(monitor) = event_loop.primary_monitor() {
+            let scale = monitor.scale_factor();
+            let mon_size = monitor.size();
+            let win_size = window.outer_size();
+            let mon_logical_w = (mon_size.width as f64 / scale) as i32;
+            let mon_logical_h = (mon_size.height as f64 / scale) as i32;
+            let win_logical_w = (win_size.width as f64 / scale) as i32;
+            let win_logical_h = (win_size.height as f64 / scale) as i32;
+            let x = (mon_logical_w - win_logical_w) / 2;
+            let y = (mon_logical_h - win_logical_h) / 2;
+            let _ = window.set_outer_position(winit::dpi::LogicalPosition::new(x.max(0), y.max(0)));
+        }
+
         let size = window.inner_size();
         self.context.width = size.width;
         self.context.height = size.height;
@@ -100,10 +136,16 @@ impl ApplicationHandler for NoirApp {
 
             WindowEvent::Resized(size) => {
                 if size.width > 0 && size.height > 0 {
-                    self.context.width = size.width;
-                    self.context.height = size.height;
+                    // Clamp size to prevent oversized windows
+                    let max_w = 5120;  // 5K width max
+                    let max_h = 2880;  // 5K height max
+                    let clamped_w = size.width.min(max_w);
+                    let clamped_h = size.height.min(max_h);
+
+                    self.context.width = clamped_w;
+                    self.context.height = clamped_h;
                     if let Some(surface) = &mut self.context.surface {
-                        if let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) {
+                        if let (Some(w), Some(h)) = (NonZeroU32::new(clamped_w), NonZeroU32::new(clamped_h)) {
                             if let Err(e) = surface.resize(w, h) {
                                 tracing::error!("Failed to resize surface: {}", e);
                             }
