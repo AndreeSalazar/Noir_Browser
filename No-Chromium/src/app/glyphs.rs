@@ -15,14 +15,20 @@ pub fn draw_glyph(
     char_h: i32,
 ) {
     let pattern = get_glyph(ch);
-    for row in 0..char_h {
+    // Clamp char_h to 12 (max rows in glyph array) and char_w to 7 (max cols)
+    let max_rows = pattern.len() as i32;
+    let max_cols = 7;
+    let rows = char_h.min(max_rows);
+    let cols = char_w.min(max_cols);
+
+    for row in 0..rows {
         let py = y + row;
         if py < 0 { continue; }
         let bits = pattern[row as usize];
-        for col in 0..char_w {
+        for col in 0..cols {
             let px = x + col;
             if px < 0 { continue; }
-            if bits & (1 << (char_w - 1 - col)) != 0 {
+            if bits & (1 << (cols - 1 - col)) != 0 {
                 let idx = (py as usize) * stride + px as usize;
                 if idx < buf.len() {
                     buf[idx] = color;
