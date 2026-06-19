@@ -15,6 +15,22 @@ use super::renderer;
 use super::state::TabState;
 use crate::network::fetch::HttpFetcher;
 
+/// Mensaje de consola (log, warn, error, info)
+#[derive(Clone, Debug)]
+pub struct ConsoleMessage {
+    pub level: ConsoleLevel,
+    pub text: String,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConsoleLevel {
+    Log,
+    Warn,
+    Error,
+    Info,
+}
+
 /// Contexto principal de la aplicación
 pub struct AppContext {
     // Configuración
@@ -34,6 +50,14 @@ pub struct AppContext {
     pub mouse_y: f32,
     pub is_maximized: bool,
     pub should_close: bool,
+    pub is_hovering_link: bool,
+    pub load_progress: f32,
+    pub console_open: bool,
+    pub console_messages: Vec<ConsoleMessage>,
+    pub find_open: bool,
+    pub find_query: String,
+    pub shortcuts_open: bool,
+    pub loading_anim_frame: u32,
 
     // Tabs
     pub tabs: Vec<TabState>,
@@ -72,6 +96,14 @@ impl AppContext {
             mouse_y: 0.0,
             is_maximized: false,
             should_close: false,
+            is_hovering_link: false,
+            load_progress: 0.0,
+            console_open: false,
+            console_messages: Vec::new(),
+            find_open: false,
+            find_query: String::new(),
+            shortcuts_open: false,
+            loading_anim_frame: 0,
             tabs: vec![Self::create_initial_tab()],
             active_tab: 0,
             next_tab_id: 2,
@@ -124,6 +156,38 @@ impl AppContext {
             self.tabs[active].layout_blocks = blocks;
             self.tabs[active].content_height = content_h;
             self.tabs[active].scroll_y = 0.0;
+        }
+    }
+
+    /// Actualiza el estado de hover
+    pub fn update_hover(&mut self) {
+        let mx = self.mouse_x;
+        let my = self.mouse_y;
+        let active = self.active_tab;
+        let blocks = self.tabs[active].layout_blocks.clone();
+        let scroll_y = self.tabs[active].scroll_y;
+        self.is_hovering_link = crate::parsers::layout::hit_test_link(
+            &blocks, mx, my, scroll_y
+        ).is_some();
+    }
+
+    /// Avanza el frame de animación
+    pub fn tick_animation(&mut self) {
+        self.loading_anim_frame = self.loading_anim_frame.wrapping_add(1);
+    }
+
+    /// Agrega un mensaje a la consola
+    pub fn console_log(&mut self, level: ConsoleLevel, text: String) {
+        self.console_messages.push(ConsoleMessage {
+            level,
+            text,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+        });
+        if self.console_messages.len() > 500 {
+            self.console_messages.remove(0);
         }
     }
 

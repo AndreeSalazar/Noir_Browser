@@ -46,9 +46,17 @@ pub fn draw(ctx: &mut AppContext) {
     let url_focused = ctx.url_focused;
     let active_tab = ctx.active_tab;
     let active_url = ctx.tabs[active_tab].url.clone();
+    let active_title = ctx.tabs[active_tab].title.clone();
     let layout_blocks = ctx.tabs[active_tab].layout_blocks.clone();
     let scroll_y = ctx.tabs[active_tab].scroll_y;
     let fetching = ctx.fetching;
+    let anim_frame = ctx.loading_anim_frame;
+    let console_open = ctx.console_open;
+    let console_messages = ctx.console_messages.clone();
+    let find_open = ctx.find_open;
+    let find_query = ctx.find_query.clone();
+    let shortcuts_open = ctx.shortcuts_open;
+    let is_https = active_url.starts_with("https://");
 
     let (surface, window) = match (&mut ctx.surface, &ctx.window) {
         (Some(s), Some(w)) => (s, w),
@@ -78,8 +86,8 @@ pub fn draw(ctx: &mut AppContext) {
         }
     }).collect();
 
-    // Title bar
-    draw_title_bar(buf, stride, w, &tab_titles, active_tab);
+    // Title bar (with dynamic page title)
+    draw_title_bar(buf, stride, w, &tab_titles, active_tab, &active_title, is_https);
 
     // Tab bar
     let tab_y = TITLE_BAR_HEIGHT as i32;
@@ -87,10 +95,17 @@ pub fn draw(ctx: &mut AppContext) {
 
     // Nav bar
     let nav_y = (TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT) as i32;
-    draw_nav_bar(buf, stride, w, nav_y);
+    draw_nav_bar(buf, stride, w, nav_y, is_https, fetching, anim_frame);
 
     // Address bar
     draw_address_bar(buf, stride, w, &display_url, url_color, url_focused, url_bar_empty);
+
+    // Progress bar
+    if fetching {
+        let progress = (anim_frame % 100) as f32 / 100.0;
+        let bar_w = (w as f32 * progress) as i32;
+        draw_rect(buf, stride, 0, TOOLBAR_HEIGHT as i32, bar_w, 2, ACCENT);
+    }
 
     // Content
     let content_y = TOOLBAR_HEIGHT as i32;
@@ -99,10 +114,12 @@ pub fn draw(ctx: &mut AppContext) {
     if active_url.is_empty() {
         draw_new_tab_page(buf, stride, w, content_y, content_h);
     } else if fetching {
-        draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Loading...", TEXT_DIM, 1.2);
-        draw_text_noir(buf, stride, w, 30, content_y + 80, &active_url, TEXT_PLACEHOLDER, 1.0);
+        draw_loading_animation(buf, stride, w, content_y, content_h, anim_frame);
+        draw_text_noir(buf, stride, w, 30, content_y + content_h - 30, &active_url, TEXT_PLACEHOLDER, 1.0);
     } else if !layout_blocks.is_empty() {
         render_layout_blocks(buf, stride, w, content_y, content_h, &layout_blocks, scroll_y);
+    } else if let Some(err) = &ctx.fetch_error {
+        draw_error_page(buf, stride, w, content_y, content_h, err, &active_url);
     } else {
         draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Empty", TEXT_DIM, 1.2);
     }
@@ -119,13 +136,46 @@ pub fn draw(ctx: &mut AppContext) {
         }
     }
 
+    // Find in page
+    if find_open {
+        draw_find_bar(buf, stride, w, h, &find_query);
+    }
+
+    // Console panel
+    if console_open {
+        draw_console_panel(buf, stride, w, h, &console_messages);
+    }
+
+    // Keyboard shortcuts
+    if shortcuts_open {
+        draw_shortcuts_panel(buf, stride, w, h);
+    }
+
     buffer.present().unwrap();
 }
 
-fn draw_title_bar(buf: &mut [u32], stride: usize, w: i32, _tab_titles: &[String], _active_tab: usize) {
+fn draw_title_bar(buf: &mut [u32], stride: usize, w: i32, _tab_titles: &[String], _active_tab: usize, page_title: &str, is_https: bool) {
     draw_rect(buf, stride, 0, 0, w, TITLE_BAR_HEIGHT as i32, BG_TITLEBAR);
     draw_rect(buf, stride, 10, 10, 14, 14, ACCENT);
     draw_text_noir(buf, stride, w, 30, 11, "Noir Browser", TEXT_DIM, 1.0);
+
+    // Page title in the middle (or HTTPS indicator)
+    let display_title = if page_title.is_empty() || page_title == "New Tab" {
+        String::from("Noir Browser")
+    } else {
+        page_title.to_string()
+    };
+    let title_w = measure_text_width(&display_title, 1.0) as i32;
+    let title_x = (w - title_w) / 2;
+    draw_text_noir(buf, stride, w, title_x, 11, &display_title, TEXT_WHITE, 1.0);
+
+    // HTTPS lock icon next to title
+    if is_https {
+        let lock_x = title_x - 18;
+        draw_rect(buf, stride, lock_x, 11, 4, 5, GREEN);
+        draw_rect(buf, stride, lock_x - 1, 8, 6, 4, GREEN);
+        draw_text_noir(buf, stride, w, lock_x, 16, "v", GREEN, 0.6);
+    }
 
     let ctrl_w = 46;
     let ctrl_h = TITLE_BAR_HEIGHT as i32;
@@ -177,27 +227,44 @@ fn draw_tab_bar(buf: &mut [u32], stride: usize, w: i32, tab_y: i32, tab_titles: 
     }
 }
 
-fn draw_nav_bar(buf: &mut [u32], stride: usize, w: i32, nav_y: i32) {
+fn draw_nav_bar(buf: &mut [u32], stride: usize, w: i32, nav_y: i32, is_https: bool, fetching: bool, anim_frame: u32) {
     draw_rect(buf, stride, 0, nav_y, w, NAV_BAR_HEIGHT as i32, BG_DARK);
 
     let btn_h = 34i32;
     let btn_y_pos = nav_y + (NAV_BAR_HEIGHT as i32 - btn_h) / 2;
     let mut bx = NAV_START_X;
 
+    // Back button
     draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
     draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "<", TEXT_WHITE, 1.2);
     bx += NAV_BTN_SIZE as i32 + NAV_BTN_SPACING;
 
+    // Forward button
     draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
     draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, ">", TEXT_WHITE, 1.2);
     bx += NAV_BTN_SIZE as i32 + NAV_BTN_SPACING;
 
+    // Reload button (animated when fetching)
     draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
-    draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "R", TEXT_WHITE, 1.2);
+    if fetching {
+        draw_loading_spinner(buf, stride, bx + NAV_BTN_SIZE as i32 / 2 - 4, btn_y_pos + btn_h / 2 - 4, 8, anim_frame);
+    } else {
+        draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "R", TEXT_WHITE, 1.2);
+    }
     bx += NAV_BTN_SIZE as i32 + NAV_BTN_SPACING;
 
+    // Home button
     draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
     draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "H", TEXT_WHITE, 1.2);
+    bx += NAV_BTN_SIZE as i32 + 14;
+
+    // HTTPS indicator in address bar
+    if is_https {
+        let lock_x = bx + 2;
+        let lock_y = btn_y_pos + 12;
+        draw_rect(buf, stride, lock_x, lock_y + 3, 6, 5, GREEN);
+        draw_rect(buf, stride, lock_x + 1, lock_y, 4, 4, GREEN);
+    }
 }
 
 fn draw_address_bar(
@@ -386,4 +453,142 @@ fn rgba_to_u32(r: f32, g: f32, b: f32, a: f32) -> u32 {
     let bi = (b * 255.0) as u32;
     let ai = (a * 255.0) as u32;
     (ai << 24) | (ri << 16) | (gi << 8) | bi
+}
+
+// === NEW UI FUNCTIONS ===
+
+fn draw_loading_spinner(buf: &mut [u32], stride: usize, cx: i32, cy: i32, size: i32, frame: u32) {
+    let segments = 8;
+    let angle_offset = (frame % 60) as f32 * 0.1;
+    for i in 0..segments {
+        let angle = angle_offset + (i as f32) * std::f32::consts::TAU / segments as f32;
+        let alpha = 1.0 - (i as f32 / segments as f32);
+        let color = if alpha > 0.5 { TEXT_WHITE } else { 0x80FFFFFF };
+        let r = (size as f32) * 0.7;
+        let x = cx + (angle.cos() * r) as i32;
+        let y = cy + (angle.sin() * r) as i32;
+        draw_rect(buf, stride, x - 1, y - 1, 3, 3, color);
+    }
+}
+
+fn draw_loading_animation(buf: &mut [u32], stride: usize, w: i32, content_y: i32, content_h: i32, frame: u32) {
+    let cx = w / 2;
+    let cy = content_y + content_h / 2;
+    draw_loading_spinner(buf, stride, cx - 12, cy - 12, 24, frame);
+    draw_text_noir(buf, stride, w, cx - 50, cy + 30, "Loading...", TEXT_WHITE, 1.4);
+}
+
+fn draw_error_page(buf: &mut [u32], stride: usize, w: i32, content_y: i32, content_h: i32, error: &str, url: &str) {
+    draw_rect(buf, stride, 0, content_y, w, content_h, 0xFF1A0E0E);
+    let cx = w / 2;
+    let cy = content_y + content_h / 2;
+
+    // Error icon (large X)
+    draw_rect(buf, stride, cx - 30, cy - 60, 12, 60, 0xFFE53935);
+    draw_rect(buf, stride, cx + 18, cy - 60, 12, 60, 0xFFE53935);
+
+    draw_text_noir(buf, stride, w, cx - 60, cy + 20, "Failed to load page", TEXT_WHITE, 1.8);
+    draw_text_noir(buf, stride, w, cx - 80, cy + 70, url, TEXT_DIM, 1.0);
+
+    let truncated_err: String = if error.len() > 80 {
+        format!("{}...", &error[..77])
+    } else {
+        error.to_string()
+    };
+    draw_text_noir(buf, stride, w, cx - 100, cy + 110, &truncated_err, 0xFFE57373, 0.9);
+
+    draw_text_noir(buf, stride, w, cx - 60, cy + 160, "Press F5 to retry", TEXT_DIM, 1.0);
+}
+
+fn draw_console_panel(buf: &mut [u32], stride: usize, w: i32, h: i32, messages: &[super::context::ConsoleMessage]) {
+    let panel_h = h / 3;
+    let panel_y = h - panel_h;
+
+    // Background
+    draw_rect(buf, stride, 0, panel_y, w, panel_h, 0xEE0E0E14);
+    // Top border
+    draw_rect(buf, stride, 0, panel_y, w, 1, ACCENT);
+    // Title
+    draw_text_noir(buf, stride, w, 10, panel_y + 8, "Console (F12 to close)", TEXT_WHITE, 1.0);
+
+    // Messages
+    let max_lines = ((panel_h - 30) / 14) as usize;
+    let start = if messages.len() > max_lines {
+        messages.len() - max_lines
+    } else {
+        0
+    };
+
+    for (i, msg) in messages[start..].iter().enumerate() {
+        let y = panel_y + 30 + (i as i32) * 14;
+        let color = match msg.level {
+            super::context::ConsoleLevel::Error => 0xFFFF6B6B,
+            super::context::ConsoleLevel::Warn => 0xFFFFD93D,
+            super::context::ConsoleLevel::Info => 0xFF6BCFFF,
+            _ => TEXT_DIM,
+        };
+        let prefix = match msg.level {
+            super::context::ConsoleLevel::Error => "[ERROR]",
+            super::context::ConsoleLevel::Warn => "[WARN]",
+            super::context::ConsoleLevel::Info => "[INFO]",
+            super::context::ConsoleLevel::Log => "[LOG]",
+        };
+        let truncated: String = if msg.text.len() > 200 {
+            format!("{}...", &msg.text[..197])
+        } else {
+            msg.text.clone()
+        };
+        draw_text_noir(buf, stride, w, 10, y, prefix, color, 0.8);
+        draw_text_noir(buf, stride, w, 70, y, &truncated, TEXT_WHITE, 0.8);
+    }
+}
+
+fn draw_find_bar(buf: &mut [u32], stride: usize, w: i32, h: i32, query: &str) {
+    let bar_w = 400;
+    let bar_h = 36;
+    let bar_x = (w - bar_w) / 2;
+    let bar_y = 80;
+
+    draw_rect(buf, stride, bar_x, bar_y, bar_w, bar_h, BG_ADDRESS_BAR);
+    draw_rect(buf, stride, bar_x, bar_y, bar_w, 1, ACCENT);
+    draw_text_noir(buf, stride, w, bar_x + 12, bar_y + 12, "Find:", TEXT_DIM, 1.0);
+    draw_text_noir(buf, stride, w, bar_x + 60, bar_y + 12, query, TEXT_WHITE, 1.0);
+    let cursor_x = bar_x + 60 + measure_text_width(query, 1.0) as i32 + 2;
+    draw_rect(buf, stride, cursor_x, bar_y + 10, 2, 16, TEXT_WHITE);
+    draw_text_noir(buf, stride, w, bar_x + bar_w - 60, bar_y + 12, "Esc", TEXT_DIM, 0.8);
+}
+
+fn draw_shortcuts_panel(buf: &mut [u32], stride: usize, w: i32, h: i32) {
+    let panel_w = 500;
+    let panel_h = 380;
+    let panel_x = (w - panel_w) / 2;
+    let panel_y = (h - panel_h) / 2;
+
+    draw_rect(buf, stride, panel_x, panel_y, panel_w, panel_h, 0xEE1A1A22);
+    draw_rect(buf, stride, panel_x, panel_y, panel_w, 1, ACCENT);
+
+    draw_text_noir(buf, stride, w, panel_x + 20, panel_y + 12, "Keyboard Shortcuts", TEXT_WHITE, 1.4);
+    draw_text_noir(buf, stride, w, panel_x + 20, panel_y + 14, "_____________", TEXT_DIM, 1.0);
+
+    let shortcuts = [
+        ("Ctrl+T", "New tab"),
+        ("Ctrl+W", "Close tab"),
+        ("Ctrl+L", "Focus address bar"),
+        ("Ctrl+R / F5", "Reload page"),
+        ("Ctrl+Tab", "Next tab"),
+        ("Ctrl+D", "New tab"),
+        ("F1", "Show shortcuts"),
+        ("F11", "Toggle fullscreen"),
+        ("F12", "Toggle console"),
+        ("Ctrl+F", "Find in page"),
+        ("Esc", "Close dialogs"),
+    ];
+
+    for (i, (key, desc)) in shortcuts.iter().enumerate() {
+        let y = panel_y + 50 + (i as i32) * 26;
+        draw_text_noir(buf, stride, w, panel_x + 30, y, key, ACCENT, 1.0);
+        draw_text_noir(buf, stride, w, panel_x + 200, y, desc, TEXT_WHITE, 1.0);
+    }
+
+    draw_text_noir(buf, stride, w, panel_x + 20, panel_y + panel_h - 25, "Press F1 to close", TEXT_DIM, 0.9);
 }

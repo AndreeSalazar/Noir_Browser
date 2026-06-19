@@ -119,6 +119,14 @@ impl ApplicationHandler for NoirApp {
             WindowEvent::CursorMoved { position, .. } => {
                 self.context.mouse_x = position.x as f32;
                 self.context.mouse_y = position.y as f32;
+                self.context.update_hover();
+                if let Some(window) = &self.context.window {
+                    if self.context.is_hovering_link {
+                        window.set_cursor_icon(winit::window::CursorIcon::Pointer);
+                    } else {
+                        window.set_cursor_icon(winit::window::CursorIcon::Default);
+                    }
+                }
             }
 
             WindowEvent::MouseInput { state: ElementState::Pressed, .. } => {
@@ -167,6 +175,10 @@ impl ApplicationHandler for NoirApp {
 
         if self.context.fetching {
             self.context.process_fetch_result();
+            self.context.tick_animation();
+            if let Some(window) = &self.context.window {
+                window.request_redraw();
+            }
         }
 
         self.context.process_pending_timers();

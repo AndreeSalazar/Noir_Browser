@@ -214,6 +214,12 @@ fn handle_ctrl_key(ctx: &mut AppContext, key: &Key) {
                 }
             }
             "d" | "D" => ctx.new_tab(),
+            "f" | "F" => {
+                ctx.find_open = !ctx.find_open;
+                if ctx.find_open {
+                    ctx.find_query.clear();
+                }
+            }
             _ => {}
         }
     } else if let Key::Named(NamedKey::Tab) = key {
@@ -221,6 +227,10 @@ fn handle_ctrl_key(ctx: &mut AppContext, key: &Key) {
             let next = (ctx.active_tab + 1) % ctx.tabs.len();
             ctx.switch_tab(next);
         }
+    } else if let Key::Named(NamedKey::F12) = key {
+        ctx.console_open = !ctx.console_open;
+    } else if let Key::Named(NamedKey::F1) = key {
+        ctx.shortcuts_open = !ctx.shortcuts_open;
     }
 }
 
@@ -235,6 +245,14 @@ fn handle_unfocused_key(ctx: &mut AppContext, key: &Key) {
         if let Some(window) = &ctx.window {
             window.set_maximized(ctx.is_maximized);
         }
+    } else if let Key::Named(NamedKey::F12) = key {
+        ctx.console_open = !ctx.console_open;
+    } else if let Key::Named(NamedKey::F1) = key {
+        ctx.shortcuts_open = !ctx.shortcuts_open;
+    } else if let Key::Named(NamedKey::Escape) = key {
+        ctx.console_open = false;
+        ctx.shortcuts_open = false;
+        ctx.find_open = false;
     }
 }
 
@@ -262,7 +280,12 @@ fn handle_url_input_key(ctx: &mut AppContext, key: &Key) {
         Key::Named(NamedKey::Home) => ctx.url_cursor = 0,
         Key::Named(NamedKey::End) => ctx.url_cursor = ctx.url_bar.len(),
         Key::Named(NamedKey::Enter) => handle_url_submit(ctx),
-        Key::Named(NamedKey::Escape) => ctx.url_focused = false,
+        Key::Named(NamedKey::Escape) => {
+            ctx.url_focused = false;
+            ctx.find_open = false;
+            ctx.console_open = false;
+            ctx.shortcuts_open = false;
+        }
         Key::Character(c) => {
             let ch = c.as_str();
             if !ch.is_empty() {
