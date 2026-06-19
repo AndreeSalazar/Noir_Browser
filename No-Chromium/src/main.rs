@@ -16,9 +16,6 @@
 
 // === MÓDULOS PRINCIPALES ===
 mod app;
-mod browser;
-mod renderer;
-mod vulkan_engine;
 mod network;
 mod parsers;
 mod media;
@@ -76,12 +73,12 @@ impl AppCoordinator {
     async fn run(self) -> anyhow::Result<()> {
         info!("🚀 Starting Noir Browser with {:?} model", self.config.process_model);
         
-        // 1. Inicializar motor Vulkan (Fase 0 - base ultra-fast)
-        #[cfg(feature = "ultrafast")]
-        {
-            info!("⚡ Initializing Vulkan 1.3 Ultra-Fast Engine...");
-            self.init_vulkan_engine().await?;
-        }
+        // 1. Inicializar motor Vulkan (Fase 0 - base ultra-fast) [DISABLED - archived]
+        // #[cfg(feature = "ultrafast")]
+        // {
+        //     info!("⚡ Initializing Vulkan 1.3 Ultra-Fast Engine...");
+        //     self.init_vulkan_engine().await?;
+        // }
         
         // 2. Inicializar módulos de privacidad si están habilitados
         #[cfg(feature = "privacy")]
@@ -109,11 +106,11 @@ impl AppCoordinator {
         Ok(())
     }
     
-    async fn init_vulkan_engine(&self) -> anyhow::Result<()> {
-        // Delegar al módulo vulkan_engine
-        vulkan_engine::UltraFastVulkanEngine::initialize().await?;
-        Ok(())
-    }
+    // [ARCHIVED] Vulkan engine initialization - moved to archive/
+    // async fn init_vulkan_engine(&self) -> anyhow::Result<()> {
+    //     vulkan_engine::UltraFastVulkanEngine::initialize().await?;
+    //     Ok(())
+    // }
     
     #[cfg(feature = "privacy")]
     async fn init_privacy_module(&self) -> anyhow::Result<()> {
@@ -153,8 +150,8 @@ impl AppCoordinator {
         // 2. Cerrar conexiones de red limpiamente
         let _ = network::NetworkCoordinator::shutdown().await;
         
-        // 3. Liberar recursos Vulkan
-        let _ = vulkan_engine::UltraFastVulkanEngine::shutdown().await;
+        // 3. Liberar recursos Vulkan [ARCHIVED]
+        // let _ = vulkan_engine::UltraFastVulkanEngine::shutdown().await;
         
         // 4. El Runtime se limpia automáticamente al salir del scope
         // self.runtime.shutdown_timeout(std::time::Duration::from_secs(5));

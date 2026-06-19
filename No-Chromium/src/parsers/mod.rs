@@ -1,5 +1,4 @@
 pub mod html_elements;
-pub mod html_lexer_legacy;
 pub mod dom_tree;
 pub mod dom_native;
 pub mod css_simple;
@@ -10,6 +9,5 @@ pub mod page_document;
 pub mod layout;
 pub mod events;
 pub mod resource_loader;
-pub mod shaders;
 pub mod style_collector;
 pub mod webidl_bridge;

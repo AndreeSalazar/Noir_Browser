@@ -1,12 +1,9 @@
 // ✅ Agrega esto al inicio de src/lib.rs
 pub mod app;
-pub mod browser;
-pub mod renderer;
 pub mod network;
 pub mod parsers;
 pub mod media;
 pub mod utils;
-pub mod vulkan_engine;
 pub mod js_engine;
 
 // Luego tus imports...
