@@ -11,6 +11,7 @@ pub mod dom;
 pub mod console;
 pub mod timer;
 pub mod fetch;
+pub mod promise;
 pub mod builtins;
 
 pub use value::JsValue;

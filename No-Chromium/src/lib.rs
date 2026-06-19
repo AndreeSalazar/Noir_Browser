@@ -7,6 +7,7 @@ pub mod parsers;
 pub mod media;
 pub mod utils;
 pub mod wasm_engine;
+pub mod renderer_trait;
 
 // Luego tus imports...
 use crate::app::AppConfig;

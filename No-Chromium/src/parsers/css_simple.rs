@@ -38,6 +38,24 @@ pub struct CssDeclarations {
     pub text_align: Option<String>,
     pub text_transform: Option<String>,
     pub border_radius: Option<String>,
+    // Flexbox
+    pub flex_direction: Option<String>,
+    pub flex_wrap: Option<String>,
+    pub justify_content: Option<String>,
+    pub align_items: Option<String>,
+    pub align_content: Option<String>,
+    pub flex: Option<String>,
+    pub flex_grow: Option<String>,
+    pub flex_shrink: Option<String>,
+    pub flex_basis: Option<String>,
+    pub align_self: Option<String>,
+    pub order: Option<String>,
+    // Grid
+    pub grid_template_columns: Option<String>,
+    pub grid_template_rows: Option<String>,
+    pub grid_gap: Option<String>,
+    pub grid_column: Option<String>,
+    pub grid_row: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -148,6 +166,24 @@ impl CssDeclarations {
         assign_if_some(&mut self.text_align, &other.text_align);
         assign_if_some(&mut self.text_transform, &other.text_transform);
         assign_if_some(&mut self.border_radius, &other.border_radius);
+        // Flexbox
+        assign_if_some(&mut self.flex_direction, &other.flex_direction);
+        assign_if_some(&mut self.flex_wrap, &other.flex_wrap);
+        assign_if_some(&mut self.justify_content, &other.justify_content);
+        assign_if_some(&mut self.align_items, &other.align_items);
+        assign_if_some(&mut self.align_content, &other.align_content);
+        assign_if_some(&mut self.flex, &other.flex);
+        assign_if_some(&mut self.flex_grow, &other.flex_grow);
+        assign_if_some(&mut self.flex_shrink, &other.flex_shrink);
+        assign_if_some(&mut self.flex_basis, &other.flex_basis);
+        assign_if_some(&mut self.align_self, &other.align_self);
+        assign_if_some(&mut self.order, &other.order);
+        // Grid
+        assign_if_some(&mut self.grid_template_columns, &other.grid_template_columns);
+        assign_if_some(&mut self.grid_template_rows, &other.grid_template_rows);
+        assign_if_some(&mut self.grid_gap, &other.grid_gap);
+        assign_if_some(&mut self.grid_column, &other.grid_column);
+        assign_if_some(&mut self.grid_row, &other.grid_row);
     }
 }
 
@@ -457,6 +493,47 @@ fn parse_declarations(text: &str) -> CssDeclarations {
             "text-align" => declarations.text_align = Some(value),
             "text-transform" => declarations.text_transform = Some(value),
             "border-radius" => declarations.border_radius = Some(value),
+            // Flexbox
+            "flex-direction" => declarations.flex_direction = Some(value),
+            "flex-wrap" => declarations.flex_wrap = Some(value),
+            "justify-content" => declarations.justify_content = Some(value),
+            "align-items" => declarations.align_items = Some(value),
+            "align-content" => declarations.align_content = Some(value),
+            "flex" => declarations.flex = Some(value),
+            "flex-grow" => declarations.flex_grow = Some(value),
+            "flex-shrink" => declarations.flex_shrink = Some(value),
+            "flex-basis" => declarations.flex_basis = Some(value),
+            "align-self" => declarations.align_self = Some(value),
+            "order" => declarations.order = Some(value),
+            // Grid
+            "grid-template-columns" => declarations.grid_template_columns = Some(value),
+            "grid-template-rows" => declarations.grid_template_rows = Some(value),
+            "grid-gap" => declarations.grid_gap = Some(value),
+            "grid-column" => declarations.grid_column = Some(value),
+            "grid-row" => declarations.grid_row = Some(value),
+            // Additional
+            "height" => declarations.width = Some(value.clone()),
+            "min-height" => {}
+            "min-width" => {}
+            "overflow" => {}
+            "position" => {}
+            "top" => {}
+            "left" => {}
+            "right" => {}
+            "bottom" => {}
+            "z-index" => {}
+            "cursor" => {}
+            "border" => {}
+            "border-color" => {}
+            "border-width" => {}
+            "border-style" => {}
+            "box-shadow" => {}
+            "text-decoration" => {}
+            "letter-spacing" => {}
+            "word-spacing" => {}
+            "white-space" => {}
+            "overflow-x" => {}
+            "overflow-y" => {}
             _ => {}
         }
     }

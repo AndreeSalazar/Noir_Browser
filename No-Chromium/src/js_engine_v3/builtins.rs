@@ -171,4 +171,11 @@ pub fn register_builtins(env: &Rc<RefCell<Env>>, dom: &Rc<RefCell<Dom>>, _consol
     }});
 
     let _ = dom; // Suppress unused warning
+
+    // Promise (basic)
+    global.set("Promise".to_string(), JsValue::NativeFunction {
+        name: "Promise".to_string(),
+        func: super::promise::js_promise_constructor,
+    });
 }
+

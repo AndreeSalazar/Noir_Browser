@@ -23,6 +23,18 @@ pub struct ImageBlock {
 }
 
 #[derive(Clone, Debug)]
+pub struct VideoBlock {
+    pub src: String,
+    pub poster: Option<String>,
+    pub controls: bool,
+    pub autoplay: bool,
+    pub loop_video: bool,
+    pub muted: bool,
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+}
+
+#[derive(Clone, Debug)]
 pub struct LinkInfo {
     pub text: String,
     pub href: String,
@@ -34,6 +46,7 @@ pub struct PageDocument {
     pub title: String,
     pub text_blocks: Vec<TextBlock>,
     pub image_blocks: Vec<ImageBlock>,
+    pub video_blocks: Vec<VideoBlock>,
     pub links: Vec<LinkInfo>,
     pub style_blocks: Vec<String>,
     pub css_urls: Vec<String>,
@@ -47,6 +60,7 @@ impl PageDocument {
             title: String::new(),
             text_blocks: Vec::new(),
             image_blocks: Vec::new(),
+            video_blocks: Vec::new(),
             links: Vec::new(),
             style_blocks: Vec::new(),
             css_urls: Vec::new(),
@@ -334,6 +348,31 @@ impl PageDocument {
                                     height,
                                     lazy: attributes.get("loading").map(|v| v == "lazy").unwrap_or(false),
                                 });
+                            }
+                        }
+                        HtmlTag::Video => {
+                            if let Some(src) = attributes.get("src") {
+                                let resolved = self.resolve_href(src);
+                                let poster = attributes.get("poster").map(|s| self.resolve_href(s));
+                                let width = attributes.get("width")
+                                    .and_then(|w| w.trim().parse::<f32>().ok());
+                                let height = attributes.get("height")
+                                    .and_then(|h| h.trim().parse::<f32>().ok());
+                                self.video_blocks.push(VideoBlock {
+                                    src: resolved,
+                                    poster,
+                                    controls: attributes.get("controls").is_some(),
+                                    autoplay: attributes.get("autoplay").is_some(),
+                                    loop_video: attributes.get("loop").is_some(),
+                                    muted: attributes.get("muted").is_some(),
+                                    width,
+                                    height,
+                                });
+                            }
+                        }
+                        HtmlTag::Audio => {
+                            if let Some(src) = attributes.get("src") {
+                                tracing::info!("Audio source: {}", src);
                             }
                         }
                         HtmlTag::Blockquote => {
