@@ -6,7 +6,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::js_engine_v2::interpreter::{Value as JsValue, Interpreter};
+use crate::js_engine_v3::interpreter::Interpreter;
+use crate::js_engine_v3::JsValue;
 use crate::wasm_engine::{Instance, Value as WasmValue, WasmResult};
 
 pub struct Bridge {
@@ -99,7 +100,7 @@ impl Bridge {
                 // WASM doesn't have native strings, use memory pointer
                 WasmValue::I32(s.len() as i32)
             }
-            JsValue::Bool(b) => WasmValue::I32(if *b { 1 } else { 0 }),
+            JsValue::Boolean(b) => WasmValue::I32(if *b { 1 } else { 0 }),
             JsValue::Null | JsValue::Undefined => WasmValue::I32(0),
             _ => WasmValue::I32(0),
         }
@@ -192,8 +193,8 @@ mod tests {
         let bridge = Bridge::new(interp);
 
         assert_eq!(bridge.js_to_wasm(&JsValue::Number(42.0)), WasmValue::I32(42));
-        assert_eq!(bridge.js_to_wasm(&JsValue::Bool(true)), WasmValue::I32(1));
-        assert_eq!(bridge.js_to_wasm(&JsValue::Bool(false)), WasmValue::I32(0));
+        assert_eq!(bridge.js_to_wasm(&JsValue::Boolean(true)), WasmValue::I32(1));
+        assert_eq!(bridge.js_to_wasm(&JsValue::Boolean(false)), WasmValue::I32(0));
     }
 
     #[test]

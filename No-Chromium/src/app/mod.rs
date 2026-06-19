@@ -159,13 +159,14 @@ impl NoirApp {
         let num_links = page.links.len();
 
         let nodes = crate::parsers::dom_tree::parse_html(html);
-        crate::js_engine::dom_sync::sync_dom_to_js_engine(&nodes);
+        crate::js_engine_v3::sync_dom_to_js_engine(&nodes);
 
-        let scripts = crate::js_engine::dom_sync::extract_inline_scripts(&nodes);
-        let tab_id = self.tabs[self.active_tab].tab_id;
+        let scripts = crate::js_engine_v3::extract_inline_scripts(&nodes);
         for (i, script) in scripts.iter().enumerate() {
             tracing::info!("Executing inline script #{} ({} bytes)", i + 1, script.len());
-            match self.tabs[self.active_tab].js_engine.eval_script(tab_id, script) {
+            let active_idx = self.active_tab;
+            let tab_id = self.tabs[active_idx].tab_id;
+            match crate::js_engine_v3::eval_script(&mut self.tabs[active_idx].js_engine, tab_id, script) {
                 Ok(result) => {
                     if !result.is_empty() && result != "undefined" {
                         tracing::info!("Script result: {}", result);
@@ -177,9 +178,9 @@ impl NoirApp {
             }
         }
 
-        if crate::js_engine::dom_bridge::take_mutated_flag() {
+        if crate::js_engine_v3::take_mutated_flag() {
             tracing::info!("DOM mutated by JS, rebuilding layout");
-            crate::js_engine::dom_sync::rebuild_page_from_dom(&mut page);
+            crate::js_engine_v3::rebuild_page_from_dom(&mut page);
         }
 
         let viewport_w = self.width as f32;
@@ -254,15 +255,18 @@ impl NoirApp {
     }
 
     fn process_pending_timers(&mut self) {
-        let pending = crate::js_engine::bindings::get_pending_timers();
+        let pending = crate::js_engine_v3::get_pending_timers();
         if pending.is_empty() { return; }
 
-        let tab_id = self.tabs[self.active_tab].tab_id;
+        let active_idx = self.active_tab;
+        let tab_id = self.tabs[active_idx].tab_id;
         for timer in pending {
             let callback_name = format!("__callback_{}", timer.callback_id);
-            let _ = self.tabs[self.active_tab].js_engine.eval_script(tab_id, &format!(
-                "if (typeof {} === 'function') {}();", callback_name, callback_name
-            ));
+            let _ = crate::js_engine_v3::eval_script(
+                &mut self.tabs[active_idx].js_engine,
+                tab_id,
+                &format!("if (typeof {} === 'function') {}();", callback_name, callback_name)
+            );
         }
         if let Some(window) = &self.window {
             window.request_redraw();

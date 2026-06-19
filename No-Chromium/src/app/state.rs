@@ -6,7 +6,11 @@ use winit::keyboard::ModifiersState;
 use super::theme::*;
 use crate::parsers::page_document::PageDocument;
 use crate::parsers::layout::LayoutItem;
-use crate::js_engine::JsEngine;
+use crate::js_engine_v3::Interpreter;
+use crate::js_engine_v3::lexer::Lexer;
+use crate::js_engine_v3::parser::Parser;
+use crate::js_engine_v3::ast::Program;
+use crate::js_engine_v3::value::JsValue;
 
 pub struct TabState {
     pub title: String,
@@ -15,7 +19,7 @@ pub struct TabState {
     pub layout_blocks: Vec<LayoutItem>,
     pub scroll_y: f32,
     pub content_height: f32,
-    pub js_engine: JsEngine,
+    pub js_engine: Interpreter,
     pub tab_id: u64,
 }
 
@@ -28,7 +32,7 @@ impl Default for TabState {
             layout_blocks: Vec::new(),
             scroll_y: 0.0,
             content_height: 0.0,
-            js_engine: JsEngine::new(),
+            js_engine: Interpreter::new(),
             tab_id: 0,
         }
     }
@@ -62,7 +66,6 @@ impl NoirApp {
         let mut tabs = Vec::new();
         let mut first_tab = TabState::default();
         first_tab.tab_id = 1;
-        let _ = first_tab.js_engine.init_tab(1);
         tabs.push(first_tab);
         Self {
             window: None,
@@ -124,7 +127,6 @@ impl NoirApp {
             let mut tab = TabState::default();
             tab.tab_id = self.next_tab_id;
             self.next_tab_id += 1;
-            let _ = tab.js_engine.init_tab(tab.tab_id);
             self.tabs.push(tab);
             self.active_tab = self.tabs.len() - 1;
             self.url_bar.clear();

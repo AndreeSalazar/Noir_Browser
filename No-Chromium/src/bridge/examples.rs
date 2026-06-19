@@ -1,9 +1,9 @@
 //! Ejemplos de uso del bridge JS <-> WASM
 
 use crate::bridge::Bridge;
-use crate::js_engine_v2::lexer::Lexer;
-use crate::js_engine_v2::parser::Parser;
-use crate::js_engine_v2::interpreter::Interpreter;
+use crate::js_engine_v3::lexer::Lexer;
+use crate::js_engine_v3::parser::Parser;
+use crate::js_engine_v3::interpreter::Interpreter;
 use crate::wasm_engine::{Decoder, Instance};
 use std::sync::{Arc, Mutex};
 
