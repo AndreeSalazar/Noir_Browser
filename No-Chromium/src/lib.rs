@@ -1,12 +1,11 @@
 // ✅ Agrega esto al inicio de src/lib.rs
 pub mod app;
 pub mod bridge;
-pub mod js_engine_v2;
+pub mod js_engine_v3;
 pub mod network;
 pub mod parsers;
 pub mod media;
 pub mod utils;
-pub mod js_engine;
 pub mod wasm_engine;
 
 // Luego tus imports...
