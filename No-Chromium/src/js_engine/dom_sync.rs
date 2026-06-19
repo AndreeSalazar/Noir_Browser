@@ -328,6 +328,7 @@ fn render_element(
                     alt,
                     width: None,
                     height: None,
+                    lazy: false,
                 });
             }
         }

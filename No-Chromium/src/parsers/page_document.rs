@@ -19,6 +19,7 @@ pub struct ImageBlock {
     pub alt: String,
     pub width: Option<f32>,
     pub height: Option<f32>,
+    pub lazy: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -331,6 +332,7 @@ impl PageDocument {
                                     alt,
                                     width,
                                     height,
+                                    lazy: attributes.get("loading").map(|v| v == "lazy").unwrap_or(false),
                                 });
                             }
                         }

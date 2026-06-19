@@ -15,6 +15,7 @@ pub struct ImageLayoutBlock {
     pub h: f32,
     pub src: String,
     pub alt: String,
+    pub lazy: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -101,6 +102,7 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
                 h: img_h,
                 src: img_block.src.clone(),
                 alt: img_block.alt.clone(),
+                lazy: img_block.lazy,
             }));
             ctx.cursor_y += img_h + 8.0;
             img_idx += 1;

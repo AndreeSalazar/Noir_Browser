@@ -388,10 +388,14 @@ fn render_layout_blocks(
                         screen_w, content_y + content_h,
                     );
                 } else {
-                    let placeholder = if img.alt.is_empty() { "Loading image..." } else { &img.alt };
-                    draw_text_noir(buf, stride, screen_w, ix + 4, iy + ih / 2 - 6, placeholder, TEXT_DIM, 0.8);
-                    let src_text = if img.src.len() > 40 { format!("{}...", &img.src[..37]) } else { img.src.clone() };
-                    draw_text_noir(buf, stride, screen_w, ix + 4, iy + ih / 2 + 8, &src_text, 0xFF666666, 0.7);
+                    crate::media::draw_placeholder(
+                        buf, stride,
+                        ix, iy, iw, ih,
+                        screen_w, content_y + content_h,
+                        true,
+                    );
+                    let placeholder = if img.alt.is_empty() { "Loading..." } else { &img.alt };
+                    draw_text_noir(buf, stride, screen_w, ix + 6, iy + ih / 2 - 4, placeholder, TEXT_DIM, 0.8);
                 }
             }
         }
@@ -517,26 +521,32 @@ impl ApplicationHandler for NoirApp {
 
                         if !page.css_urls.is_empty() {
                             tracing::info!("Fetching {} external CSS files", page.css_urls.len());
-                            let rt = tokio::runtime::Handle::current();
                             for css_url in &page.css_urls {
                                 let css_url_clone = css_url.clone();
-                                let result = rt.block_on(async {
+                                let result_holder: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                                let result_clone = result_holder.clone();
+                                tokio::spawn(async move {
                                     let client = reqwest::Client::builder()
                                         .timeout(std::time::Duration::from_secs(5))
                                         .build()
                                         .unwrap_or_default();
-                                    match client.get(&css_url_clone).send().await {
+                                    let css = match client.get(&css_url_clone).send().await {
                                         Ok(resp) => match resp.text().await {
-                                            Ok(css) => Some(css),
+                                            Ok(c) => Some(c),
                                             Err(_) => None,
                                         },
                                         Err(_) => None,
+                                    };
+                                    if let Ok(mut guard) = result_clone.lock() {
+                                        *guard = css;
                                     }
                                 });
-                                if let Some(css) = result {
-                                    tracing::info!("Loaded CSS from {} ({} bytes)", css_url, css.len());
-                                    page.style_blocks.push(css);
-                                }
+                                if let Ok(guard) = result_holder.lock() {
+                                    if let Some(css) = guard.as_ref() {
+                                        tracing::info!("Loaded CSS from {} ({} bytes)", css_url, css.len());
+                                        page.style_blocks.push(css.clone());
+                                    }
+                                };
                             }
                         }
 
@@ -577,6 +587,26 @@ impl ApplicationHandler for NoirApp {
                         self.tabs[self.active_tab].layout_blocks = blocks;
                         self.tabs[self.active_tab].content_height = content_h;
                         self.tabs[self.active_tab].title = if !title.is_empty() { title } else { self.tabs[self.active_tab].url.clone() };
+
+                        let imgs_to_fetch: Vec<String> = self.tabs[self.active_tab].layout_blocks.iter().filter_map(|item| {
+                            if let crate::parsers::layout::LayoutItem::Image(img) = item {
+                                if crate::media::get_cached_image(&img.src).is_none() && !img.src.is_empty() && img.src.starts_with("http") {
+                                    Some(img.src.clone())
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }).collect();
+                        if !imgs_to_fetch.is_empty() {
+                            tracing::info!("Queueing {} images for async fetch", imgs_to_fetch.len());
+                            for img_url in imgs_to_fetch {
+                                tokio::spawn(async move {
+                                    crate::media::fetch_image(&img_url).await;
+                                });
+                            }
+                        }
                         done = true;
                     }
                 }
@@ -599,6 +629,12 @@ impl ApplicationHandler for NoirApp {
                     "if (typeof {} === 'function') {}();", callback_name, callback_name
                 ));
             }
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+        }
+
+        if crate::media::take_image_dirty() {
             if let Some(window) = &self.window {
                 window.request_redraw();
             }
