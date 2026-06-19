@@ -22,7 +22,7 @@ mod network;
 mod parsers;
 mod media;
 mod utils;
-mod wasm_engine;
+mod wasm_v2;
 mod renderer_trait;
 
 #[cfg(feature = "privacy")]

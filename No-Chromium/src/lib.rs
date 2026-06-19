@@ -6,7 +6,7 @@ pub mod network;
 pub mod parsers;
 pub mod media;
 pub mod utils;
-pub mod wasm_engine;
+pub mod wasm_v2;
 pub mod renderer_trait;
 
 // Luego tus imports...

@@ -8,11 +8,12 @@ use std::sync::{Arc, Mutex};
 
 use crate::js_engine_v3::interpreter::Interpreter;
 use crate::js_engine_v3::JsValue;
-use crate::wasm_engine::{Instance, Value as WasmValue, WasmResult};
+use crate::wasm_v2::{Instance, Runtime, Value as WasmValue, WasmResult};
 
 pub struct Bridge {
     js_interp: Arc<Mutex<Interpreter>>,
     wasm_instances: Arc<Mutex<HashMap<String, Arc<Mutex<Instance>>>>>,
+    runtime: Arc<Mutex<Runtime>>,
     call_count: Arc<Mutex<u64>>,
 }
 
@@ -21,6 +22,7 @@ impl Bridge {
         Self {
             js_interp,
             wasm_instances: Arc::new(Mutex::new(HashMap::new())),
+            runtime: Arc::new(Mutex::new(Runtime::new())),
             call_count: Arc::new(Mutex::new(0)),
         }
     }
@@ -33,16 +35,17 @@ impl Bridge {
     pub fn js_call_wasm(&self, module: &str, func: &str, args: Vec<JsValue>) -> WasmResult<Vec<JsValue>> {
         *self.call_count.lock().unwrap() += 1;
 
-        let instances = self.wasm_instances.lock().unwrap();
-        let instance = instances.get(module)
-            .ok_or_else(|| crate::wasm_engine::WasmError::Trap(format!("Module not found: {}", module)))?;
-        let mut instance = instance.lock().unwrap();
-
         // Convert JS args to WASM args
         let wasm_args: Vec<WasmValue> = args.iter().map(|v| self.js_to_wasm(v)).collect();
 
-        // Call WASM function
-        let results = instance.call(func, &wasm_args)?;
+        // Call WASM function through runtime
+        // Find instance by name
+        let instance_idx = {
+            let instances = self.wasm_instances.lock().unwrap();
+            instances.keys().position(|k| k == module)
+                .ok_or_else(|| crate::wasm_v2::WasmError::Link(format!("Module not found: {}", module)))?
+        };
+        let results = self.runtime.lock().unwrap().call(instance_idx, func, &wasm_args)?;
 
         // Convert WASM results to JS
         Ok(results.iter().map(|v| self.wasm_to_js(v)).collect())
@@ -63,7 +66,7 @@ impl Bridge {
         // Convert JS result to WASM
         match result {
             Ok(v) => Ok(self.js_to_wasm(&v)),
-            Err(e) => Err(crate::wasm_engine::WasmError::Trap(e)),
+            Err(e) => Err(crate::wasm_v2::WasmError::Trap(e)),
         }
     }
 
