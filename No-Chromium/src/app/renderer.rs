@@ -1,62 +1,128 @@
+//! Chrome UI Renderer - Dibuja la interfaz Chrome-like
+//!
+//! Constantes de layout y funciones de dibujo para la UI.
+
+use super::context::AppContext;
 use super::draw::{draw_rect, draw_text_noir, measure_text_width};
-use super::state::NoirApp;
-use super::theme::*;
+use crate::parsers::layout::LayoutItem;
 use crate::parsers::layout::total_content_height;
 
-impl NoirApp {
-    pub fn draw_frame(&mut self) {
-        let display_url = self.display_url();
-        let url_color = self.url_text_color();
-        let url_bar_empty = self.url_bar.is_empty();
-        let url_focused = self.url_focused;
-        let active_tab = self.active_tab;
-        let tab_titles: Vec<String> = self.tabs.iter().map(|t| {
-            if t.title.len() > 20 {
-                format!("{}...", &t.title[..17])
-            } else {
-                t.title.clone()
-            }
-        }).collect();
-        let active_url = self.tabs[active_tab].url.clone();
-        let layout_blocks = self.tabs[active_tab].layout_blocks.clone();
-        let scroll_y = self.tabs[active_tab].scroll_y;
+// === LAYOUT CONSTANTS ===
+pub const TITLE_BAR_HEIGHT: u32 = 32;
+pub const TAB_BAR_HEIGHT: u32 = 36;
+pub const NAV_BAR_HEIGHT: u32 = 44;
+pub const TOOLBAR_HEIGHT: u32 = TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT + NAV_BAR_HEIGHT;
+pub const TAB_WIDTH: u32 = 200;
+pub const TAB_SPACING: i32 = 4;
+pub const NAV_BTN_SIZE: u32 = 34;
+pub const NAV_BTN_SPACING: i32 = 6;
+pub const NAV_START_X: i32 = 8;
 
-        let (surface, window) = match (&mut self.surface, &self.window) {
-            (Some(s), Some(w)) => (s, w),
-            _ => return,
-        };
+// === COLORS ===
+const BG_CONTENT: u32 = 0xFF12121A;
+const BG_TITLEBAR: u32 = 0xFF1A1A22;
+const BG_TAB_BAR: u32 = 0xFF15151E;
+const BG_ADDRESS_BAR: u32 = 0xFF1E1E26;
+const BG_ADDRESS_BAR_FOCUS: u32 = 0xFF2A2A35;
+const BG_DARK: u32 = 0xFF0E0E14;
+const BG_LINK_CARD: u32 = 0xFF1F1F28;
+const ACCENT: u32 = 0xFFFF3344;
+const TEXT_WHITE: u32 = 0xFFFFFFFF;
+const TEXT_DIM: u32 = 0xFFB0B0B8;
+const TEXT_PLACEHOLDER: u32 = 0xFF707078;
+const BTN_BG: u32 = 0xFF2A2A35;
+const CLOSE_RED: u32 = 0xFFE53935;
+const GREEN: u32 = 0xFF4CAF50;
+const LINK_GOOGLE: u32 = 0xFF4285F4;
+const LINK_GITHUB: u32 = 0xFF24292E;
+const LINK_YOUTUBE: u32 = 0xFFFF0000;
+const LINK_RUST: u32 = 0xFFCE422B;
 
-        let size = window.inner_size();
-        let width = size.width.max(1);
-        let height = size.height.max(1);
+/// Dibuja un frame completo
+pub fn draw(ctx: &mut AppContext) {
+    let display_url = ctx.url_bar.clone();
+    let url_color = 0xFFE0E0E8;
+    let url_bar_empty = ctx.url_bar.is_empty();
+    let url_focused = ctx.url_focused;
+    let active_tab = ctx.active_tab;
+    let active_url = ctx.tabs[active_tab].url.clone();
+    let layout_blocks = ctx.tabs[active_tab].layout_blocks.clone();
+    let scroll_y = ctx.tabs[active_tab].scroll_y;
+    let fetching = ctx.fetching;
 
-        let mut buffer = surface.buffer_mut().unwrap();
-        let buf = buffer.as_mut();
-        let stride = width as usize;
+    let (surface, window) = match (&mut ctx.surface, &ctx.window) {
+        (Some(s), Some(w)) => (s, w),
+        _ => return,
+    };
 
-        for pixel in buf.iter_mut() {
-            *pixel = BG_CONTENT;
-        }
+    let size = window.inner_size();
+    let width = size.width.max(1);
+    let height = size.height.max(1);
 
-        let w = width as i32;
-        let h = height as i32;
+    let mut buffer = surface.buffer_mut().unwrap();
+    let buf = buffer.as_mut();
+    let stride = width as usize;
 
-        draw_title_bar(buf, stride, w);
-        draw_tab_bar(buf, stride, w, &tab_titles, active_tab, tab_y_from_height());
-        draw_nav_bar(buf, stride, w);
-        draw_address_bar(buf, stride, w, &display_url, url_color, url_focused, url_bar_empty);
-        draw_content_area(buf, stride, w, h, &active_url, &layout_blocks, scroll_y, self.fetching);
-        draw_scroll_indicator(buf, stride, w, h, &layout_blocks, scroll_y);
-
-        buffer.present().unwrap();
+    for pixel in buf.iter_mut() {
+        *pixel = BG_CONTENT;
     }
+
+    let w = width as i32;
+    let h = height as i32;
+
+    let tab_titles: Vec<String> = ctx.tabs.iter().map(|t| {
+        if t.title.len() > 20 {
+            format!("{}...", &t.title[..17])
+        } else {
+            t.title.clone()
+        }
+    }).collect();
+
+    // Title bar
+    draw_title_bar(buf, stride, w, &tab_titles, active_tab);
+
+    // Tab bar
+    let tab_y = TITLE_BAR_HEIGHT as i32;
+    draw_tab_bar(buf, stride, w, tab_y, &tab_titles, active_tab);
+
+    // Nav bar
+    let nav_y = (TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT) as i32;
+    draw_nav_bar(buf, stride, w, nav_y);
+
+    // Address bar
+    draw_address_bar(buf, stride, w, &display_url, url_color, url_focused, url_bar_empty);
+
+    // Content
+    let content_y = TOOLBAR_HEIGHT as i32;
+    let content_h = h - content_y;
+
+    if active_url.is_empty() {
+        draw_new_tab_page(buf, stride, w, content_y, content_h);
+    } else if fetching {
+        draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Loading...", TEXT_DIM, 1.2);
+        draw_text_noir(buf, stride, w, 30, content_y + 80, &active_url, TEXT_PLACEHOLDER, 1.0);
+    } else if !layout_blocks.is_empty() {
+        render_layout_blocks(buf, stride, w, content_y, content_h, &layout_blocks, scroll_y);
+    } else {
+        draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Empty", TEXT_DIM, 1.2);
+    }
+
+    // Scroll indicator
+    if !layout_blocks.is_empty() {
+        let total_h = total_content_height(&layout_blocks);
+        if total_h > content_h as f32 && content_h > 0 {
+            let view_ratio = content_h as f32 / total_h;
+            let scroll_ratio = scroll_y / (total_h - content_h as f32).max(1.0);
+            let bar_h = (content_h as f32 * view_ratio).max(20.0);
+            let bar_y = content_y as f32 + scroll_ratio * (content_h as f32 - bar_h);
+            draw_rect(buf, stride, w - 6, bar_y as i32, 4, bar_h as i32, 0x40FFFFFF);
+        }
+    }
+
+    buffer.present().unwrap();
 }
 
-fn tab_y_from_height() -> i32 {
-    TITLE_BAR_HEIGHT as i32
-}
-
-fn draw_title_bar(buf: &mut [u32], stride: usize, w: i32) {
+fn draw_title_bar(buf: &mut [u32], stride: usize, w: i32, _tab_titles: &[String], _active_tab: usize) {
     draw_rect(buf, stride, 0, 0, w, TITLE_BAR_HEIGHT as i32, BG_TITLEBAR);
     draw_rect(buf, stride, 10, 10, 14, 14, ACCENT);
     draw_text_noir(buf, stride, w, 30, 11, "Noir Browser", TEXT_DIM, 1.0);
@@ -78,12 +144,12 @@ fn draw_title_bar(buf: &mut [u32], stride: usize, w: i32) {
     draw_text_noir(buf, stride, w, close_x + 17, 11, "X", TEXT_WHITE, 1.0);
 }
 
-fn draw_tab_bar(buf: &mut [u32], stride: usize, w: i32, tab_titles: &[String], active_tab: usize, tab_y: i32) {
+fn draw_tab_bar(buf: &mut [u32], stride: usize, w: i32, tab_y: i32, tab_titles: &[String], active_tab: usize) {
     draw_rect(buf, stride, 0, tab_y, w, TAB_BAR_HEIGHT as i32, BG_TAB_BAR);
 
     let mut tx = 4i32;
     for (i, title) in tab_titles.iter().enumerate() {
-        let tab_w = TAB_WIDTH.min(w - tx - 100);
+        let tab_w = TAB_WIDTH.min(w as u32 - tx as u32 - 100) as i32;
         if tx + tab_w > w - 100 { break; }
 
         let ty = tab_y + 4;
@@ -111,27 +177,26 @@ fn draw_tab_bar(buf: &mut [u32], stride: usize, w: i32, tab_titles: &[String], a
     }
 }
 
-fn draw_nav_bar(buf: &mut [u32], stride: usize, w: i32) {
-    let nav_y = (TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT) as i32;
+fn draw_nav_bar(buf: &mut [u32], stride: usize, w: i32, nav_y: i32) {
     draw_rect(buf, stride, 0, nav_y, w, NAV_BAR_HEIGHT as i32, BG_DARK);
 
     let btn_h = 34i32;
     let btn_y_pos = nav_y + (NAV_BAR_HEIGHT as i32 - btn_h) / 2;
     let mut bx = NAV_START_X;
 
-    draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
+    draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
     draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "<", TEXT_WHITE, 1.2);
-    bx += NAV_BTN_SIZE + NAV_BTN_SPACING;
+    bx += NAV_BTN_SIZE as i32 + NAV_BTN_SPACING;
 
-    draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
+    draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
     draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, ">", TEXT_WHITE, 1.2);
-    bx += NAV_BTN_SIZE + NAV_BTN_SPACING;
+    bx += NAV_BTN_SIZE as i32 + NAV_BTN_SPACING;
 
-    draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
+    draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
     draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "R", TEXT_WHITE, 1.2);
-    bx += NAV_BTN_SIZE + NAV_BTN_SPACING;
+    bx += NAV_BTN_SIZE as i32 + NAV_BTN_SPACING;
 
-    draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE, btn_h, BTN_BG);
+    draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
     draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "H", TEXT_WHITE, 1.2);
 }
 
@@ -148,8 +213,8 @@ fn draw_address_bar(
     let btn_h = 34i32;
     let btn_y_pos = nav_y + (NAV_BAR_HEIGHT as i32 - btn_h) / 2;
     let mut bx = NAV_START_X;
-    bx += (NAV_BTN_SIZE + NAV_BTN_SPACING) * 3;
-    bx += NAV_BTN_SIZE + 14;
+    bx += (NAV_BTN_SIZE as i32 + NAV_BTN_SPACING) * 3;
+    bx += NAV_BTN_SIZE as i32 + 14;
 
     let ab_w = w - bx - 16;
     if ab_w <= 80 { return; }
@@ -164,7 +229,7 @@ fn draw_address_bar(
         draw_text_noir(buf, stride, w, text_x, text_y, display_url, url_color, 1.0);
 
         if url_focused {
-            let cursor_px = text_x + measure_text_width(display_url, 1.0) + 2;
+            let cursor_px = text_x + measure_text_width(display_url, 1.0) as i32 + 2;
             draw_rect(buf, stride, cursor_px, text_y, 2, 10, TEXT_WHITE);
         }
     } else {
@@ -176,31 +241,6 @@ fn draw_address_bar(
         let lock_y = btn_y_pos + (btn_h / 2) - 5;
         draw_rect(buf, stride, lock_x, lock_y + 3, 8, 7, GREEN);
         draw_rect(buf, stride, lock_x + 1, lock_y, 6, 5, GREEN);
-    }
-}
-
-fn draw_content_area(
-    buf: &mut [u32],
-    stride: usize,
-    w: i32,
-    h: i32,
-    active_url: &str,
-    layout_blocks: &[crate::parsers::layout::LayoutItem],
-    scroll_y: f32,
-    fetching: bool,
-) {
-    let content_y = TOOLBAR_HEIGHT as i32;
-    let content_h = h - content_y;
-
-    if active_url.is_empty() {
-        draw_new_tab_page(buf, stride, w, content_y, content_h);
-    } else if fetching {
-        draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Loading...", TEXT_DIM, 1.2);
-        draw_text_noir(buf, stride, w, 30, content_y + 80, active_url, TEXT_PLACEHOLDER, 1.0);
-    } else if !layout_blocks.is_empty() {
-        render_layout_blocks(buf, stride, w, content_y, content_h, layout_blocks, scroll_y);
-    } else {
-        draw_text_noir(buf, stride, w, w / 2 - 50, content_y + 40, "Empty", TEXT_DIM, 1.2);
     }
 }
 
@@ -222,58 +262,23 @@ fn draw_new_tab_page(buf: &mut [u32], stride: usize, w: i32, content_y: i32, con
         ("YouTube", LINK_YOUTUBE),
         ("Rust", LINK_RUST),
     ];
-    let total_w = links.len() as i32 * LINK_CARD_SIZE + (links.len() as i32 - 1) * LINK_CARD_SPACING;
+    let total_w = links.len() as i32 * 120 + (links.len() as i32 - 1) * 16;
     let start_x = w / 2 - total_w / 2;
 
     for (i, (name, color)) in links.iter().enumerate() {
-        let lx = start_x + i as i32 * (LINK_CARD_SIZE + LINK_CARD_SPACING);
+        let lx = start_x + i as i32 * (120 + 16);
 
-        draw_rect(buf, stride, lx, link_y, LINK_CARD_SIZE, LINK_CARD_SIZE, BG_LINK_CARD);
-        draw_rect(buf, stride, lx, link_y, LINK_CARD_SIZE, 3, *color);
+        draw_rect(buf, stride, lx, link_y, 120, 120, BG_LINK_CARD);
+        draw_rect(buf, stride, lx, link_y, 120, 3, *color);
 
         let icon_size = 24;
-        let icon_x = lx + (LINK_CARD_SIZE - icon_size) / 2;
+        let icon_x = lx + (120 - icon_size) / 2;
         let icon_y = link_y + 24;
         draw_rect(buf, stride, icon_x, icon_y, icon_size, icon_size, *color);
 
         let label_w = name.len() as i32 * 7;
-        let label_x = lx + (LINK_CARD_SIZE - label_w) / 2;
-        draw_text_noir(buf, stride, w, label_x, link_y + LINK_CARD_SIZE + 14, name, TEXT_DIM, 1.0);
-    }
-
-    let shortcuts_y = link_y + LINK_CARD_SIZE + 40;
-    let shortcuts = [
-        ("yt / youtube", "YouTube Search"),
-        ("gg / google", "Google Search"),
-        ("gh / github", "GitHub Search"),
-        ("ddg", "DuckDuckGo"),
-        ("wiki", "Wikipedia"),
-        ("crates", "Crates.io"),
-    ];
-    let sc_total_w = shortcuts.len() as i32 / 2 * 200 + (shortcuts.len() as i32 / 2 - 1) * 16;
-    let sc_start_x = w / 2 - sc_total_w / 2;
-    for (i, (cmd, desc)) in shortcuts.iter().enumerate() {
-        let col = i % 2;
-        let row = i / 2;
-        let sx = sc_start_x + col as i32 * 216;
-        let sy = shortcuts_y + row as i32 * 24;
-        draw_text_noir(buf, stride, w, sx, sy, cmd, ACCENT, 1.0);
-        draw_text_noir(buf, stride, w, sx + measure_text_width(cmd, 1.0) + 8, sy, desc, TEXT_PLACEHOLDER, 1.0);
-    }
-}
-
-fn draw_scroll_indicator(buf: &mut [u32], stride: usize, w: i32, h: i32, layout_blocks: &[crate::parsers::layout::LayoutItem], scroll_y: f32) {
-    if layout_blocks.is_empty() { return; }
-    let content_y = TOOLBAR_HEIGHT as i32;
-    let content_h = h - content_y;
-
-    let total_h = total_content_height(layout_blocks);
-    if total_h > content_h as f32 && content_h > 0 {
-        let view_ratio = content_h as f32 / total_h;
-        let scroll_ratio = scroll_y / (total_h - content_h as f32).max(1.0);
-        let bar_h = (content_h as f32 * view_ratio).max(20.0);
-        let bar_y = content_y as f32 + scroll_ratio * (content_h as f32 - bar_h);
-        draw_rect(buf, stride, w - 6, bar_y as i32, 4, bar_h as i32, 0x40FFFFFF);
+        let label_x = lx + (120 - label_w) / 2;
+        draw_text_noir(buf, stride, w, label_x, link_y + 120 + 14, name, TEXT_DIM, 1.0);
     }
 }
 
@@ -283,14 +288,12 @@ fn render_layout_blocks(
     screen_w: i32,
     content_y: i32,
     content_h: i32,
-    items: &[crate::parsers::layout::LayoutItem],
+    items: &[LayoutItem],
     scroll_y: f32,
 ) {
-    use super::draw::{draw_rect, draw_text_noir};
-
     for item in items {
         match item {
-            crate::parsers::layout::LayoutItem::Text(block) => {
+            LayoutItem::Text(block) => {
                 let screen_block_y = block.y - scroll_y + content_y as f32;
 
                 if screen_block_y + block.h < content_y as f32 - 10.0 {
@@ -339,7 +342,7 @@ fn render_layout_blocks(
                     font_scale,
                 );
             }
-            crate::parsers::layout::LayoutItem::Image(img) => {
+            LayoutItem::Image(img) => {
                 let screen_img_y = img.y - scroll_y + content_y as f32;
 
                 if screen_img_y + img.h < content_y as f32 - 10.0 {
@@ -377,7 +380,7 @@ fn render_layout_blocks(
     }
 }
 
-pub fn rgba_to_u32(r: f32, g: f32, b: f32, a: f32) -> u32 {
+fn rgba_to_u32(r: f32, g: f32, b: f32, a: f32) -> u32 {
     let ri = (r * 255.0) as u32;
     let gi = (g * 255.0) as u32;
     let bi = (b * 255.0) as u32;

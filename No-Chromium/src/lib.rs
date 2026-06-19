@@ -1,29 +1,67 @@
-// ✅ Agrega esto al inicio de src/lib.rs
+//! Noir Browser - Library entry point
+
 pub mod app;
+pub mod bootstrap;
 pub mod bridge;
 pub mod js_engine_v3;
+pub mod media;
 pub mod network;
 pub mod parsers;
-pub mod media;
+pub mod renderer_trait;
 pub mod utils;
 pub mod wasm_v2;
 pub mod webgpu;
-pub mod renderer_trait;
 
-// Luego tus imports...
-use crate::app::AppConfig;
-use anyhow::Result;
+pub use app::AppConfig;
+pub use app::AppContext;
+pub use bootstrap::{BootstrapError, BootstrapResult};
 
-// ✅ Define esta estructura antes de la función create_browser
-#[derive(Default)]
-pub struct BrowserInstance {
-    // Aquí irán los campos internos del navegador en el futuro
+/// Crea una instancia del navegador
+pub fn create_browser(config: AppConfig) -> BootstrapResult<BrowserInstance> {
+    tracing::info!("Creating Noir Browser instance");
+    Ok(BrowserInstance { config })
 }
 
-// ✅ Función corregida
-pub async fn create_browser(_config: AppConfig) -> Result<BrowserInstance> {
-    tracing::info!("🌐 Creating browser instance...");
-    
-    // Retorna la instancia que acabamos de definir
-    Ok(BrowserInstance::default()) 
+/// Instancia del navegador
+pub struct BrowserInstance {
+    config: AppConfig,
+}
+
+impl BrowserInstance {
+    /// Ejecuta el navegador
+    pub fn run(self) -> BootstrapResult<()> {
+        crate::bootstrap::run(self.config)
+    }
+
+    /// Obtiene la configuración
+    pub fn config(&self) -> &AppConfig {
+        &self.config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::process_model::ProcessModel;
+
+    #[test]
+    fn test_process_model_selection() {
+        assert_eq!(ProcessModel::from_available_ram(1024), ProcessModel::SingleProcess);
+        assert_eq!(ProcessModel::from_available_ram(3072), ProcessModel::Aggregated);
+        assert_eq!(ProcessModel::from_available_ram(6144), ProcessModel::ModerateIsolation);
+    }
+
+    #[test]
+    fn test_max_renderer_processes() {
+        assert_eq!(ProcessModel::SingleProcess.max_renderer_processes(), 1);
+        assert_eq!(ProcessModel::Aggregated.max_renderer_processes(), 2);
+        assert_eq!(ProcessModel::ModerateIsolation.max_renderer_processes(), 4);
+    }
+
+    #[test]
+    fn test_config_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.enable_ultrafast, cfg!(feature = "ultrafast"));
+        assert_eq!(config.enable_privacy, cfg!(feature = "privacy"));
+    }
 }

@@ -1,22 +1,27 @@
-use super::glyphs::get_glyph_bitmap;
+//! Draw - Primitivas de dibujo básicas
+//!
+//! Funciones de bajo nivel para dibujar rectángulos y texto.
 
+use super::glyphs::draw_glyph;
+
+/// Dibuja un rectángulo sólido
 pub fn draw_rect(buf: &mut [u32], stride: usize, x: i32, y: i32, w: i32, h: i32, color: u32) {
-    let sw = stride as i32;
-    for row in y..y + h {
-        if row < 0 || row * sw >= buf.len() as i32 {
-            continue;
-        }
-        for col in x..x + w {
-            if col >= 0 && col < sw {
-                let idx = (row * sw + col) as usize;
-                if idx < buf.len() {
-                    buf[idx] = color;
-                }
+    for dy in 0..h {
+        let py = y + dy;
+        if py < 0 { continue; }
+        let row_start = (py as usize) * stride;
+        for dx in 0..w {
+            let px = x + dx;
+            if px < 0 { continue; }
+            let idx = row_start + px as usize;
+            if idx < buf.len() {
+                buf[idx] = color;
             }
         }
     }
 }
 
+/// Dibuja texto usando el bitmap font
 pub fn draw_text_noir(
     buf: &mut [u32],
     stride: usize,
@@ -27,57 +32,20 @@ pub fn draw_text_noir(
     color: u32,
     scale: f32,
 ) {
-    let sw = stride as i32;
-    let buf_h = buf.len() as i32 / sw;
-    let glyph_w = 6i32;
-    let glyph_h = 8i32;
-    let char_w = (glyph_w as f32 * scale) as i32;
-    let _char_h = (glyph_h as f32 * scale) as i32;
-    let spacing = (1.0f32 * scale) as i32;
-    let r = ((color >> 16) & 0xFF) as u8;
-    let g = ((color >> 8) & 0xFF) as u8;
-    let b = (color & 0xFF) as u8;
-    let pixel = 0xFF_000000 | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
-
-    for (ci, ch) in text.chars().enumerate() {
-        let cx = x + ci as i32 * (char_w + spacing);
-        if cx + char_w > screen_w {
+    let char_w = (7.0 * scale) as i32;
+    let char_h = (12.0 * scale) as i32;
+    let mut cx = x;
+    for ch in text.chars() {
+        if cx >= screen_w {
             break;
         }
-        if cx < 0 {
-            continue;
-        }
-        if ch == ' ' {
-            continue;
-        }
-        let glyph = get_glyph_bitmap(ch);
-        for gy in 0..glyph_h as usize {
-            for gx in 0..glyph_w as usize {
-                if glyph[gy][gx] {
-                    for sy in 0..scale as i32 {
-                        for sx in 0..scale as i32 {
-                            let px = cx + gx as i32 * scale as i32 + sx;
-                            let py = y + gy as i32 * scale as i32 + sy;
-                            if px >= 0 && px < sw && py >= 0 && py < buf_h {
-                                let idx = (py * sw + px) as usize;
-                                if idx < buf.len() {
-                                    buf[idx] = pixel;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        draw_glyph(buf, stride, cx, y, ch, color, scale, char_w, char_h);
+        cx += char_w + 1;
     }
 }
 
-pub fn measure_text_width(text: &str, scale: f32) -> i32 {
-    let char_w = (6.0 * scale) as i32;
-    let spacing = (1.0 * scale) as i32;
-    if text.is_empty() {
-        0
-    } else {
-        text.len() as i32 * (char_w + spacing) - spacing
-    }
+/// Mide el ancho aproximado de un texto
+pub fn measure_text_width(text: &str, scale: f32) -> f32 {
+    text.chars().count() as f32 * (7.0 * scale + 1.0)
 }
+
