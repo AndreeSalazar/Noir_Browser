@@ -212,7 +212,7 @@ fn get_newtab_html() -> String {
 <body>
   <div class="container">
     <h1 class="logo">NOIR BROWSER</h1>
-    <p class="subtitle">Sovereign High-Performance Vulkan Engine</p>
+    <p class="subtitle">Sovereign High-Performance WebGPU Engine</p>
     
     <div class="search-container">
       <div class="search-bar">
@@ -246,7 +246,7 @@ fn get_newtab_html() -> String {
       </a>
     </div>
     
-    <p class="footer-text">Powered by pure Vulkan, gpu-allocator, & Rust</p>
+    <p class="footer-text">Powered by pure WebGPU & Rust</p>
   </div>
 </body>
 </html>

@@ -167,7 +167,7 @@ pub enum GpuBackend {
 impl GpuBackend {
     pub fn name(&self) -> &'static str {
         match self {
-            GpuBackend::Vulkan => "Vulkan",
+            GpuBackend::WebGPU => "WebGPU",
             GpuBackend::Metal => "Metal",
             GpuBackend::DirectX12 => "DirectX 12",
             GpuBackend::OpenGL => "OpenGL",
@@ -235,9 +235,9 @@ impl AdapterInfo {
 
         #[cfg(target_os = "linux")]
         {
-            devices.push(Device::new("NVIDIA RTX", "NVIDIA", GpuBackend::Vulkan));
-            devices.push(Device::new("AMD Radeon", "AMD", GpuBackend::Vulkan));
-            devices.push(Device::new("Intel HD Graphics", "Intel", GpuBackend::Vulkan));
+            devices.push(Device::new("NVIDIA RTX", "NVIDIA", GpuBackend::WebGPU));
+            devices.push(Device::new("AMD Radeon", "AMD", GpuBackend::WebGPU));
+            devices.push(Device::new("Intel HD Graphics", "Intel", GpuBackend::WebGPU));
         }
 
         #[cfg(target_os = "macos")]
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_device_creation() {
-        let device = Device::new("Test GPU", "Test Vendor", GpuBackend::Vulkan);
+        let device = Device::new("Test GPU", "Test Vendor", GpuBackend::WebGPU);
         assert_eq!(device.name, "Test GPU");
         assert!(device.supports_compute());
     }
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_backend_name() {
-        assert_eq!(GpuBackend::Vulkan.name(), "Vulkan");
+        assert_eq!(GpuBackend::WebGPU.name(), "WebGPU");
         assert_eq!(GpuBackend::Metal.name(), "Metal");
         assert_eq!(GpuBackend::DirectX12.name(), "DirectX 12");
     }
@@ -1038,7 +1038,7 @@ mod tests {
 
     #[test]
     fn test_renderer_init() {
-        let device = Device::new("Test", "Test", super::super::device::GpuBackend::Vulkan);
+        let device = Device::new("Test", "Test", super::super::device::GpuBackend::WebGPU);
         let mut renderer = Renderer::new(device);
         renderer.init();
         assert!(renderer.vertex_buffer.is_some());

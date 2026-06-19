@@ -1,5 +1,5 @@
 // AUTO-GENERATED SHADER CONSTANTS
-// Pure Vulkan replacement for Skia 2D rendering
+// WebGPU replacement for Skia 2D rendering
 pub const VERTEX_SHADER_GLSL: &str = r#"
     #version 450
     layout(location = 0) in vec2 inPosition;

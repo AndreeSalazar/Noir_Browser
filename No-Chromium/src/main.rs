@@ -42,7 +42,7 @@ use crate::app::AppConfig;
 fn init_tracing(config: &AppConfig) {
     use tracing_subscriber::{fmt, EnvFilter, prelude::*};
     
-    let filter = if config.debug_vulkan {
+    let filter = if config.debug_webgpu {
         EnvFilter::new("noir=debug,ash=info,vulkan=info")
     } else {
         EnvFilter::new("noir=info")
@@ -224,7 +224,7 @@ fn parse_config_from_args(args: &[String]) -> Option<AppConfig> {
                 config.enable_privacy = true;
             }
             "--no-ultrafast" => config.enable_ultrafast = false,
-            "--debug-vulkan" => config.debug_vulkan = true,
+            "--debug-webgpu" => config.debug_webgpu = true,
             "--msdf-fonts" => config.enable_msdf_fonts = true,
             "--max-tabs" => {
                 i += 1;
@@ -267,7 +267,7 @@ fn print_help() {
     println!("  --no-privacy        Disable privacy features (FPI, anti-fingerprint)");
     println!("  --tor-only          Enable Tor mode with SOCKS5 proxy");
     println!("  --no-ultrafast      Disable Vulkan ultra-fast optimizations");
-    println!("  --debug-vulkan      Enable Vulkan debug layers");
+    println!("  --debug-webgpu      Enable Vulkan debug layers");
     println!("  --msdf-fonts        Enable MSDF font rendering");
     println!();
     println!("Limits:");

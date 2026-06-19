@@ -212,7 +212,7 @@ fn draw_new_tab_page(buf: &mut [u32], stride: usize, w: i32, content_y: i32, con
 
     draw_text_noir(
         buf, stride, w, w / 2 - 170, center_y + 100,
-        "Ultra-fast  |  Private  |  Vulkan-powered", TEXT_PLACEHOLDER, 1.0,
+        "Ultra-fast  |  Private  |  WebGPU-powered", TEXT_PLACEHOLDER, 1.0,
     );
 
     let link_y = center_y + 160;
