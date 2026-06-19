@@ -16,11 +16,14 @@
 
 // === MÓDULOS PRINCIPALES ===
 mod app;
+mod bridge;
+mod js_engine_v2;
 mod network;
 mod parsers;
 mod media;
 mod utils;
 mod js_engine;
+mod wasm_engine;
 
 #[cfg(feature = "privacy")]
 mod privacy;
