@@ -443,6 +443,58 @@ fn render_layout_blocks(
                     draw_text_noir(buf, stride, screen_w, ix + 6, iy + ih / 2 - 4, placeholder, TEXT_DIM, 0.8);
                 }
             }
+            LayoutItem::Video(vid) => {
+                let screen_vid_y = vid.y - scroll_y + content_y as f32;
+
+                if screen_vid_y + vid.h < content_y as f32 - 10.0 {
+                    continue;
+                }
+                if screen_vid_y > content_y as f32 + content_h as f32 + 10.0 {
+                    continue;
+                }
+
+                let vx = vid.x as i32;
+                let vy = screen_vid_y as i32;
+                let vw = vid.w as i32;
+                let vh = vid.h as i32;
+
+                // Video background (black)
+                draw_rect(buf, stride, vx, vy, vw, vh, 0xFF000000);
+
+                // Play button in center
+                let btn_size = 60;
+                let btn_x = vx + (vw - btn_size) / 2;
+                let btn_y = vy + (vh - btn_size) / 2;
+                draw_rect(buf, stride, btn_x, btn_y, btn_size, btn_size, 0x80FFFFFF);
+                // Triangle play icon
+                let tri_w = 20;
+                let tri_h = 24;
+                let tri_x = btn_x + (btn_size - tri_w) / 2;
+                let tri_y = btn_y + (btn_size - tri_h) / 2;
+                for row in 0..tri_h {
+                    let progress = row as f32 / tri_h as f32;
+                    let width_at_row = (tri_w as f32 * (1.0 - progress * 0.5)) as i32;
+                    let x_start = tri_x + ((tri_w - width_at_row) / 2);
+                    draw_rect(buf, stride, x_start, tri_y + row, width_at_row, 1, 0xFFFFFFFF);
+                }
+
+                // Video label
+                let label = if vid.src.contains("youtube") {
+                    "YouTube Video"
+                } else if vid.src.contains("vimeo") {
+                    "Vimeo Video"
+                } else {
+                    "Video"
+                };
+                draw_text_noir(buf, stride, screen_w, vx + 8, vy + vh - 24, label, TEXT_DIM, 0.8);
+
+                // Controls bar
+                if vid.controls {
+                    draw_rect(buf, stride, vx, vy + vh - 16, vw, 16, 0xCC000000);
+                    draw_rect(buf, stride, vx + 4, vy + vh - 12, 8, 8, TEXT_DIM);
+                    draw_text_noir(buf, stride, screen_w, vx + 16, vy + vh - 12, "0:00 / 0:00", TEXT_WHITE, 0.6);
+                }
+            }
         }
     }
 }

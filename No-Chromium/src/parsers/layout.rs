@@ -5,6 +5,7 @@ use crate::parsers::page_document::{PageDocument, TextBlock};
 pub enum LayoutItem {
     Text(LayoutBlock),
     Image(ImageLayoutBlock),
+    Video(VideoLayoutBlock),
 }
 
 #[derive(Clone, Debug)]
@@ -16,6 +17,18 @@ pub struct ImageLayoutBlock {
     pub src: String,
     pub alt: String,
     pub lazy: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct VideoLayoutBlock {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub src: String,
+    pub poster: Option<String>,
+    pub controls: bool,
+    pub autoplay: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -75,25 +88,54 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
 
     let mut items = Vec::new();
 
+    // Process text blocks, images, and videos together
     let mut text_idx = 0;
     let mut img_idx = 0;
+    let mut vid_idx = 0;
+    let max_iter = (doc.text_blocks.len()
+        + doc.image_blocks.len()
+        + doc.video_blocks.len()
+        + 100);
 
-    loop {
-        if text_idx >= doc.text_blocks.len() && img_idx >= doc.image_blocks.len() {
-            break;
+    for _ in 0..max_iter {
+        let done = text_idx >= doc.text_blocks.len()
+            && img_idx >= doc.image_blocks.len()
+            && vid_idx >= doc.video_blocks.len();
+        if done { break; }
+
+        // Video
+        if vid_idx < doc.video_blocks.len() {
+            let vid_block = &doc.video_blocks[vid_idx];
+            let vid_w = vid_block.width.unwrap_or(640.0).min(content_w);
+            let vid_h = vid_block.height.unwrap_or(360.0);
+            // Scale to fit content_w
+            let (final_w, final_h) = if vid_w > content_w {
+                let scale = content_w / vid_w;
+                (content_w, vid_h * scale)
+            } else {
+                (vid_w, vid_h)
+            };
+            ctx.cursor_y += 8.0;
+            items.push(LayoutItem::Video(VideoLayoutBlock {
+                x: ctx.content_x,
+                y: ctx.cursor_y,
+                w: final_w,
+                h: final_h,
+                src: vid_block.src.clone(),
+                poster: vid_block.poster.clone(),
+                controls: vid_block.controls,
+                autoplay: vid_block.autoplay,
+            }));
+            ctx.cursor_y += final_h + 8.0;
+            vid_idx += 1;
+            continue;
         }
 
-        if text_idx < doc.text_blocks.len() {
-            let text_block = &doc.text_blocks[text_idx];
-            let styled = apply_css_to_block(text_block, &ctx.css);
-            layout_block(text_block, &styled, &mut ctx, &mut items);
-            text_idx += 1;
-        }
-
+        // Image
         if img_idx < doc.image_blocks.len() {
             let img_block = &doc.image_blocks[img_idx];
             let img_w = img_block.width.unwrap_or(300.0).min(content_w);
-            let img_h = img_block.height.unwrap_or(200.0).min(400.0);
+            let img_h = img_block.height.unwrap_or(200.0).min(500.0);
             ctx.cursor_y += 8.0;
             items.push(LayoutItem::Image(ImageLayoutBlock {
                 x: ctx.content_x,
@@ -106,6 +148,15 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
             }));
             ctx.cursor_y += img_h + 8.0;
             img_idx += 1;
+            continue;
+        }
+
+        // Text
+        if text_idx < doc.text_blocks.len() {
+            let text_block = &doc.text_blocks[text_idx];
+            let styled = apply_css_to_block(text_block, &ctx.css);
+            layout_block(text_block, &styled, &mut ctx, &mut items);
+            text_idx += 1;
         }
     }
 
@@ -417,6 +468,7 @@ pub fn total_content_height(items: &[LayoutItem]) -> f32 {
     items.iter().map(|item| match item {
         LayoutItem::Text(b) => b.y + b.h,
         LayoutItem::Image(i) => i.y + i.h,
+        LayoutItem::Video(v) => v.y + v.h,
     }).fold(0.0f32, f32::max)
 }
 

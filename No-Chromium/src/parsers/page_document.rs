@@ -334,21 +334,39 @@ impl PageDocument {
                             }
                         }
                         HtmlTag::Img => {
-                            if let Some(src) = attributes.get("src") {
-                                let resolved = self.resolve_href(src);
-                                let alt = attributes.get("alt").cloned().unwrap_or_default();
-                                let width = attributes.get("width")
-                                    .and_then(|w| w.trim().parse::<f32>().ok());
-                                let height = attributes.get("height")
-                                    .and_then(|h| h.trim().parse::<f32>().ok());
-                                self.image_blocks.push(ImageBlock {
-                                    src: resolved,
-                                    alt,
-                                    width,
-                                    height,
-                                    lazy: attributes.get("loading").map(|v| v == "lazy").unwrap_or(false),
+                            // Try multiple sources: src, data-src, srcset
+                            let src = attributes.get("src")
+                                .or_else(|| attributes.get("data-src"))
+                                .or_else(|| attributes.get("data-original"))
+                                .cloned()
+                                .or_else(|| {
+                                    attributes.get("srcset").and_then(|s| {
+                                        // Parse srcset: "url1 1x, url2 2x"
+                                        s.split(',').next().and_then(|first| {
+                                            first.trim().split_whitespace().next().map(String::from)
+                                        })
+                                    })
                                 });
+
+                            if let Some(src) = src {
+                                if !src.starts_with("data:") {
+                                    let resolved = self.resolve_href(&src);
+                                    let alt = attributes.get("alt").cloned().unwrap_or_default();
+                                    let width = attributes.get("width")
+                                        .and_then(|w| w.trim().parse::<f32>().ok());
+                                    let height = attributes.get("height")
+                                        .and_then(|h| h.trim().parse::<f32>().ok());
+                                    self.image_blocks.push(ImageBlock {
+                                        src: resolved,
+                                        alt,
+                                        width,
+                                        height,
+                                        lazy: attributes.get("loading").map(|v| v == "lazy").unwrap_or(false),
+                                    });
+                                }
                             }
+                            // Still recurse to find nested images
+                            self.extract_from_nodes(children, indent, ancestors, current_href.clone());
                         }
                         HtmlTag::Video => {
                             if let Some(src) = attributes.get("src") {
@@ -374,6 +392,47 @@ impl PageDocument {
                             if let Some(src) = attributes.get("src") {
                                 tracing::info!("Audio source: {}", src);
                             }
+                        }
+                        HtmlTag::Iframe => {
+                            // Iframe often used for embedded videos
+                            if let Some(src) = attributes.get("src") {
+                                let resolved = self.resolve_href(src);
+                                let width = attributes.get("width")
+                                    .and_then(|w| w.trim().parse::<f32>().ok())
+                                    .unwrap_or(560.0);
+                                let height = attributes.get("height")
+                                    .and_then(|h| h.trim().parse::<f32>().ok())
+                                    .unwrap_or(315.0);
+                                // Detect video iframes
+                                let is_video = resolved.contains("youtube")
+                                    || resolved.contains("vimeo")
+                                    || resolved.contains("player")
+                                    || resolved.contains("embed");
+                                if is_video {
+                                    self.video_blocks.push(VideoBlock {
+                                        src: resolved,
+                                        poster: None,
+                                        controls: true,
+                                        autoplay: false,
+                                        loop_video: false,
+                                        muted: false,
+                                        width: Some(width),
+                                        height: Some(height),
+                                    });
+                                } else {
+                                    // Treat as content block
+                                    self.text_blocks.push(TextBlock {
+                                        text: format!("[iframe: {}]", resolved),
+                                        tag: "iframe".into(),
+                                        font_size: 12.0,
+                                        bold: false,
+                                        link: None,
+                                        indent_level: indent,
+                                        attributes: attributes.clone(),
+                                    });
+                                }
+                            }
+                            self.extract_from_nodes(children, indent, ancestors, current_href.clone());
                         }
                         HtmlTag::Blockquote => {
                             let text = self.collect_text(children);
