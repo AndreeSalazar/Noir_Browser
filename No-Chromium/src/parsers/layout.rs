@@ -106,18 +106,17 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
         // Video
         if vid_idx < doc.video_blocks.len() {
             let vid_block = &doc.video_blocks[vid_idx];
-            let vid_w = vid_block.width.unwrap_or(640.0).min(content_w);
-            let vid_h = vid_block.height.unwrap_or(360.0);
-            // Scale to fit content_w
-            let (final_w, final_h) = if vid_w > content_w {
-                let scale = content_w / vid_w;
-                (content_w, vid_h * scale)
-            } else {
-                (vid_w, vid_h)
-            };
-            ctx.cursor_y += 8.0;
+            // Use larger default for better visibility, scale to fit content
+            let raw_w = vid_block.width.unwrap_or(800.0);
+            let raw_h = vid_block.height.unwrap_or(450.0);
+            // Calculate aspect ratio
+            let aspect = raw_h / raw_w;
+            // Always make video take 95% of content width for better visibility
+            let final_w = content_w * 0.95;
+            let final_h = final_w * aspect;
+            ctx.cursor_y += 12.0;
             items.push(LayoutItem::Video(VideoLayoutBlock {
-                x: ctx.content_x,
+                x: ctx.content_x + (content_w - final_w) / 2.0,
                 y: ctx.cursor_y,
                 w: final_w,
                 h: final_h,
@@ -126,7 +125,7 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
                 controls: vid_block.controls,
                 autoplay: vid_block.autoplay,
             }));
-            ctx.cursor_y += final_h + 8.0;
+            ctx.cursor_y += final_h + 12.0;
             vid_idx += 1;
             continue;
         }
@@ -134,11 +133,11 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
         // Image
         if img_idx < doc.image_blocks.len() {
             let img_block = &doc.image_blocks[img_idx];
-            let img_w = img_block.width.unwrap_or(300.0).min(content_w);
-            let img_h = img_block.height.unwrap_or(200.0).min(500.0);
+            let img_w = img_block.width.unwrap_or(content_w * 0.8).min(content_w);
+            let img_h = img_block.height.unwrap_or(img_w * 0.6).min(600.0);
             ctx.cursor_y += 8.0;
             items.push(LayoutItem::Image(ImageLayoutBlock {
-                x: ctx.content_x,
+                x: ctx.content_x + (content_w - img_w) / 2.0,
                 y: ctx.cursor_y,
                 w: img_w,
                 h: img_h,
