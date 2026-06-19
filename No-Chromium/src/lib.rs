@@ -7,6 +7,7 @@ pub mod parsers;
 pub mod media;
 pub mod utils;
 pub mod wasm_v2;
+pub mod webgpu;
 pub mod renderer_trait;
 
 // Luego tus imports...

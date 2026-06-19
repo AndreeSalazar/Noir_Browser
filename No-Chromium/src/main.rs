@@ -23,6 +23,7 @@ mod parsers;
 mod media;
 mod utils;
 mod wasm_v2;
+mod webgpu;
 mod renderer_trait;
 
 #[cfg(feature = "privacy")]
