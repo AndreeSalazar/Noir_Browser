@@ -5,6 +5,7 @@ pub mod fetch;
 pub mod socks_proxy;
 pub mod doh_resolver;
 pub mod circuit;
+pub mod url_resolver;
 
 // Re-exports (stubs disponibles para uso futuro)
 #[allow(unused_imports)]

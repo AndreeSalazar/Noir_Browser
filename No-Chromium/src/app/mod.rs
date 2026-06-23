@@ -17,6 +17,7 @@ pub mod glyphs;
 pub mod paint_records;       // Chrome Blink paint records
 pub mod layer_tree;          // Chrome compositor layers
 pub mod navigation_pipeline; // Chrome navigation flow state machine
+pub mod metrics;             // FASE A3: Browser metrics (RAM/CPU/FPS)
 
 pub use config::AppConfig;
 pub use context::AppContext;

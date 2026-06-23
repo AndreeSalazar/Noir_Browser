@@ -15,3 +15,4 @@ pub mod flexbox;
 pub mod style_cache;     // Firefox Stylo-style sharing cache
 pub mod rule_tree;       // Firefox CSS rule tree
 pub mod invalidation;    // Blink-style invalidation
+pub mod css_loader;      // FASE A1: CSS externo real
