@@ -234,14 +234,14 @@ fn draw_nav_bar(buf: &mut [u32], stride: usize, w: i32, nav_y: i32, is_https: bo
     let btn_y_pos = nav_y + (NAV_BAR_HEIGHT as i32 - btn_h) / 2;
     let mut bx = NAV_START_X;
 
-    // Back button
+    // Back button - triangle pointing left
     draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
-    draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "<", TEXT_WHITE, 1.2);
+    draw_back_arrow(buf, stride, bx + NAV_BTN_SIZE as i32 / 2, btn_y_pos + btn_h / 2, 8, TEXT_WHITE);
     bx += NAV_BTN_SIZE as i32 + NAV_BTN_SPACING;
 
-    // Forward button
+    // Forward button - triangle pointing right
     draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
-    draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, ">", TEXT_WHITE, 1.2);
+    draw_forward_arrow(buf, stride, bx + NAV_BTN_SIZE as i32 / 2, btn_y_pos + btn_h / 2, 8, TEXT_WHITE);
     bx += NAV_BTN_SIZE as i32 + NAV_BTN_SPACING;
 
     // Reload button (animated when fetching)
@@ -249,13 +249,13 @@ fn draw_nav_bar(buf: &mut [u32], stride: usize, w: i32, nav_y: i32, is_https: bo
     if fetching {
         draw_loading_spinner(buf, stride, bx + NAV_BTN_SIZE as i32 / 2 - 4, btn_y_pos + btn_h / 2 - 4, 8, anim_frame);
     } else {
-        draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "R", TEXT_WHITE, 1.2);
+        draw_reload_icon(buf, stride, bx + NAV_BTN_SIZE as i32 / 2, btn_y_pos + btn_h / 2, 7, TEXT_WHITE);
     }
     bx += NAV_BTN_SIZE as i32 + NAV_BTN_SPACING;
 
     // Home button
     draw_rect(buf, stride, bx, btn_y_pos, NAV_BTN_SIZE as i32, btn_h, BTN_BG);
-    draw_text_noir(buf, stride, w, bx + 13, btn_y_pos + 9, "H", TEXT_WHITE, 1.2);
+    draw_home_icon(buf, stride, bx + NAV_BTN_SIZE as i32 / 2, btn_y_pos + btn_h / 2, 7, TEXT_WHITE);
     bx += NAV_BTN_SIZE as i32 + 14;
 
     // HTTPS indicator in address bar
@@ -824,4 +824,71 @@ fn draw_shortcuts_panel(buf: &mut [u32], stride: usize, w: i32, h: i32) {
     }
 
     draw_text_noir(buf, stride, w, panel_x + 20, panel_y + panel_h - 25, "Press F1 to close", TEXT_DIM, 0.9);
+}
+
+// === ICON DRAWING FUNCTIONS ===
+
+/// Dibuja flecha hacia atras (<)
+fn draw_back_arrow(buf: &mut [u32], stride: usize, cx: i32, cy: i32, size: i32, color: u32) {
+    for i in 0..size {
+        // linea horizontal
+        draw_rect(buf, stride, cx - size / 2 + i, cy - i / 2, size - i, 1, color);
+        draw_rect(buf, stride, cx - size / 2 + i, cy + i / 2, size - i, 1, color);
+    }
+}
+
+/// Dibuja flecha hacia adelante (>)
+fn draw_forward_arrow(buf: &mut [u32], stride: usize, cx: i32, cy: i32, size: i32, color: u32) {
+    for i in 0..size {
+        // linea horizontal
+        draw_rect(buf, stride, cx - size / 2 + i, cy - (size - i - 1) / 2, size - i, 1, color);
+        draw_rect(buf, stride, cx - size / 2 + i, cy + (size - i - 1) / 2, size - i, 1, color);
+    }
+}
+
+/// Dibuja icono de reload (circulo con flecha)
+fn draw_reload_icon(buf: &mut [u32], stride: usize, cx: i32, cy: i32, size: i32, color: u32) {
+    let r = size;
+    // Draw circle (open at top-right)
+    for angle in 0..360 {
+        let rad = (angle as f32) * 0.0174533;
+        let px = cx + (rad.cos() * r as f32) as i32;
+        let py = cy + (rad.sin() * r as f32) as i32;
+        // Skip top-right quadrant (where arrow tip is)
+        if angle > 280 || angle < 80 {
+            let idx = (py as usize) * stride + (px as usize);
+            if idx < buf.len() {
+                buf[idx] = color;
+            }
+        }
+    }
+    // Arrow tip at top
+    draw_rect(buf, stride, cx + r - 1, cy - r - 1, 2, 3, color);
+    draw_rect(buf, stride, cx + r - 3, cy - r + 1, 4, 1, color);
+}
+
+/// Dibuja icono de home (casa)
+fn draw_home_icon(buf: &mut [u32], stride: usize, cx: i32, cy: i32, size: i32, color: u32) {
+    let s = size;
+    // Techo (triangulo)
+    for i in 0..=s {
+        let y = cy - s + i / 2;
+        let w = (s + 1) + i;
+        draw_rect(buf, stride, cx - w, y, w * 2, 1, color);
+    }
+    // Cuerpo (cuadrado)
+    let body_top = cy - s / 2;
+    let body_bot = cy + s;
+    draw_rect(buf, stride, cx - s, body_top, s * 2, 1, color);
+    draw_rect(buf, stride, cx - s, body_bot, s * 2, 1, color);
+    draw_rect(buf, stride, cx - s, body_top, 1, body_bot - body_top + 1, color);
+    draw_rect(buf, stride, cx + s - 1, body_top, 1, body_bot - body_top + 1, color);
+    // Puerta
+    let door_w = s / 2;
+    let door_h = s;
+    draw_rect(buf, stride, cx - door_w / 2, cy + s - door_h, door_w, door_h, 0xFF181820);
+    // Outline puerta
+    draw_rect(buf, stride, cx - door_w / 2, cy + s - door_h, door_w, 1, color);
+    draw_rect(buf, stride, cx - door_w / 2, cy + s - door_h, 1, door_h, color);
+    draw_rect(buf, stride, cx + door_w / 2 - 1, cy + s - door_h, 1, door_h, color);
 }
