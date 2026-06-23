@@ -17,6 +17,7 @@ pub mod card_layout;
 pub mod list_render;
 pub mod table_render;
 pub mod css_grid;
+pub mod css_containment;
 
 pub use click_feedback::{
     CursorType, InteractiveRole, InteractiveBox, FocusRing,
@@ -39,4 +40,7 @@ pub use table_render::{
 };
 pub use css_grid::{
     GridTrackSize, GridTemplate, GridAutoFlow, GridPlacement, GridItem, CssGrid,
+};
+pub use css_containment::{
+    ContainmentType, ContainingBlock, ContainmentOptimizer, ContainmentStats,
 };
