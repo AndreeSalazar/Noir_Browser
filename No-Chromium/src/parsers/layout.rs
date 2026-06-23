@@ -228,14 +228,13 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
             // Calculate aspect ratio
             let aspect = raw_h / raw_w;
             // Always make video take 95% of content width for better visibility
-            // Tamaño máximo: 720x405 (HD), escalado proporcional
-            let max_w = 720.0;
-            let max_h = 405.0;
-            let final_w = if raw_w > max_w { max_w } else { content_w * 0.95 };
-            let final_h = if final_w * aspect > max_h { max_h } else { final_w * aspect };
-            // No hacer el video más alto que 60% del viewport
-            let max_viewport_h = content_w * 0.5;
-            let final_h = final_h.min(max_viewport_h);
+            // Tamaño basado en raw_w (no expandir más allá del original)
+            let max_w = 640.0; // Limitar a 640px de ancho
+            let final_w = raw_w.min(max_w).min(content_w * 0.9);
+            let final_h = final_w * aspect;
+            // No hacer el video más alto que 50% del content width
+            let max_h = content_w * 0.4;
+            let final_h = final_h.min(max_h);
             ctx.cursor_y += 12.0;
             items.push(LayoutItem::Video(VideoLayoutBlock {
                 x: ctx.content_x + (content_w - final_w) / 2.0,

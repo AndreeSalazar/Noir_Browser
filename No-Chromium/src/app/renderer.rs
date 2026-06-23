@@ -375,6 +375,13 @@ fn render_layout_blocks(
                     continue;
                 }
 
+                // Clip text X al content area
+                let content_right = content_y + content_h;
+                let block_x = block.x as i32;
+                if block_x >= screen_w { continue; }
+                let block_w = (block.w + block.padding_left) as i32;
+                if block_x + block_w < 0 { continue; }
+
                 if let Some(bg) = &block.bg_color {
                     // Solo pintar bg si NO es el default (negro/transparente)
                     // y NO es blanco puro (eso causa cuadrados blancos feos)
@@ -440,10 +447,19 @@ fn render_layout_blocks(
                     continue;
                 }
 
-                let ix = img.x as i32;
-                let iy = screen_img_y as i32;
-                let iw = img.w as i32;
-                let ih = img.h as i32;
+                // Clip to content area
+                let content_top = content_y;
+                let content_bottom = content_y + content_h;
+                let mut ix = img.x as i32;
+                let mut iy = screen_img_y as i32;
+                let mut iw = img.w as i32;
+                let mut ih = img.h as i32;
+                if ix < 0 { iw += ix; ix = 0; }
+                if ix + iw > screen_w { iw = screen_w - ix; }
+                if iw <= 0 { continue; }
+                if iy < content_top { ih -= content_top - iy; iy = content_top; }
+                if iy + ih > content_bottom { ih = content_bottom - iy; }
+                if ih <= 0 { continue; }
 
                 // Image background with rounded border feel
                 draw_rect(buf, stride, ix, iy, iw, ih, 0xFF1A1A22);
@@ -497,21 +513,39 @@ fn render_layout_blocks(
                     continue;
                 }
 
-                let vx = vid.x as i32;
-                let vy = screen_vid_y as i32;
-                let vw = vid.w as i32;
-                let vh = vid.h as i32;
+                // Clip to content area
+                let content_top = content_y;
+                let content_bottom = content_y + content_h;
+                let mut vx = vid.x as i32;
+                let mut vy = screen_vid_y as i32;
+                let mut vw = vid.w as i32;
+                let mut vh = vid.h as i32;
+                // Clamp X to content area
+                if vx < content_top { vx = content_top; }
+                if vx + vw > screen_w { vw = screen_w - vx; }
+                // Skip if completely off-screen horizontally
+                if vw <= 0 { continue; }
+                // Clamp Y to content area
+                if vy < content_top {
+                    vh -= content_top - vy;
+                    vy = content_top;
+                }
+                if vy + vh > content_bottom {
+                    vh = content_bottom - vy;
+                }
+                // Skip if completely off-screen vertically
+                if vh <= 0 { continue; }
 
                 // Video background (dark gradient: solid for now)
                 draw_rect(buf, stride, vx, vy, vw, vh, 0xFF0A0A12);
-                // Subtle border
+                // Subtle border (only at edges)
                 draw_rect(buf, stride, vx, vy, vw, 1, 0xFF2A2A35);
                 draw_rect(buf, stride, vx, vy + vh - 1, vw, 1, 0xFF2A2A35);
                 draw_rect(buf, stride, vx, vy, 1, vh, 0xFF2A2A35);
                 draw_rect(buf, stride, vx + vw - 1, vy, 1, vh, 0xFF2A2A35);
 
                 // Centered play button (circular, red like YouTube)
-                let btn_size = 70;
+                let btn_size = 60;
                 let btn_x = vx + (vw - btn_size) / 2;
                 let btn_y = vy + (vh - btn_size) / 2;
                 // Red filled circle (approximation as square with rounded edges)
@@ -523,8 +557,8 @@ fn render_layout_blocks(
                 draw_rect(buf, stride, btn_x + 4, btn_y + 2, 4, btn_size - 4, 0xCCFF0000);
                 draw_rect(buf, stride, btn_x + btn_size - 8, btn_y + 2, 4, btn_size - 4, 0xCCFF0000);
                 // White triangle play icon
-                let tri_w = 22;
-                let tri_h = 26;
+                let tri_w = 18;
+                let tri_h = 22;
                 let tri_x = btn_x + btn_size / 2 + 2;
                 let tri_y = btn_y + (btn_size - tri_h) / 2;
                 for row in 0..tri_h {
