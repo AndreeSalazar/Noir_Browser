@@ -27,6 +27,7 @@ pub mod app;
 pub mod bootstrap;
 pub mod bridge;
 pub mod devtools;
+pub mod dom;
 pub mod features;
 pub mod js_engine_v3;
 pub mod media;
