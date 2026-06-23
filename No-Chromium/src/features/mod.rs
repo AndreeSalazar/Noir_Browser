@@ -8,6 +8,8 @@
 //! - `network_monitor/`: Ver requests HTTP
 //! - `password_manager/`: Guardar/auto-fill passwords
 //! - `pwa/`: Progressive Web Apps
+//! - `tab_groups/`: Agrupar tabs con colores
+//! - `favorites/`: Bookmarks con tags y folders
 
 #![allow(dead_code)]
 
@@ -18,6 +20,8 @@ pub mod screenshot;
 pub mod network_monitor;
 pub mod password_manager;
 pub mod pwa;
+pub mod tab_groups;
+pub mod favorites;
 
 pub use reader_mode::ReaderMode;
 pub use find_in_page::{FindInPage, FindMatch, FindOptions};
@@ -26,3 +30,5 @@ pub use screenshot::Screenshot;
 pub use network_monitor::{NetworkMonitor, NetworkRequest, RequestStatus};
 pub use password_manager::{PasswordManager, PasswordEntry, SavedPassword};
 pub use pwa::{PwaManager, ServiceWorker, WebManifest};
+pub use tab_groups::{TabGroup, TabGroupManager, GroupColor};
+pub use favorites::{Favorite, FavoritesManager};
