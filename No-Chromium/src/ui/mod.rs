@@ -18,6 +18,7 @@ pub mod list_render;
 pub mod table_render;
 pub mod css_grid;
 pub mod css_containment;
+pub mod text_shaping;
 
 pub use click_feedback::{
     CursorType, InteractiveRole, InteractiveBox, FocusRing,
@@ -43,4 +44,7 @@ pub use css_grid::{
 };
 pub use css_containment::{
     ContainmentType, ContainingBlock, ContainmentOptimizer, ContainmentStats,
+};
+pub use text_shaping::{
+    WordBreak, OverflowWrap, Hyphens, WhiteSpace, TextShaper,
 };
