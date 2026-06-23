@@ -18,6 +18,8 @@ pub mod paint_records;       // Chrome Blink paint records
 pub mod layer_tree;          // Chrome compositor layers
 pub mod navigation_pipeline; // Chrome navigation flow state machine
 pub mod metrics;             // FASE A3: Browser metrics (RAM/CPU/FPS)
+pub mod scroll;              // FASE A4: Smooth scrolling
+pub mod error_pages;          // FASE A4: Beautiful error pages
 
 pub use config::AppConfig;
 pub use context::AppContext;
