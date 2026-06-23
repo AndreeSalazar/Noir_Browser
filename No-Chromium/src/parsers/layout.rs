@@ -29,6 +29,7 @@ pub struct VideoLayoutBlock {
     pub poster: Option<String>,
     pub controls: bool,
     pub autoplay: bool,
+    pub title: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -227,8 +228,14 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
             // Calculate aspect ratio
             let aspect = raw_h / raw_w;
             // Always make video take 95% of content width for better visibility
-            let final_w = content_w * 0.95;
-            let final_h = final_w * aspect;
+            // Tamaño máximo: 720x405 (HD), escalado proporcional
+            let max_w = 720.0;
+            let max_h = 405.0;
+            let final_w = if raw_w > max_w { max_w } else { content_w * 0.95 };
+            let final_h = if final_w * aspect > max_h { max_h } else { final_w * aspect };
+            // No hacer el video más alto que 60% del viewport
+            let max_viewport_h = content_w * 0.5;
+            let final_h = final_h.min(max_viewport_h);
             ctx.cursor_y += 12.0;
             items.push(LayoutItem::Video(VideoLayoutBlock {
                 x: ctx.content_x + (content_w - final_w) / 2.0,
@@ -239,7 +246,31 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
                 poster: vid_block.poster.clone(),
                 controls: vid_block.controls,
                 autoplay: vid_block.autoplay,
+                title: vid_block.title.clone(),
             }));
+            // Si tiene title, agregar espacio para mostrarlo abajo
+            if vid_block.title.is_some() {
+                items.push(LayoutItem::Text(LayoutBlock {
+                    x: ctx.content_x + (content_w - final_w) / 2.0,
+                    y: ctx.cursor_y + final_h + 4.0,
+                    w: final_w,
+                    h: 20.0,
+                    text: vid_block.title.clone().unwrap_or_default(),
+                    font_size: 13.0,
+                    bold: true,
+                    color: [1.0, 1.0, 1.0, 1.0],
+                    bg_color: None,
+                    href: None,
+                    is_link: false,
+                    padding_top: 0.0,
+                    padding_bottom: 0.0,
+                    padding_left: 0.0,
+                    margin_top: 0.0,
+                    margin_bottom: 4.0,
+                    ..Default::default()
+                }));
+                ctx.cursor_y += 24.0;
+            }
             ctx.cursor_y += final_h + 12.0;
             vid_idx += 1;
             continue;

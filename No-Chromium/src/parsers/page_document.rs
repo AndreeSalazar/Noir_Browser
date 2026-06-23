@@ -32,6 +32,7 @@ pub struct VideoBlock {
     pub muted: bool,
     pub width: Option<f32>,
     pub height: Option<f32>,
+    pub title: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -424,6 +425,8 @@ impl PageDocument {
                                     muted: attributes.get("muted").is_some(),
                                     width,
                                     height,
+                                    title: attributes.get("title").cloned()
+                                        .or_else(|| attributes.get("aria-label").cloned()),
                                 });
                             }
                         }
@@ -457,6 +460,8 @@ impl PageDocument {
                                         muted: false,
                                         width: Some(width),
                                         height: Some(height),
+                                        title: attributes.get("title").cloned()
+                                            .or_else(|| attributes.get("aria-label").cloned()),
                                     });
                                 } else {
                                     // Treat as content block
