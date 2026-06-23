@@ -2,11 +2,13 @@
 //!
 //! - click_feedback: Highlights, cursor types, focus rings
 //! - element_highlight: Resalta elementos interactivos
+//! - markdown: Rendering de markdown
 
 #![allow(dead_code)]
 
 pub mod click_feedback;
 pub mod element_highlight;
+pub mod markdown;
 
 pub use click_feedback::{
     CursorType, InteractiveRole, InteractiveBox, FocusRing,
@@ -14,4 +16,7 @@ pub use click_feedback::{
 };
 pub use element_highlight::{
     HighlightCategory, Highlight, HighlightMode, ElementHighlighter,
+};
+pub use markdown::{
+    MarkdownStyle, MarkdownSegment, MarkdownLine, MarkdownRenderer,
 };
