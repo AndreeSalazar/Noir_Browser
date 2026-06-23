@@ -26,7 +26,7 @@ pub struct CssLink {
 }
 
 /// Loader de CSS externos
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CssLoader {
     pub links: Vec<CssLink>,
     pub cache: HashMap<String, String>,  // url -> content

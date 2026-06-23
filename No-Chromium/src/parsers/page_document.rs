@@ -53,6 +53,8 @@ pub struct PageDocument {
     pub css_urls: Vec<String>,
     pub viewport_width: Option<f32>,
     pub dom_nodes: Vec<DomNode>,
+    /// FASE A1: CSS Loader state (loaded external stylesheets)
+    pub css_loader: Option<crate::parsers::css_loader::CssLoader>,
 }
 
 impl PageDocument {
@@ -68,6 +70,7 @@ impl PageDocument {
             css_urls: Vec::new(),
             viewport_width: None,
             dom_nodes: Vec::new(),
+            css_loader: None,
         }
     }
 

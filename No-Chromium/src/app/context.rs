@@ -78,6 +78,9 @@ pub struct AppContext {
 
     // HTTP
     pub http_fetcher: HttpFetcher,
+
+    // FASE A3: Browser metrics (FPS, RAM, etc)
+    pub metrics: crate::app::metrics::BrowserMetrics,
 }
 
 impl AppContext {
@@ -114,6 +117,7 @@ impl AppContext {
             fetch_result: None,
             fetch_error: None,
             http_fetcher: HttpFetcher::new(),
+            metrics: crate::app::metrics::BrowserMetrics::new(),
         }
     }
 
@@ -155,6 +159,10 @@ impl AppContext {
             let content_h = crate::parsers::layout::total_content_height(&blocks);
             self.tabs[active].layout_blocks = blocks;
             self.tabs[active].content_height = content_h;
+            // FASE A4: actualizar ScrollState con nuevo content
+            self.tabs[active].scroll.set_content_height(content_h);
+            self.tabs[active].scroll.set_viewport_height(self.height as f32 - 112.0);
+            self.tabs[active].scroll.scroll_to_top();
             self.tabs[active].scroll_y = 0.0;
         }
     }

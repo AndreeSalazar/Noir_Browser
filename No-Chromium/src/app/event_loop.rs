@@ -184,8 +184,9 @@ impl ApplicationHandler for NoirApp {
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
                 };
                 let active = self.context.active_tab;
-                self.context.tabs[active].scroll_y -= scroll_amount;
-                self.context.tabs[active].scroll_y = self.context.tabs[active].scroll_y.max(0.0);
+                // FASE A4: usar ScrollState con inercia
+                self.context.tabs[active].scroll.scroll_by(scroll_amount);
+                self.context.tabs[active].scroll_y = self.context.tabs[active].scroll.offset_y;
                 if let Some(window) = &self.context.window {
                     window.request_redraw();
                 }
@@ -214,6 +215,9 @@ impl ApplicationHandler for NoirApp {
         if self.context.should_close {
             event_loop.exit();
         }
+
+        // FASE A3: record frame metrics
+        self.context.metrics.record_frame();
 
         if self.context.fetching {
             self.context.process_fetch_result();

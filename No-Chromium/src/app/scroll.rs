@@ -33,6 +33,12 @@ impl ScrollState {
         }
     }
 
+    /// Set viewport height (cuando cambia el tamano de la ventana)
+    pub fn set_viewport_height(&mut self, h: f32) {
+        self.viewport_height = h;
+        self.clamp();
+    }
+
     /// Actualizar contenido (cuando cambia el layout)
     pub fn set_content_height(&mut self, h: f32) {
         self.content_height = h;

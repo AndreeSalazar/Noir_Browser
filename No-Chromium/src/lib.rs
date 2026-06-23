@@ -2,23 +2,23 @@
 //!
 //! Modular architecture with backward-compatible aliases.
 //!
-//! | New name     | Maps to           | Description              |
-//! |--------------|-------------------|--------------------------|
-//! | `core`       | `app::context`/`app::config` | Core types    |
-//! | `browser`    | `app::*`          | Browser UI panels        |
-//! | `html`       | `parsers::*`      | HTML parsing             |
-//! | `css`        | `parsers::*`      | CSS parsing              |
-//! | `layout`     | `parsers::*`      | Layout engine            |
-//! | `media`      | `media`           | Media (sub-modules)      |
-//! | `js`         | `js_engine_v3`    | JavaScript engine        |
-//! | `wasm`       | `wasm_host`       | WebAssembly              |
-//! | `gpu`        | `webgpu`          | WebGPU                   |
-//! | `security`   | `security`        | Security                 |
-//! | `ui`         | `ui`              | UI components            |
-//! | `features`   | `features`        | User features            |
-//! | `devtools`   | `devtools` + extras | DevTools               |
-//! | `storage`    | `storage`         | Persistence              |
-//! | `network`    | `network`         | Network                  |
+//! | New name     | Maps to             | Description                |
+//! |--------------|---------------------|----------------------------|
+//! | `core`       | `app::context`      |`app::config` | Core types  |
+//! | `browser`    | `app::*`            | Browser UI panels          |
+//! | `html`       | `parsers::*`        | HTML parsing               |
+//! | `css`        | `parsers::*`        | CSS parsing                |
+//! | `layout`     | `parsers::*`        | Layout engine              |
+//! | `media`      | `media`             | Media (sub-modules)        |
+//! | `js`         | `js_engine_v3`      | JavaScript engine          |
+//! | `wasm`       | `wasm_host`         | WebAssembly                |
+//! | `gpu`        | `webgpu`            | WebGPU                     |
+//! | `security`   | `security`          | Security                   |
+//! | `ui`         | `ui`                | UI components              |
+//! | `features`   | `features`          | User features              |
+//! | `devtools`   | `devtools` + extras | DevTools                   |
+//! | `storage`    | `storage`           | Persistence                |
+//! | `network`    | `network`           | Network                    |
 //!
 //! Both old and new names are valid.
 
