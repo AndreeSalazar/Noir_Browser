@@ -240,7 +240,7 @@ impl Compositor {
         self.invalidate_frame(x, y, w, h);
     }
 
-    fn invalidate_frame(&mut self, x: f32, y: f32, w: f32, h: f32) {
+    pub fn invalidate_frame(&mut self, x: f32, y: f32, w: f32, h: f32) {
         self.frame_damage = Some(match self.frame_damage {
             Some(existing) => union_rects(existing, (x, y, w, h)),
             None => (x, y, w, h),

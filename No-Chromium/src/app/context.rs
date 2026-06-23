@@ -81,6 +81,9 @@ pub struct AppContext {
 
     // FASE A3: Browser metrics (FPS, RAM, etc)
     pub metrics: crate::app::metrics::BrowserMetrics,
+
+    // FASE D3: Compositor para damage tracking
+    pub compositor: crate::app::compositor::Compositor,
 }
 
 impl AppContext {
@@ -118,6 +121,7 @@ impl AppContext {
             fetch_error: None,
             http_fetcher: HttpFetcher::new(),
             metrics: crate::app::metrics::BrowserMetrics::new(),
+            compositor: crate::app::compositor::Compositor::new(1280.0, 720.0),
         }
     }
 
@@ -164,6 +168,8 @@ impl AppContext {
             self.tabs[active].scroll.set_viewport_height(self.height as f32 - 112.0);
             self.tabs[active].scroll.scroll_to_top();
             self.tabs[active].scroll_y = 0.0;
+            // FASE D3: invalidar compositor
+            self.compositor.invalidate_frame(0.0, 0.0, self.width as f32, self.height as f32);
         }
     }
 

@@ -96,6 +96,8 @@ impl ApplicationHandler for NoirApp {
         let size = window.inner_size();
         self.context.width = size.width;
         self.context.height = size.height;
+        // FASE D3: actualizar compositor
+        self.context.compositor.resize(size.width as f32, size.height as f32);
 
         let context = match softbuffer::Context::new(Rc::clone(&window)) {
             Ok(c) => c,
