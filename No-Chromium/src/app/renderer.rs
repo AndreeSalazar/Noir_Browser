@@ -376,16 +376,32 @@ fn render_layout_blocks(
                 }
 
                 if let Some(bg) = &block.bg_color {
-                    let bg_u32 = rgba_to_u32(bg[0], bg[1], bg[2], bg[3]);
-                    draw_rect(
-                        buf,
-                        stride,
-                        block.x as i32 - 4,
-                        screen_block_y as i32 - 2,
-                        (block.w + block.padding_left + 8.0) as i32,
-                        (block.h + block.padding_top + 4.0) as i32,
-                        bg_u32,
-                    );
+                    // Solo pintar bg si NO es el default (negro/transparente)
+                    // y NO es blanco puro (eso causa cuadrados blancos feos)
+                    let is_default = bg[0] < 0.05 && bg[1] < 0.05 && bg[2] < 0.05;
+                    let is_white = bg[0] > 0.95 && bg[1] > 0.95 && bg[2] > 0.95;
+                    if !is_default && !is_white {
+                        let bg_u32 = rgba_to_u32(bg[0], bg[1], bg[2], bg[3]);
+                        draw_rect(
+                            buf,
+                            stride,
+                            block.x as i32 - 4,
+                            screen_block_y as i32 - 2,
+                            (block.w + block.padding_left + 8.0) as i32,
+                            (block.h + block.padding_top + 4.0) as i32,
+                            bg_u32,
+                        );
+                    } else if is_white {
+                        // Para bg blanco, dibujar un border sutil
+                        let x = block.x as i32 - 4;
+                        let y = screen_block_y as i32 - 2;
+                        let w = (block.w + block.padding_left + 8.0) as i32;
+                        let h = (block.h + block.padding_top + 4.0) as i32;
+                        draw_rect(buf, stride, x, y, w, 1, 0xFF5599FF);
+                        draw_rect(buf, stride, x, y + h - 1, w, 1, 0xFF5599FF);
+                        draw_rect(buf, stride, x, y, 1, h, 0xFF5599FF);
+                        draw_rect(buf, stride, x + w - 1, y, 1, h, 0xFF5599FF);
+                    }
                 }
 
                 if block.is_link {
@@ -429,7 +445,11 @@ fn render_layout_blocks(
                 let iw = img.w as i32;
                 let ih = img.h as i32;
 
-                draw_rect(buf, stride, ix, iy, iw, ih, 0xFF1A1A1E);
+                // Image background with rounded border feel
+                draw_rect(buf, stride, ix, iy, iw, ih, 0xFF1A1A22);
+                // Top/bottom border for separation
+                draw_rect(buf, stride, ix, iy, iw, 1, 0xFF2A2A35);
+                draw_rect(buf, stride, ix, iy + ih - 1, iw, 1, 0xFF2A2A35);
 
                 if let Some(cached) = crate::media::get_cached_image(&img.src) {
                     crate::media::draw_image_to_buffer(
@@ -438,14 +458,33 @@ fn render_layout_blocks(
                         screen_w, content_y + content_h,
                     );
                 } else {
-                    crate::media::draw_placeholder(
-                        buf, stride,
-                        ix, iy, iw, ih,
-                        screen_w, content_y + content_h,
-                        true,
-                    );
-                    let placeholder = if img.alt.is_empty() { "Loading..." } else { &img.alt };
-                    draw_text_noir(buf, stride, screen_w, ix + 6, iy + ih / 2 - 4, placeholder, TEXT_DIM, 0.8);
+                    // Loading placeholder with shimmer effect
+                    let bg_color = if img.lazy { 0xFF18181F } else { 0xFF202028 };
+                    draw_rect(buf, stride, ix, iy, iw, ih, bg_color);
+                    // Center icon (image frame)
+                    let icon_w = 40;
+                    let icon_h = 30;
+                    let icon_x = ix + (iw - icon_w) / 2;
+                    let icon_y = iy + (ih - icon_h) / 2;
+                    draw_rect(buf, stride, icon_x, icon_y, icon_w, icon_h, 0xFF3A3A45);
+                    // Mountain icon
+                    let m_x = icon_x + 4;
+                    let m_y = icon_y + icon_h - 6;
+                    draw_rect(buf, stride, m_x, m_y, 6, 4, 0xFF505060);
+                    draw_rect(buf, stride, m_x + 4, m_y - 4, 6, 8, 0xFF505060);
+                    draw_rect(buf, stride, m_x + 12, m_y - 2, 6, 6, 0xFF505060);
+                    draw_rect(buf, stride, m_x + 18, m_y - 6, 8, 10, 0xFF505060);
+                    draw_rect(buf, stride, m_x + 24, m_y - 1, 8, 5, 0xFF505060);
+                    // Sun
+                    draw_rect(buf, stride, icon_x + icon_w - 10, icon_y + 4, 4, 4, 0xFFFFCC55);
+                    // Alt text or "Loading..."
+                    let placeholder = if img.alt.is_empty() {
+                        if img.lazy { "..." } else { "Loading..." }
+                    } else {
+                        &img.alt
+                    };
+                    let txt_w = measure_text_width(placeholder, 0.8) as i32;
+                    draw_text_noir(buf, stride, screen_w, ix + (iw - txt_w) / 2, iy + ih / 2 + icon_h / 2 + 4, placeholder, TEXT_DIM, 0.8);
                 }
             }
             LayoutItem::Video(vid) => {
@@ -463,41 +502,69 @@ fn render_layout_blocks(
                 let vw = vid.w as i32;
                 let vh = vid.h as i32;
 
-                // Video background (black)
-                draw_rect(buf, stride, vx, vy, vw, vh, 0xFF000000);
+                // Video background (dark gradient: solid for now)
+                draw_rect(buf, stride, vx, vy, vw, vh, 0xFF0A0A12);
+                // Subtle border
+                draw_rect(buf, stride, vx, vy, vw, 1, 0xFF2A2A35);
+                draw_rect(buf, stride, vx, vy + vh - 1, vw, 1, 0xFF2A2A35);
+                draw_rect(buf, stride, vx, vy, 1, vh, 0xFF2A2A35);
+                draw_rect(buf, stride, vx + vw - 1, vy, 1, vh, 0xFF2A2A35);
 
-                // Play button in center
-                let btn_size = 60;
+                // Centered play button (circular, red like YouTube)
+                let btn_size = 70;
                 let btn_x = vx + (vw - btn_size) / 2;
                 let btn_y = vy + (vh - btn_size) / 2;
-                draw_rect(buf, stride, btn_x, btn_y, btn_size, btn_size, 0x80FFFFFF);
-                // Triangle play icon
-                let tri_w = 20;
-                let tri_h = 24;
-                let tri_x = btn_x + (btn_size - tri_w) / 2;
+                // Red filled circle (approximation as square with rounded edges)
+                draw_rect(buf, stride, btn_x + 8, btn_y, btn_size - 16, btn_size, 0xCCFF0000);
+                draw_rect(buf, stride, btn_x + 4, btn_y + 4, btn_size - 8, btn_size - 8, 0xCCFF0000);
+                draw_rect(buf, stride, btn_x, btn_y + 8, btn_size, btn_size - 16, 0xCCFF0000);
+                draw_rect(buf, stride, btn_x + 2, btn_y + 4, 4, btn_size - 8, 0xCCFF0000);
+                draw_rect(buf, stride, btn_x + btn_size - 6, btn_y + 4, 4, btn_size - 8, 0xCCFF0000);
+                draw_rect(buf, stride, btn_x + 4, btn_y + 2, 4, btn_size - 4, 0xCCFF0000);
+                draw_rect(buf, stride, btn_x + btn_size - 8, btn_y + 2, 4, btn_size - 4, 0xCCFF0000);
+                // White triangle play icon
+                let tri_w = 22;
+                let tri_h = 26;
+                let tri_x = btn_x + btn_size / 2 + 2;
                 let tri_y = btn_y + (btn_size - tri_h) / 2;
                 for row in 0..tri_h {
                     let progress = row as f32 / tri_h as f32;
-                    let width_at_row = (tri_w as f32 * (1.0 - progress * 0.5)) as i32;
-                    let x_start = tri_x + ((tri_w - width_at_row) / 2);
+                    let width_at_row = (tri_w as f32 * (1.0 - progress * 0.3)).max(4.0) as i32;
+                    let x_start = tri_x - ((tri_w - width_at_row) / 2) - 4;
                     draw_rect(buf, stride, x_start, tri_y + row, width_at_row, 1, 0xFFFFFFFF);
                 }
 
-                // Video label
+                // Video label (top-left)
                 let label = if vid.src.contains("youtube") {
                     "YouTube Video"
                 } else if vid.src.contains("vimeo") {
                     "Vimeo Video"
+                } else if vid.src.contains(".mp4") {
+                    "MP4 Video"
                 } else {
                     "Video"
                 };
-                draw_text_noir(buf, stride, screen_w, vx + 8, vy + vh - 24, label, TEXT_DIM, 0.8);
+                draw_text_noir(buf, stride, screen_w, vx + 10, vy + 10, label, 0xFFCCCCCC, 0.9);
 
-                // Controls bar
+                // Bottom controls bar (semi-transparent)
                 if vid.controls {
-                    draw_rect(buf, stride, vx, vy + vh - 16, vw, 16, 0xCC000000);
-                    draw_rect(buf, stride, vx + 4, vy + vh - 12, 8, 8, TEXT_DIM);
-                    draw_text_noir(buf, stride, screen_w, vx + 16, vy + vh - 12, "0:00 / 0:00", TEXT_WHITE, 0.6);
+                    let ctrl_h = 32;
+                    let ctrl_y = vy + vh - ctrl_h;
+                    draw_rect(buf, stride, vx, ctrl_y, vw, ctrl_h, 0xDD000000);
+                    // Play/pause button
+                    draw_rect(buf, stride, vx + 8, ctrl_y + 8, 14, 16, 0xFFFFFFFF);
+                    // Time display
+                    draw_text_noir(buf, stride, screen_w, vx + 30, ctrl_y + 12, "0:00 / 0:00", 0xFFEEEEEE, 0.7);
+                    // Progress bar
+                    let prog_x = vx + 100;
+                    let prog_w = vw - 200;
+                    let prog_y = ctrl_y + 17;
+                    draw_rect(buf, stride, prog_x, prog_y, prog_w, 4, 0xFF444444);
+                    draw_rect(buf, stride, prog_x, prog_y, 20, 4, 0xFFFF0000);
+                    // Volume icon
+                    draw_rect(buf, stride, vx + vw - 80, ctrl_y + 8, 16, 14, 0xFFAAAAAA);
+                    // Fullscreen icon
+                    draw_rect(buf, stride, vx + vw - 40, ctrl_y + 8, 16, 14, 0xFFAAAAAA);
                 }
             }
         }
