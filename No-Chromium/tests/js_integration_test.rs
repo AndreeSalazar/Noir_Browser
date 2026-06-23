@@ -93,13 +93,17 @@ fn test_console_push_and_take() {
 
 #[test]
 fn test_console_take_empties_buffer() {
-    push_console("log", "UniqueTestMessage_xyz_42");
+    // Pre-clear buffer by taking everything
+    let _ = take_console_messages();
+    let unique = "TakeEmptiesTest_a8b9c0";
+    push_console("log", unique);
     let first = take_console_messages();
-    let found = first.iter().any(|(_, text)| text.contains("UniqueTestMessage_xyz_42"));
-    assert!(found, "First take should find our message");
+    let found = first.iter().any(|(_, text)| text.contains(unique));
+    assert!(found, "First take should find our message: got {:?}", first);
+    // Second take: may have other tests' messages, but our unique one should be gone
     let second = take_console_messages();
-    let found_again = second.iter().any(|(_, text)| text.contains("UniqueTestMessage_xyz_42"));
-    assert!(!found_again, "Second take should NOT find our message (consumed)");
+    let found_again = second.iter().any(|(_, text)| text.contains(unique));
+    assert!(!found_again, "Our unique message should be consumed: got {:?}", second);
 }
 
 #[test]

@@ -18,6 +18,10 @@ pub mod yuv_gpu;
 pub mod url_extractor;
 pub mod image_loader;       // FASE A2: Image subresource loader
 pub mod pre_cached_assets;
+pub mod mp4_demuxer;         // FASE E1: MP4 demuxer
+pub mod av_sync;             // FASE E2: A/V sync + frame scheduler
+pub mod hls_selector;        // FASE E3: HLS variant selector (ABR)
+pub mod mse_queue;           // FASE E4: MSE append queue
 
 pub use image_support::{
     get_cached_image, draw_image_to_buffer, fetch_image, take_image_dirty,

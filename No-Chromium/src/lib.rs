@@ -4,7 +4,7 @@
 //!
 //! | New name     | Maps to           | Description              |
 //! |--------------|-------------------|--------------------------|
-//! | `core`       | `app::context`/`app::config` | Core types  |
+//! | `core`       | `app::context`/`app::config` | Core types    |
 //! | `browser`    | `app::*`          | Browser UI panels        |
 //! | `html`       | `parsers::*`      | HTML parsing             |
 //! | `css`        | `parsers::*`      | CSS parsing              |
