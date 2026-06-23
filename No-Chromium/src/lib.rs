@@ -11,6 +11,7 @@ pub mod parsers;
 pub mod renderer_trait;
 pub mod security;
 pub mod storage;
+pub mod ui;
 pub mod utils;
 pub mod wasm_host;
 pub mod webgpu;
