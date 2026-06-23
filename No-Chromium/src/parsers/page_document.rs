@@ -51,6 +51,7 @@ pub struct PageDocument {
     pub style_blocks: Vec<String>,
     pub css_urls: Vec<String>,
     pub viewport_width: Option<f32>,
+    pub dom_nodes: Vec<DomNode>,
 }
 
 impl PageDocument {
@@ -65,6 +66,7 @@ impl PageDocument {
             style_blocks: Vec::new(),
             css_urls: Vec::new(),
             viewport_width: None,
+            dom_nodes: Vec::new(),
         }
     }
 
@@ -74,6 +76,7 @@ impl PageDocument {
         doc.extract_css_links(html);
         doc.extract_viewport(html);
         let nodes = parse_html(html);
+        doc.dom_nodes = nodes.clone();
         doc.extract_from_nodes(&nodes, 0, &mut Vec::new(), None);
         doc
     }
@@ -573,7 +576,7 @@ impl PageDocument {
         parts.join(" ")
     }
 
-    fn resolve_href(&self, href: &str) -> String {
+    pub fn resolve_href(&self, href: &str) -> String {
         if href.starts_with("http://") || href.starts_with("https://") {
             href.to_string()
         } else if href.starts_with("//") {

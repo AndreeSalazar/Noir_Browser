@@ -35,8 +35,8 @@ fn visit_node(handle: &Handle) -> Option<DomNode> {
             let tag_name = name.local.as_ref();
             let tag = map_tag_name(tag_name);
 
-            // Skip script, noscript, and style elements completely
-            if matches!(tag, HtmlTag::Noscript | HtmlTag::Script | HtmlTag::Style) {
+            // Skip noscript and style (script we keep to extract JS)
+            if matches!(tag, HtmlTag::Noscript | HtmlTag::Style) {
                 return None;
             }
 
