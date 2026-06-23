@@ -14,6 +14,7 @@ pub mod dash;
 pub mod webvtt;
 pub mod player_ui;
 pub mod http_range;
+pub mod yuv_gpu;
 
 pub use image_support::{
     get_cached_image, draw_image_to_buffer, fetch_image, take_image_dirty,
@@ -33,3 +34,4 @@ pub use dash::{DashMpd, DashProfile, DashPeriod, DashAdaptationSet, DashRepresen
 pub use webvtt::{WebVtt, VttCue, VttAlign, VttStyle};
 pub use player_ui::{PlayerControl, PlayerUiConfig, PlayerLayout, PlayerControls, format_player_time, format_seconds};
 pub use http_range::{ByteRange, RangeRequest, RangeDownloader};
+pub use yuv_gpu::{YuvGpuConverter, YuvGpuConfig, ShaderColorSpace, YUV_TO_RGB_SHADER};
