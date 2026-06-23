@@ -53,6 +53,8 @@ bytes = "1.5"
 bytemuck = { version = "1.14", features = ["derive"] }
 glam = "0.25"
 image = { version = "0.24", default-features = false, features = ["png", "jpeg", "webp"] }
+wgpu = "29.0.3"
+pollster = "0.3"
 rustybuzz = "0.12"
 ttf-parser = "0.20"
 fontdb = "0.16"
@@ -76,5 +78,5 @@ inherits = "release"
 debug = true
 
 [profile.dev]
-opt-level = 1
+opt-level = 3
 debug = true

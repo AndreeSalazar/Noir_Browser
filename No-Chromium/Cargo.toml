@@ -78,6 +78,10 @@ thiserror.workspace = true
 # Image & Media
 image.workspace = true
 
+# WebGPU - GPU acceleration
+wgpu.workspace = true
+pollster.workspace = true
+
 # Optional Dependencies
 vulkano = { version = "0.34", optional = true }
 rusqlite = { version = "0.30", features = ["bundled"], optional = true }
