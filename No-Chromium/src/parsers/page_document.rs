@@ -309,15 +309,19 @@ impl PageDocument {
                                     text: text.clone(),
                                     href: resolved.clone(),
                                 });
-                                self.text_blocks.push(TextBlock {
-                                    text,
-                                    tag: "a".into(),
-                                    font_size: 14.0,
-                                    bold: false,
-                                    link: Some(resolved),
-                                    indent_level: indent,
-                                    attributes: attributes.clone(),
-                                });
+                                // Solo crear text_block si NO está dentro de un bloque padre
+                                // (p, h1-h6, li, etc.) — el padre ya tiene el texto
+                                if !parent_is_block {
+                                    self.text_blocks.push(TextBlock {
+                                        text,
+                                        tag: "a".into(),
+                                        font_size: 14.0,
+                                        bold: false,
+                                        link: Some(resolved),
+                                        indent_level: indent,
+                                        attributes: attributes.clone(),
+                                    });
+                                }
                             }
                         }
                         HtmlTag::B | HtmlTag::Strong | HtmlTag::Em | HtmlTag::I | HtmlTag::Small | HtmlTag::U | HtmlTag::Cite | HtmlTag::Dfn | HtmlTag::Mark | HtmlTag::Q | HtmlTag::S | HtmlTag::Samp | HtmlTag::Var | HtmlTag::Kbd | HtmlTag::Abbr | HtmlTag::Time | HtmlTag::Data | HtmlTag::Del | HtmlTag::Ins | HtmlTag::Sub | HtmlTag::Sup => {
