@@ -28,6 +28,8 @@ pub mod compute;
 pub mod pwa;
 pub mod integration;
 pub mod gpu_renderer;
+pub mod surface;
+pub mod texture_atlas;
 
 pub use device::{Device, DeviceFeatures, DeviceLimits, GpuBackend};
 pub use pipeline::{Pipeline, PipelineConfig, PrimitiveTopology};

@@ -20,6 +20,7 @@ pub mod navigation_pipeline; // Chrome navigation flow state machine
 pub mod metrics;             // FASE A3: Browser metrics (RAM/CPU/FPS)
 pub mod scroll;              // FASE A4: Smooth scrolling
 pub mod error_pages;          // FASE A4: Beautiful error pages
+pub mod compositor;           // FASE D3: Compositor + damage tracking
 
 pub use config::AppConfig;
 pub use context::AppContext;
