@@ -15,11 +15,7 @@ fn make_link(x: f32, y: f32, w: f32, h: f32, href: &str) -> LayoutItem {
         bg_color: None,
         href: Some(href.to_string()),
         is_link: true,
-        padding_top: 0.0,
-        padding_bottom: 0.0,
-        padding_left: 0.0,
-        margin_top: 0.0,
-        margin_bottom: 0.0,
+        ..Default::default()
     })
 }
 
@@ -55,11 +51,7 @@ fn test_hit_test_link_not_a_link() {
         bg_color: None,
         href: None,
         is_link: false,
-        padding_top: 0.0,
-        padding_bottom: 0.0,
-        padding_left: 0.0,
-        margin_top: 0.0,
-        margin_bottom: 0.0,
+        ..Default::default()
     });
     let items = vec![item];
     let result = hit_test_link(&items, 120.0, 210.0, 0.0);

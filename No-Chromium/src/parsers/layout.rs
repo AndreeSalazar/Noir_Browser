@@ -44,11 +44,51 @@ pub struct LayoutBlock {
     pub bg_color: Option<[f32; 4]>,
     pub href: Option<String>,
     pub is_link: bool,
+    pub display: String,  // "block", "inline", "none"
+    pub visible: bool,    // CSS visibility: hidden
+    pub margin_top: f32,
+    pub margin_bottom: f32,
+    pub margin_left: f32,
+    pub margin_right: f32,
     pub padding_top: f32,
     pub padding_bottom: f32,
     pub padding_left: f32,
-    pub margin_top: f32,
-    pub margin_bottom: f32,
+    pub padding_right: f32,
+    pub border_top: u32,
+    pub border_bottom: u32,
+    pub border_left: u32,
+    pub border_right: u32,
+    pub border_color: [f32; 4],
+}
+
+impl Default for LayoutBlock {
+    fn default() -> Self {
+        Self {
+            x: 0.0, y: 0.0, w: 0.0, h: 0.0,
+            text: String::new(),
+            font_size: 14.0,
+            bold: false,
+            color: [0.85, 0.85, 0.85, 1.0],
+            bg_color: None,
+            href: None,
+            is_link: false,
+            display: "block".to_string(),
+            visible: true,
+            margin_top: 0.0,
+            margin_bottom: 0.0,
+            margin_left: 0.0,
+            margin_right: 0.0,
+            padding_top: 0.0,
+            padding_bottom: 0.0,
+            padding_left: 0.0,
+            padding_right: 0.0,
+            border_top: 0,
+            border_bottom: 0,
+            border_left: 0,
+            border_right: 0,
+            border_color: [0.0, 0.0, 0.0, 1.0],
+        }
+    }
 }
 
 pub struct LayoutContext {
@@ -138,6 +178,7 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
                         padding_left: 0.0,
                         margin_top: 0.0,
                         margin_bottom: 0.0,
+                        ..Default::default()
                     }));
                 }
             }
@@ -468,6 +509,7 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
             padding_left: styled.padding_left,
             margin_top: 0.0,
             margin_bottom: 0.0,
+            ..Default::default()
         }));
         ctx.cursor_y += h;
     } else {
@@ -499,6 +541,7 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
                     padding_left: styled.padding_left,
                     margin_top: 0.0,
                     margin_bottom: 0.0,
+                    ..Default::default()
                 }));
                 ctx.cursor_y += h;
                 line = word.to_string();
@@ -525,6 +568,7 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
                 padding_left: styled.padding_left,
                 margin_top: 0.0,
                 margin_bottom: 0.0,
+                ..Default::default()
             }));
             ctx.cursor_y += h;
         }

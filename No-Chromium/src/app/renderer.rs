@@ -361,6 +361,11 @@ fn render_layout_blocks(
     for item in items {
         match item {
             LayoutItem::Text(block) => {
+                // CSS display: none - skip element
+                if block.display == "none" { continue; }
+                // CSS visibility: hidden - skip but keep space
+                if !block.visible { continue; }
+
                 let screen_block_y = block.y - scroll_y + content_y as f32;
 
                 if screen_block_y + block.h < content_y as f32 - 10.0 {

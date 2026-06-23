@@ -1,0 +1,649 @@
+﻿cargo :    Compiling proc-macro2 v1.0.106
+En línea: 1 Carácter: 55
++ ... r\No-Chromium; cargo build --release --target-dir target 2>&1 | Out-F ...
++                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling proc-macro2 v1.0.106:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling cfg-if v1.0.4
+   Compiling zerocopy v0.8.50
+   Compiling windows-link v0.2.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling smallvec v1.15.1
+   Compiling serde_core v1.0.228
+   Compiling once_cell v1.21.4
+   Compiling serde v1.0.228
+   Compiling windows-sys v0.61.2
+   Compiling parking_lot_core v0.9.12
+   Compiling version_check v0.9.5
+   Compiling getrandom v0.2.17
+   Compiling scopeguard v1.2.0
+   Compiling itoa v1.0.18
+   Compiling rand_core v0.6.4
+   Compiling lock_api v0.4.14
+   Compiling pin-project-lite v0.2.17
+   Compiling getrandom v0.3.4
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling memchr v2.8.1
+   Compiling bytes v1.11.1
+   Compiling futures-core v0.3.32
+   Compiling siphasher v1.0.3
+   Compiling parking_lot v0.12.5
+   Compiling phf_shared v0.11.3
+   Compiling futures-sink v0.3.32
+   Compiling jobserver v0.1.34
+   Compiling log v0.4.32
+   Compiling equivalent v1.0.2
+   Compiling cc v1.2.63
+   Compiling slab v0.4.12
+   Compiling syn v2.0.117
+   Compiling futures-channel v0.3.32
+   Compiling tracing-core v0.1.36
+   Compiling autocfg v1.5.1
+   Compiling libc v0.2.186
+   Compiling hashbrown v0.17.1
+   Compiling ahash v0.8.12
+   Compiling utf8_iter v1.0.4
+   Compiling futures-task v0.3.32
+   Compiling futures-io v0.3.32
+   Compiling allocator-api2 v0.2.21
+   Compiling indexmap v2.14.0
+   Compiling fnv v1.0.7
+   Compiling writeable v0.6.3
+   Compiling litemap v0.8.2
+   Compiling icu_normalizer_data v2.2.0
+   Compiling icu_properties_data v2.2.0
+   Compiling byteorder v1.5.0
+   Compiling percent-encoding v2.3.2
+   Compiling pkg-config v0.3.33
+   Compiling num-traits v0.2.19
+   Compiling http v1.4.2
+   Compiling windows_x86_64_msvc v0.52.6
+   Compiling bitflags v2.13.0
+   Compiling ring v0.17.14
+   Compiling num-conv v0.2.2
+   Compiling crossbeam-utils v0.8.21
+   Compiling thiserror v1.0.69
+   Compiling time-core v0.1.8
+   Compiling zstd-sys v2.0.8+zstd.1.5.5
+   Compiling new_debug_unreachable v1.0.6
+   Compiling powerfmt v0.2.0
+   Compiling time-macros v0.2.27
+   Compiling deranged v0.5.8
+   Compiling generic-array v0.14.7
+   Compiling either v1.16.0
+   Compiling writeable v0.5.5
+   Compiling litemap v0.7.5
+   Compiling untrusted v0.9.0
+   Compiling http-body v1.0.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling form_urlencoded v1.2.2
+   Compiling windows-result v0.4.1
+   Compiling windows-strings v0.5.1
+   Compiling rand_chacha v0.3.1
+   Compiling httparse v1.10.1
+   Compiling hashbrown v0.14.5
+   Compiling synstructure v0.13.2
+   Compiling rand v0.8.6
+   Compiling time v0.3.47
+   Compiling zmij v1.0.21
+   Compiling windows_x86_64_msvc v0.48.5
+   Compiling rustversion v1.0.22
+   Compiling crc32fast v1.5.0
+   Compiling mac v0.1.1
+   Compiling precomputed-hash v0.1.1
+   Compiling winapi v0.3.9
+   Compiling siphasher v0.3.11
+   Compiling winnow v1.0.3
+   Compiling typenum v1.20.1
+   Compiling zstd-safe v6.0.6
+   Compiling phf_generator v0.11.3
+   Compiling crunchy v0.2.4
+   Compiling phf_shared v0.10.0
+   Compiling phf_codegen v0.11.3
+   Compiling string_cache_codegen v0.5.4
+   Compiling futf v0.1.5
+   Compiling windows-registry v0.6.1
+   Compiling windows-targets v0.52.6
+   Compiling ownedbytes v0.6.0
+   Compiling markup5ever v0.12.1
+   Compiling rustls v0.21.12
+   Compiling rustc-hash v1.1.0
+   Compiling icu_locid_transform_data v1.4.0
+   Compiling thin-vec v0.2.18
+   Compiling tower-service v0.3.3
+   Compiling native-tls v0.2.18
+   Compiling utf-8 v0.7.6
+   Compiling ipnet v2.12.0
+   Compiling serde_json v1.0.150
+   Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling simd-adler32 v0.3.9
+   Compiling getrandom v0.4.2
+   Compiling try-lock v0.2.5
+   Compiling regex-syntax v0.8.10
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling atomic-waker v1.1.2
+   Compiling boa_profiler v0.18.0
+   Compiling want v0.3.1
+   Compiling toml_edit v0.25.12+spec-1.1.0
+   Compiling tendril v0.4.3
+   Compiling zerofrom-derive v0.1.7
+   Compiling serde_derive v1.0.228
+   Compiling displaydoc v0.2.6
+   Compiling yoke-derive v0.8.2
+   Compiling tokio-macros v2.7.0
+   Compiling zerovec-derive v0.11.3
+   Compiling futures-macro v0.3.32
+   Compiling tracing-attributes v0.1.31
+   Compiling phf_macros v0.11.3
+   Compiling yoke-derive v0.7.5
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling phf v0.11.3
+   Compiling zerovec-derive v0.10.3
+   Compiling futures-util v0.3.32
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling async-trait v0.1.89
+   Compiling socket2 v0.6.4
+   Compiling mio v1.2.1
+   Compiling tracing v0.1.44
+   Compiling tinystr v0.8.3
+   Compiling yoke v0.7.5
+   Compiling icu_locale_core v2.2.0
+   Compiling potential_utf v0.1.5
+   Compiling thiserror-impl v1.0.69
+   Compiling icu_provider_macros v1.4.0
+   Compiling tokio v1.52.3
+   Compiling zerovec v0.10.4
+   Compiling icu_collections v2.2.0
+   Compiling boa_macros v0.18.0
+   Compiling zeroize_derive v1.4.3
+   Compiling schannel v0.1.29
+   Compiling regex-automata v0.4.14
+   Compiling icu_provider v2.2.0
+   Compiling zeroize v1.8.2
+   Compiling tinystr v0.7.6
+   Compiling string_cache v0.8.9
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling icu_locid v1.4.0
+   Compiling tantivy-common v0.6.0
+   Compiling icu_collections v1.4.0
+   Compiling boa_gc v0.18.0
+   Compiling sct v0.7.1
+   Compiling rustls-webpki v0.101.7
+   Compiling bytemuck_derive v1.10.2
+   Compiling icu_provider v1.4.0
+   Compiling idna_adapter v1.2.2
+   Compiling icu_locid_transform v1.4.0
+   Compiling idna v1.1.0
+   Compiling phf_generator v0.10.0
+   Compiling num-integer v0.1.46
+   Compiling url v2.5.8
+   Compiling crossbeam-epoch v0.9.18
+   Compiling memoffset v0.9.1
+   Compiling static_assertions v1.1.0
+   Compiling utf8-ranges v1.0.5
+   Compiling regex-syntax v0.6.29
+   Compiling rayon-core v1.13.0
+   Compiling icu_properties_data v1.4.1
+   Compiling tinyvec_macros v0.1.1
+   Compiling adler2 v2.0.1
+   Compiling base64 v0.21.7
+   Compiling tinyvec v1.11.0
+   Compiling miniz_oxide v0.8.9
+   Compiling icu_properties v1.4.3
+   Compiling boa_interner v0.18.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling tokio-util v0.7.18
+   Compiling num-bigint v0.4.6
+   Compiling h2 v0.4.14
+   Compiling bytemuck v1.25.0
+   Compiling phf_codegen v0.10.0
+   Compiling bitpacking v0.8.4
+   Compiling windows-targets v0.48.5
+   Compiling rustls-pki-types v1.14.1
+   Compiling tantivy-fst v0.4.0
+   Compiling proc-macro-crate v3.5.0
+   Compiling html5ever v0.27.0
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling http v0.2.12
+   Compiling hyper v1.10.1
+   Compiling sync_wrapper v1.0.2
+   Compiling slotmap v1.1.1
+   Compiling base64 v0.22.1
+   Compiling heck v0.5.0
+   Compiling dtoa v1.0.11
+   Compiling ash v0.37.3+1.3.251
+   Compiling paste v1.0.15
+   Compiling cfg_aliases v0.2.1
+   Compiling ash v0.36.0+1.3.206
+   Compiling subtle v2.6.1
+   Compiling ipconfig v0.3.4
+   Compiling cty v0.2.2
+   Compiling portable-atomic v1.13.1
+   Compiling murmurhash32 v0.3.1
+   Compiling minimal-lexical v0.2.1
+   Compiling tower-layer v0.3.3
+   Compiling hyper-util v0.1.20
+   Compiling tower v0.5.3
+   Compiling nom v7.1.3
+   Compiling tantivy-stacker v0.2.0
+   Compiling raw-window-handle v0.4.3
+   Compiling digest v0.10.7
+   Compiling winit v0.30.13
+   Compiling dtoa-short v0.3.5
+   Compiling enum-as-inner v0.6.1
+   Compiling h2 v0.3.27
+   Compiling num_enum_derive v0.7.6
+   Compiling tokio-rustls v0.24.1
+   Compiling tokio-native-tls v0.3.1
+   Compiling boa_ast v0.18.0
+   Compiling selectors v0.25.0
+   Compiling windows-sys v0.48.0
+   Compiling flate2 v1.1.9
+   Compiling rustls-pemfile v1.0.4
+   Compiling libloading v0.7.4
+   Compiling cssparser-macros v0.6.1
+   Compiling fdeflate v0.3.7
+   Compiling windows-core v0.52.0
+   Compiling regress v0.9.1
+   Compiling http-body-util v0.1.3
+   Compiling itertools v0.11.0
+   Compiling zstd v0.12.4
+   Compiling instant v0.1.13
+   Compiling ryu v1.0.23
+   Compiling ttf-parser v0.20.0
+   Compiling icu_normalizer_data v1.4.1
+   Compiling lazy_static v1.5.0
+   Compiling tantivy-sstable v0.2.0
+   Compiling linked-hash-map v0.5.6
+   Compiling fastdivide v0.4.2
+   Compiling foldhash v0.1.5
+   Compiling bitflags v1.3.2
+   Compiling fast-float v0.2.0
+   Compiling anyhow v1.0.102
+   Compiling fastrand v2.4.1
+   Compiling raw-window-handle v0.6.2
+   Compiling utf16_iter v1.0.5
+   Compiling data-encoding v2.11.0
+   Compiling widestring v1.2.1
+   Compiling write16 v1.0.0
+   Compiling icu_normalizer v1.4.3
+   Compiling tempfile v3.27.0
+   Compiling png v0.17.16
+   Compiling lru-cache v0.1.2
+   Compiling hickory-proto v0.24.4
+   Compiling hashbrown v0.15.5
+   Compiling boa_parser v0.18.0
+   Compiling windows v0.52.0
+   Compiling tantivy-bitpacker v0.5.0
+   Compiling tantivy-columnar v0.2.0
+   Compiling sharded-slab v0.1.7
+   Compiling serde_urlencoded v0.7.1
+   Compiling measure_time v0.8.3
+   Compiling hyper-tls v0.6.0
+   Compiling cssparser v0.31.2
+   Compiling tantivy-query-grammar v0.21.0
+   Compiling num_enum v0.7.6
+   Compiling rayon v1.12.0
+   Compiling fs4 v0.6.6
+   Compiling intrusive-collections v0.9.6
+   Compiling tower-http v0.6.11
+   Compiling raw-window-handle v0.3.4
+   Compiling phf v0.10.1
+   Compiling uuid v1.23.2
+   Compiling xml5ever v0.18.1
+   Compiling webpki-roots v1.0.7
+   Compiling arc-swap v1.9.1
+   Compiling regex v1.12.3
+   Compiling matchers v0.2.0
+   Compiling futures-executor v0.3.32
+   Compiling sketches-ddsketch v0.2.2
+   Compiling rust-stemmers v1.2.0
+   Compiling tantivy-tokenizer-api v0.2.0
+   Compiling nu-ansi-term v0.50.3
+   Compiling derive_more v0.99.20
+   Compiling windows-sys v0.52.0
+   Compiling lru v0.11.1
+   Compiling dashmap v5.5.3
+   Compiling crossbeam-channel v0.5.15
+   Compiling itertools v0.12.1
+   Compiling fxhash v0.2.1
+   Compiling tracing-log v0.2.0
+   Compiling aho-corasick v1.1.4
+   Compiling servo_arc v0.3.0
+   Compiling encoding_rs v0.8.35
+   Compiling thread_local v1.1.9
+   Compiling downcast-rs v1.2.1
+   Compiling census v0.4.2
+   Compiling unicode-script v0.5.8
+   Compiling pollster v0.3.0
+   Compiling mime v0.3.17
+   Compiling resolv-conf v0.7.6
+   Compiling cursor-icon v1.2.0
+   Compiling htmlescape v0.3.1
+   Compiling dpi v0.1.2
+   Compiling color_quant v1.1.0
+   Compiling unicode-segmentation v1.13.3
+   Compiling ryu-js v1.0.2
+   Compiling presser v0.3.1
+   Compiling smol_str v0.2.2
+   Compiling tap v1.0.1
+   Compiling memmap2 v0.9.10
+   Compiling jpeg-decoder v0.3.2
+   Compiling sptr v0.3.2
+   Compiling num_cpus v1.17.0
+   Compiling memmap2 v0.7.1
+   Compiling unicode-bidi-mirroring v0.1.0
+   Compiling levenshtein_automata v0.2.1
+   Compiling oneshot v0.1.13
+   Compiling unicode-properties v0.1.4
+   Compiling unicode-ccc v0.1.2
+   Compiling cpufeatures v0.2.17
+   Compiling arrayvec v0.7.6
+   Compiling lz4_flex v0.11.6
+   Compiling rustybuzz v0.12.1
+   Compiling image v0.24.9
+   Compiling boa_engine v0.18.0
+   Compiling tantivy v0.21.1
+   Compiling sha2 v0.10.9
+   Compiling gpu-allocator v0.25.0
+   Compiling ash-window v0.9.1
+   Compiling fontdb v0.16.2
+   Compiling reqwest v0.12.28
+   Compiling hickory-resolver v0.24.4
+   Compiling tracing-subscriber v0.3.23
+   Compiling futures v0.3.32
+   Compiling markup5ever_rcdom v0.3.0
+   Compiling webpki-roots v0.26.11
+   Compiling lru v0.12.5
+   Compiling softbuffer v0.4.8
+   Compiling hmac v0.12.1
+   Compiling tokio-socks v0.5.3
+   Compiling glam v0.25.0
+   Compiling no-chromium v0.2.0 (C:\Users\andre\Documents\Noir_Browser\No-Chromium)
+warning: unused import: `super::config::AppConfig`
+  --> No-Chromium\src\app\event_loop.rs:14:5
+   |
+14 | use super::config::AppConfig;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::sync::Mutex`
+ --> No-Chromium\src\js_engine_v3\console.rs:5:5
+  |
+5 | use std::sync::Mutex;
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::rc::Rc`
+ --> No-Chromium\src\js_engine_v3\timer.rs:6:5
+  |
+6 | use std::rc::Rc;
+  |     ^^^^^^^^^^^
+
+warning: unused import: `Duration`
+ --> No-Chromium\src\js_engine_v3\timer.rs:7:17
+  |
+7 | use std::time::{Duration, Instant};
+  |                 ^^^^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> No-Chromium\src\js_engine_v3\fetch.rs:7:17
+  |
+7 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unnecessary parentheses around assigned value
+   --> No-Chromium\src\parsers\layout.rs:169:20
+    |
+169 |     let max_iter = (doc.text_blocks.len()
+    |                    ^
+...
+172 |         + 100);
+    |              ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+169 ~     let max_iter = doc.text_blocks.len()
+170 |         + doc.image_blocks.len()
+171 |         + doc.video_blocks.len()
+172 ~         + 100 ;
+    |
+
+warning: unused import: `std::rc::Rc`
+ --> No-Chromium\src\wasm_v2\arena.rs:5:5
+  |
+5 | use std::rc::Rc;
+  |     ^^^^^^^^^^^
+
+warning: unused import: `super::value::Value`
+ --> No-Chromium\src\wasm_v2\compiler.rs:5:5
+  |
+5 | use super::value::Value;
+  |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::interpreter::Interpreter`
+ --> No-Chromium\src\wasm_v2\compiler.rs:9:5
+  |
+9 | use super::interpreter::Interpreter;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::types::*`
+  --> No-Chromium\src\wasm_v2\wasi.rs:11:5
+   |
+11 | use super::types::*;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `std::sync::Arc`
+ --> No-Chromium\src\webgpu\device.rs:4:5
+  |
+4 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused import: `std::sync::Mutex`
+ --> No-Chromium\src\webgpu\device.rs:5:5
+  |
+5 | use std::sync::Mutex;
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TextureFormat` and `TextureUsage`
+ --> No-Chromium\src\webgpu\renderer.rs:6:31
+  |
+6 | use super::texture::{Texture, TextureFormat, TextureUsage};
+  |                               ^^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused imports: `ShaderModule` and `create_standard_shaders`
+ --> No-Chromium\src\webgpu\renderer.rs:8:22
+  |
+8 | use super::shaders::{ShaderModule, create_standard_shaders};
+  |                      ^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BufferUsage`
+  --> No-Chromium\src\webgpu\bridge.rs:10:29
+   |
+10 | use super::buffer::{Buffer, BufferUsage};
+   |                             ^^^^^^^^^^^
+
+warning: unused import: `super::buffer::BufferUsage`
+ --> No-Chromium\src\webgpu\compute.rs:6:5
+  |
+6 | use super::buffer::BufferUsage;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `winit::window::Window::set_cursor_icon`: Renamed to `set_cursor`
+   --> No-Chromium\src\app\event_loop.rs:167:32
+    |
+167 |                         window.set_cursor_icon(winit::window::CursorIcon::Pointer);
+    |                                ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `winit::window::Window::set_cursor_icon`: Renamed to `set_cursor`
+   --> No-Chromium\src\app\event_loop.rs:169:32
+    |
+169 |                         window.set_cursor_icon(winit::window::CursorIcon::Default);
+    |                                ^^^^^^^^^^^^^^^
+
+warning: unused variable: `h`
+   --> No-Chromium\src\app\renderer.rs:598:58
+    |
+598 | fn draw_find_bar(buf: &mut [u32], stride: usize, w: i32, h: i32, query: &str) {
+    |                                                          ^ help: if this is intentional, prefix it with an 
+underscore: `_h`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+   --> No-Chromium\src\app\glyphs.rs:129:9
+    |
+127 |         '#' => [0b01010, 0b01010, 0b11111, 0b01010, 0b11111, 0b01010, 0b01010, 0, 0, 0, 0, 0],
+    |         --- matches all the relevant values
+128 |         '@' => [0b01110, 0b10001, 0b10111, 0b10101, 0b10110, 0b10000, 0b10001, 0b01110, 0, 0, 0, 0],
+129 |         '#' => [0b01010, 0b01010, 0b11111, 0b01010, 0b11111, 0b01010, 0b01010, 0, 0, 0, 0, 0],
+    |         ^^^ no value can reach this
+    |
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `interp`
+  --> No-Chromium\src\bridge\mod.rs:73:32
+   |
+73 |     fn call_js_function(&self, interp: &mut Interpreter, _module: &str, func: &str, _args: &[JsValue]) -> 
+Result<JsValue, String> {
+   |                                ^^^^^^ help: if this is intentional, prefix it with an underscore: `_interp`
+
+warning: variable does not need to be mutable
+  --> No-Chromium\src\js_engine_v3\interpreter.rs:47:13
+   |
+47 |         let mut result = JsValue::Undefined;
+   |             ----^^^^^^
+   |             |
+   |             help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `name`
+   --> No-Chromium\src\js_engine_v3\interpreter.rs:324:33
+    |
+324 |             JsValue::Function { name, params, body, closure } => {
+    |                                 ^^^^ help: try ignoring the field: `name: _`
+
+warning: unused variable: `name`
+   --> No-Chromium\src\js_engine_v3\interpreter.rs:340:39
+    |
+340 |             JsValue::NativeFunction { name, func } => {
+    |                                       ^^^^ help: try ignoring the field: `name: _`
+
+warning: unused variable: `next_id`
+  --> No-Chromium\src\js_engine_v3\dom.rs:67:13
+   |
+67 |         let next_id = Rc::new(RefCell::new(0));
+   |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_next_id`
+
+warning: unused variable: `delay`
+  --> No-Chromium\src\js_engine_v3\timer.rs:84:9
+   |
+84 |     let delay = args[1].to_number() as u64;
+   |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_delay`
+
+warning: unused variable: `args`
+  --> No-Chromium\src\js_engine_v3\timer.rs:96:25
+   |
+96 | pub fn js_clear_timeout(args: &[JsValue]) -> Result<JsValue, String> {
+   |                         ^^^^ help: if this is intentional, prefix it with an underscore: `_args`
+
+warning: unused variable: `radix`
+   --> No-Chromium\src\js_engine_v3\builtins.rs:128:13
+    |
+128 |         let radix = if args.len() > 1 { args[1].to_number() as u32 } else { 10 };
+    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_radix`
+
+warning: unused variable: `func`
+   --> No-Chromium\src\wasm_v2\jit.rs:118:37
+    |
+118 |     fn instruction_combining(&self, func: &mut CompiledFunction) {
+    |                                     ^^^^ help: if this is intentional, prefix it with an underscore: `_func`
+
+warning: unused variable: `func`
+   --> No-Chromium\src\wasm_v2\jit.rs:123:30
+    |
+123 |     fn loop_unrolling(&self, func: &mut CompiledFunction) {
+    |                              ^^^^ help: if this is intentional, prefix it with an underscore: `_func`
+
+warning: unused variable: `global`
+  --> No-Chromium\src\wasm_v2\runtime.rs:60:13
+   |
+60 |         for global in &module.globals {
+   |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_global`
+
+warning: variable `ptr` is assigned to, but never used
+  --> No-Chromium\src\wasm_v2\wasi.rs:46:17
+   |
+46 |             let mut ptr = argv_ptr;
+   |                 ^^^^^^^
+   |
+   = note: consider using `_ptr` instead
+
+warning: variable `buf_ptr` is assigned to, but never used
+  --> No-Chromium\src\wasm_v2\wasi.rs:47:17
+   |
+47 |             let mut buf_ptr = argv_buf_ptr;
+   |                 ^^^^^^^^^^^
+   |
+   = note: consider using `_buf_ptr` instead
+
+warning: value assigned to `ptr` is never read
+  --> No-Chromium\src\wasm_v2\wasi.rs:50:17
+   |
+50 |                 ptr += arg.len() as u32 + 1;
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `buf_ptr` is never read
+  --> No-Chromium\src\wasm_v2\wasi.rs:51:17
+   |
+51 |                 buf_ptr += arg.len() as u32 + 1;
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+
+warning: field `next_node_id` is never read
+  --> No-Chromium\src\js_engine_v3\dom.rs:50:5
+   |
+46 | pub struct Dom {
+   |            --- field in this struct
+...
+50 |     next_node_id: u64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `width` and `height` are never read
+  --> No-Chromium\src\renderer_trait.rs:29:5
+   |
+28 | pub struct CpuBackend {
+   |            ---------- fields in this struct
+29 |     width: u32,
+   |     ^^^^^
+30 |     height: u32,
+   |     ^^^^^^
+
+warning: comparison is useless due to type limits
+   --> No-Chromium\src\wasm_v2\opcodes.rs:128:25
+    |
+128 |         if b <= 0x78 && b >= 0x00 {
+    |                         ^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: `no-chromium` (lib) generated 38 warnings (run `cargo fix --lib -p no-chromium` to apply 28 suggestions)
+    Finished `release` profile [optimized] target(s) in 2m 55s
