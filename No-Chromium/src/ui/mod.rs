@@ -5,7 +5,8 @@
 //! - markdown: Rendering de markdown
 //! - card_layout: Card-style rendering
 //! - list_render: Listas ordenadas/no ordenadas con bullets
-//! - table_render: Tablas HTML con headers/rows/columns
+//! - table_render: Tablas HTML
+//! - css_grid: CSS Grid layout (display: grid)
 
 #![allow(dead_code)]
 
@@ -15,6 +16,7 @@ pub mod markdown;
 pub mod card_layout;
 pub mod list_render;
 pub mod table_render;
+pub mod css_grid;
 
 pub use click_feedback::{
     CursorType, InteractiveRole, InteractiveBox, FocusRing,
@@ -34,4 +36,7 @@ pub use list_render::{
 };
 pub use table_render::{
     Table, TableRow, TableCell, TableSection, TableSectionData, TableRenderer, CellAlign,
+};
+pub use css_grid::{
+    GridTrackSize, GridTemplate, GridAutoFlow, GridPlacement, GridItem, CssGrid,
 };
