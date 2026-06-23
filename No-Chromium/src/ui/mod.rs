@@ -19,6 +19,7 @@ pub mod table_render;
 pub mod css_grid;
 pub mod css_containment;
 pub mod text_shaping;
+pub mod ad_blocker;
 
 pub use click_feedback::{
     CursorType, InteractiveRole, InteractiveBox, FocusRing,
@@ -47,4 +48,7 @@ pub use css_containment::{
 };
 pub use text_shaping::{
     WordBreak, OverflowWrap, Hyphens, WhiteSpace, TextShaper,
+};
+pub use ad_blocker::{
+    BlockCategory, BlockAction, BlockRule, AdBlocker, BlockStats,
 };
