@@ -123,11 +123,12 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
     // Cap viewport width to reasonable max (1200px max content)
     let raw_w = doc.viewport_width.unwrap_or(viewport_w);
     let effective_w = raw_w.min(1200.0);
-    let content_x = 20.0;
-    let content_w = (effective_w - 40.0).max(200.0);
+    let content_x = 32.0;
+    let content_w = (effective_w - 64.0).max(200.0);
 
     let mut ctx = LayoutContext::new(effective_w, content_x, content_w)
         .with_css(&doc.style_blocks);
+    ctx.line_height = 1.6;
 
     let mut items = Vec::new();
 
@@ -339,7 +340,7 @@ fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
         color: default_color,
         bg_color: None,
         margin_top: 0.0,
-        margin_bottom: 4.0,
+        margin_bottom: 8.0,
         padding_top: 0.0,
         padding_bottom: 0.0,
         padding_left: 0.0,
@@ -422,39 +423,40 @@ fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
         "h1" => {
             if decls.font_size.is_none() { styled.font_size = 28.0; }
             if decls.font_weight.is_none() { styled.bold = true; }
-            if decls.margin_top.is_none() { styled.margin_top = 20.0; }
-            if decls.margin_bottom.is_none() { styled.margin_bottom = 12.0; }
+            if decls.margin_top.is_none() { styled.margin_top = 24.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 16.0; }
             if decls.color.is_none() { styled.color = [1.0, 1.0, 1.0, 1.0]; }
         }
         "h2" => {
             if decls.font_size.is_none() { styled.font_size = 22.0; }
             if decls.font_weight.is_none() { styled.bold = true; }
-            if decls.margin_top.is_none() { styled.margin_top = 16.0; }
-            if decls.margin_bottom.is_none() { styled.margin_bottom = 8.0; }
+            if decls.margin_top.is_none() { styled.margin_top = 20.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 12.0; }
             if decls.color.is_none() { styled.color = [1.0, 1.0, 1.0, 1.0]; }
         }
         "h3" => {
             if decls.font_size.is_none() { styled.font_size = 18.0; }
             if decls.font_weight.is_none() { styled.bold = true; }
-            if decls.margin_top.is_none() { styled.margin_top = 14.0; }
-            if decls.margin_bottom.is_none() { styled.margin_bottom = 6.0; }
+            if decls.margin_top.is_none() { styled.margin_top = 16.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 8.0; }
             if decls.color.is_none() { styled.color = [0.95, 0.95, 0.95, 1.0]; }
         }
         "h4" => {
             if decls.font_size.is_none() { styled.font_size = 16.0; }
             if decls.font_weight.is_none() { styled.bold = true; }
-            if decls.margin_top.is_none() { styled.margin_top = 12.0; }
-            if decls.margin_bottom.is_none() { styled.margin_bottom = 4.0; }
+            if decls.margin_top.is_none() { styled.margin_top = 14.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 6.0; }
             if decls.color.is_none() { styled.color = [0.9, 0.9, 0.9, 1.0]; }
         }
         "p" => {
             if decls.font_size.is_none() { styled.font_size = 14.0; }
-            if decls.margin_bottom.is_none() { styled.margin_bottom = 8.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 12.0; }
+            if decls.margin_top.is_none() { styled.margin_top = 4.0; }
             if decls.color.is_none() { styled.color = [0.82, 0.82, 0.82, 1.0]; }
         }
         "a" => {
             if decls.font_size.is_none() { styled.font_size = 14.0; }
-            if decls.color.is_none() { styled.color = [0.55, 0.75, 1.0, 1.0]; }
+            if decls.color.is_none() { styled.color = [0.60, 0.78, 1.0, 1.0]; }
             if decls.margin_bottom.is_none() { styled.margin_bottom = 2.0; }
         }
         "b" => {
@@ -464,9 +466,18 @@ fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
         }
         "li" => {
             if decls.font_size.is_none() { styled.font_size = 14.0; }
-            if decls.margin_bottom.is_none() { styled.margin_bottom = 2.0; }
-            styled.indent += 16.0;
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 4.0; }
+            if decls.margin_top.is_none() { styled.margin_top = 2.0; }
+            styled.indent += 20.0;
             if decls.color.is_none() { styled.color = [0.82, 0.82, 0.82, 1.0]; }
+        }
+        "ul" | "ol" => {
+            if decls.margin_top.is_none() { styled.margin_top = 8.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 12.0; }
+        }
+        "div" | "section" | "article" | "main" | "aside" | "nav" | "header" | "footer" => {
+            if decls.margin_top.is_none() { styled.margin_top = 6.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 8.0; }
         }
         "code" => {
             if decls.font_size.is_none() { styled.font_size = 12.0; }
@@ -479,20 +490,20 @@ fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
         }
         "blockquote" => {
             if decls.font_size.is_none() { styled.font_size = 14.0; }
-            if decls.margin_top.is_none() { styled.margin_top = 8.0; }
-            if decls.margin_bottom.is_none() { styled.margin_bottom = 8.0; }
-            styled.indent += 24.0;
-            if decls.padding_left.is_none() { styled.padding_left = 12.0; }
-            if decls.color.is_none() { styled.color = [0.65, 0.65, 0.70, 1.0]; }
-        }
-        "hr" => {
             if decls.margin_top.is_none() { styled.margin_top = 12.0; }
             if decls.margin_bottom.is_none() { styled.margin_bottom = 12.0; }
+            styled.indent += 24.0;
+            if decls.padding_left.is_none() { styled.padding_left = 16.0; }
+            if decls.color.is_none() { styled.color = [0.70, 0.70, 0.75, 1.0]; }
+        }
+        "hr" => {
+            if decls.margin_top.is_none() { styled.margin_top = 16.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 16.0; }
             if decls.color.is_none() { styled.color = [0.35, 0.35, 0.40, 1.0]; }
         }
         "text" => {
             if decls.font_size.is_none() { styled.font_size = 14.0; }
-            if decls.margin_bottom.is_none() { styled.margin_bottom = 4.0; }
+            if decls.margin_bottom.is_none() { styled.margin_bottom = 6.0; }
             if decls.color.is_none() { styled.color = [0.82, 0.82, 0.82, 1.0]; }
         }
         "input" => {
@@ -562,8 +573,8 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
             border_left: styled.border_left,
             border_right: styled.border_right,
             border_color: styled.border_color,
-            margin_top: 0.0,
-            margin_bottom: 0.0,
+            margin_top: styled.margin_top,
+            margin_bottom: styled.margin_bottom,
             ..Default::default()
         }));
         ctx.cursor_y += h;
@@ -594,8 +605,8 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
                     padding_top: styled.padding_top,
                     padding_bottom: styled.padding_bottom,
                     padding_left: styled.padding_left,
-                    margin_top: 0.0,
-                    margin_bottom: 0.0,
+                    margin_top: styled.margin_top,
+                    margin_bottom: styled.margin_bottom,
                     ..Default::default()
                 }));
                 ctx.cursor_y += h;
@@ -621,8 +632,8 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
                 padding_top: styled.padding_top,
                 padding_bottom: styled.padding_bottom,
                 padding_left: styled.padding_left,
-                margin_top: 0.0,
-                margin_bottom: 0.0,
+                margin_top: styled.margin_top,
+                margin_bottom: styled.margin_bottom,
                 ..Default::default()
             }));
             ctx.cursor_y += h;
