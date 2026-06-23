@@ -460,6 +460,7 @@ fn render_layout_blocks(
                 if iy < content_top { ih -= content_top - iy; iy = content_top; }
                 if iy + ih > content_bottom { ih = content_bottom - iy; }
                 if ih <= 0 { continue; }
+                let _ = content_bottom;
 
                 // Image background with rounded border feel
                 draw_rect(buf, stride, ix, iy, iw, ih, 0xFF1A1A22);
@@ -520,8 +521,8 @@ fn render_layout_blocks(
                 let mut vy = screen_vid_y as i32;
                 let mut vw = vid.w as i32;
                 let mut vh = vid.h as i32;
-                // Clamp X to content area
-                if vx < content_top { vx = content_top; }
+                // Clamp X to content area (NAV_START_X is 8, but use 0 for screen)
+                if vx < 0 { vx = 0; }
                 if vx + vw > screen_w { vw = screen_w - vx; }
                 // Skip if completely off-screen horizontally
                 if vw <= 0 { continue; }

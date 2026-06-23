@@ -120,9 +120,11 @@ impl LayoutContext {
 }
 
 pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
-    let effective_w = doc.viewport_width.unwrap_or(viewport_w);
-    let content_x = 40.0;
-    let content_w = (effective_w - 80.0).max(200.0);
+    // Cap viewport width to reasonable max (1200px max content)
+    let raw_w = doc.viewport_width.unwrap_or(viewport_w);
+    let effective_w = raw_w.min(1200.0);
+    let content_x = 20.0;
+    let content_w = (effective_w - 40.0).max(200.0);
 
     let mut ctx = LayoutContext::new(effective_w, content_x, content_w)
         .with_css(&doc.style_blocks);
@@ -134,7 +136,7 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
 
     if is_grid {
         // Grid layout: 2-3 columns
-        let cols = if content_w > 1400.0 { 3 } else { 2 };
+        let cols = if content_w > 800.0 { 3 } else { 2 };
         let gap = 16.0;
         let cell_w = (content_w - gap * (cols as f32 - 1.0)) / cols as f32;
         let cell_h = cell_w * 9.0 / 16.0 + 60.0; // 16:9 thumb + 60px for text
