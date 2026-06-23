@@ -187,6 +187,11 @@ impl PageDocument {
         ancestors: &mut Vec<String>,
         current_href: Option<String>,
     ) {
+        let parent_is_block = !ancestors.is_empty() && matches!(
+            ancestors.last().map(|s| s.as_str()),
+            Some("p") | Some("h1") | Some("h2") | Some("h3") | Some("h4") | Some("h5") | Some("h6")
+                | Some("li") | Some("blockquote") | Some("pre") | Some("div")
+        );
         for node in nodes {
             match node {
                 DomNode::Element {
@@ -197,6 +202,22 @@ impl PageDocument {
                     // Skip content of script, style, noscript, template tags
                     if matches!(tag, HtmlTag::Script | HtmlTag::Style | HtmlTag::Noscript)
                         || matches!(tag, HtmlTag::Custom(name) if name == "template") {
+                        continue;
+                    }
+                    // Skip inline tags dentro de bloque padre (ya se procesó el texto)
+                    let tag_name = Self::tag_name(tag);
+                    if parent_is_block && matches!(
+                        tag,
+                        HtmlTag::B | HtmlTag::Strong | HtmlTag::Em | HtmlTag::I
+                            | HtmlTag::Small | HtmlTag::U | HtmlTag::Cite | HtmlTag::Dfn
+                            | HtmlTag::Mark | HtmlTag::Q | HtmlTag::S | HtmlTag::Samp
+                            | HtmlTag::Var | HtmlTag::Kbd | HtmlTag::Abbr | HtmlTag::Time
+                            | HtmlTag::Data | HtmlTag::Del | HtmlTag::Ins | HtmlTag::Sub
+                            | HtmlTag::Sup
+                    ) {
+                        ancestors.push(tag_name);
+                        self.extract_from_nodes(children, indent, ancestors, current_href.clone());
+                        ancestors.pop();
                         continue;
                     }
                     match tag {
@@ -652,5 +673,25 @@ impl PageDocument {
 
     pub fn resolve_href_simple(&self, href: &str) -> String {
         self.resolve_href(href)
+    }
+
+    fn tag_name(tag: &HtmlTag) -> String {
+        match tag {
+            HtmlTag::H1 => "h1".to_string(),
+            HtmlTag::H2 => "h2".to_string(),
+            HtmlTag::H3 => "h3".to_string(),
+            HtmlTag::H4 => "h4".to_string(),
+            HtmlTag::H5 => "h5".to_string(),
+            HtmlTag::H6 => "h6".to_string(),
+            HtmlTag::P => "p".to_string(),
+            HtmlTag::Li => "li".to_string(),
+            HtmlTag::Blockquote => "blockquote".to_string(),
+            HtmlTag::Pre => "pre".to_string(),
+            HtmlTag::Div => "div".to_string(),
+            HtmlTag::B | HtmlTag::Strong => "strong".to_string(),
+            HtmlTag::A => "a".to_string(),
+            HtmlTag::Em | HtmlTag::I => "em".to_string(),
+            _ => "span".to_string(),
+        }
     }
 }
