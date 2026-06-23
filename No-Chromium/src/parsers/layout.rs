@@ -224,18 +224,17 @@ pub fn layout_page(doc: &PageDocument, viewport_w: f32) -> Vec<LayoutItem> {
         // Video
         if vid_idx < doc.video_blocks.len() {
             let vid_block = &doc.video_blocks[vid_idx];
-            // Use larger default for better visibility, scale to fit content
-            let raw_w = vid_block.width.unwrap_or(800.0);
-            let raw_h = vid_block.height.unwrap_or(450.0);
+            // Compact default: 480x270 (max), scaled down for small viewports
+            let raw_w = vid_block.width.unwrap_or(640.0);
+            let raw_h = vid_block.height.unwrap_or(360.0);
             // Calculate aspect ratio
             let aspect = raw_h / raw_w;
-            // Always make video take 95% of content width for better visibility
-            // Tamaño basado en raw_w (no expandir más allá del original)
-            let max_w = 640.0; // Limitar a 640px de ancho
-            let final_w = raw_w.min(max_w).min(content_w * 0.9);
+            // Cap aggressively: max 480x270 to prevent huge embeds
+            let max_w = 480.0;
+            let final_w = raw_w.min(max_w).min(content_w * 0.7);
             let final_h = final_w * aspect;
-            // No hacer el video más alto que 50% del content width
-            let max_h = content_w * 0.4;
+            // No hacer el video más alto que 35% del content width
+            let max_h = content_w * 0.35;
             let final_h = final_h.min(max_h);
             ctx.cursor_y += 12.0;
             items.push(LayoutItem::Video(VideoLayoutBlock {
@@ -319,6 +318,12 @@ struct StyledBlock {
     padding_top: f32,
     padding_bottom: f32,
     padding_left: f32,
+    padding_right: f32,
+    border_top: u32,
+    border_bottom: u32,
+    border_left: u32,
+    border_right: u32,
+    border_color: [f32; 4],
     indent: f32,
 }
 
@@ -338,6 +343,12 @@ fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
         padding_top: 0.0,
         padding_bottom: 0.0,
         padding_left: 0.0,
+        padding_right: 0.0,
+        border_top: 0,
+        border_bottom: 0,
+        border_left: 0,
+        border_right: 0,
+        border_color: [0.0, 0.0, 0.0, 1.0],
         indent: block.indent_level as f32 * 20.0,
     };
 
@@ -495,13 +506,19 @@ fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
         }
         "button" => {
             styled.font_size = 14.0;
-            styled.margin_bottom = 6.0;
-            styled.bg_color = Some([0.20, 0.35, 0.60, 1.0]);
-            styled.padding_top = 6.0;
-            styled.padding_bottom = 6.0;
-            styled.padding_left = 12.0;
-            styled.color = [1.0, 1.0, 1.0, 1.0];
+            styled.margin_bottom = 8.0;
+            styled.bg_color = Some([0.18, 0.20, 0.24, 1.0]);
+            styled.padding_top = 8.0;
+            styled.padding_bottom = 8.0;
+            styled.padding_left = 14.0;
+            styled.padding_right = 14.0;
+            styled.color = [0.90, 0.92, 0.95, 1.0];
             styled.bold = true;
+            styled.border_left = 1;
+            styled.border_right = 1;
+            styled.border_top = 1;
+            styled.border_bottom = 1;
+            styled.border_color = [0.30, 0.32, 0.36, 1.0];
         }
         _ => {}
     }
@@ -539,6 +556,12 @@ fn layout_block(block: &TextBlock, styled: &StyledBlock, ctx: &mut LayoutContext
             padding_top: styled.padding_top,
             padding_bottom: styled.padding_bottom,
             padding_left: styled.padding_left,
+            padding_right: styled.padding_right,
+            border_top: styled.border_top,
+            border_bottom: styled.border_bottom,
+            border_left: styled.border_left,
+            border_right: styled.border_right,
+            border_color: styled.border_color,
             margin_top: 0.0,
             margin_bottom: 0.0,
             ..Default::default()

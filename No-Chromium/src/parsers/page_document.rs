@@ -512,17 +512,18 @@ impl PageDocument {
                             // Render different input types with appropriate symbols
                             let label_text = match input_type.as_str() {
                                 "checkbox" => {
-                                    let mark = if checked { "[X]" } else { "[ ]" };
+                                    let mark = if checked { "[x]" } else { "[ ]" };
                                     let lbl = if !name.is_empty() { format!(" {} ", name) } else { String::new() };
                                     format!("{}{}", mark, lbl)
                                 }
                                 "radio" => {
-                                    let mark = if checked { "(O)" } else { "( )" };
+                                    let mark = if checked { "(o)" } else { "( )" };
                                     let lbl = if !name.is_empty() { format!(" {} ", name) } else { String::new() };
                                     format!("{}{}", mark, lbl)
                                 }
                                 "submit" | "button" => {
-                                    format!("[ {} ]", if value.is_empty() { "Submit" } else { &value })
+                                    let lbl = if value.is_empty() { "Submit" } else { &value };
+                                    format!("[ {} ]", lbl)
                                 }
                                 "hidden" => String::new(),
                                 "file" => format!("[ Choose File ] (no file)"),
@@ -532,7 +533,7 @@ impl PageDocument {
                                     } else if !placeholder.is_empty() {
                                         placeholder.as_str()
                                     } else {
-                                        ""
+                                        "(empty)"
                                     };
                                     if let Some(_for_id) = attributes.get("id") {
                                         if !name.is_empty() {
