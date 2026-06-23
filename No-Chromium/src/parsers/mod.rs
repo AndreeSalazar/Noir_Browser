@@ -11,3 +11,4 @@ pub mod events;
 pub mod resource_loader;
 pub mod style_collector;
 pub mod webidl_bridge;
+pub mod flexbox;
