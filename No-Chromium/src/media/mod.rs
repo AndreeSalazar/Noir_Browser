@@ -9,6 +9,7 @@ pub mod video_texture;
 pub mod audio_playback;
 pub mod pipeline;
 pub mod mp4;
+pub mod hls;
 
 pub use image_support::{
     get_cached_image, draw_image_to_buffer, fetch_image, take_image_dirty,
@@ -23,3 +24,4 @@ pub use video_texture::{VideoTexture, VideoTextureManager, VideoTextureFormat, V
 pub use audio_playback::{Waveform, SampleFormat, AudioConfig, ToneGenerator, AudioBuffer, AudioMixer};
 pub use pipeline::{MediaPipeline, PipelineState, PipelineStats, DecodedFrame};
 pub use mp4::{Mp4Parser, Mp4Info, Mp4Box, Mp4Builder, BoxHeader};
+pub use hls::{HlsPlaylist, StreamVariant, MediaSegment, PlaylistType, EncryptionKey};
