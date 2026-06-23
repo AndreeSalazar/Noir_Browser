@@ -5,6 +5,7 @@
 //! - markdown: Rendering de markdown
 //! - card_layout: Card-style rendering
 //! - list_render: Listas ordenadas/no ordenadas con bullets
+//! - table_render: Tablas HTML con headers/rows/columns
 
 #![allow(dead_code)]
 
@@ -13,6 +14,7 @@ pub mod element_highlight;
 pub mod markdown;
 pub mod card_layout;
 pub mod list_render;
+pub mod table_render;
 
 pub use click_feedback::{
     CursorType, InteractiveRole, InteractiveBox, FocusRing,
@@ -29,4 +31,7 @@ pub use card_layout::{
 };
 pub use list_render::{
     List, ListType, ListItem, ListRenderer, BulletStyle,
+};
+pub use table_render::{
+    Table, TableRow, TableCell, TableSection, TableSectionData, TableRenderer, CellAlign,
 };
