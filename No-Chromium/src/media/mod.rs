@@ -10,6 +10,7 @@ pub mod audio_playback;
 pub mod pipeline;
 pub mod mp4;
 pub mod hls;
+pub mod dash;
 
 pub use image_support::{
     get_cached_image, draw_image_to_buffer, fetch_image, take_image_dirty,
@@ -25,3 +26,4 @@ pub use audio_playback::{Waveform, SampleFormat, AudioConfig, ToneGenerator, Aud
 pub use pipeline::{MediaPipeline, PipelineState, PipelineStats, DecodedFrame};
 pub use mp4::{Mp4Parser, Mp4Info, Mp4Box, Mp4Builder, BoxHeader};
 pub use hls::{HlsPlaylist, StreamVariant, MediaSegment, PlaylistType, EncryptionKey};
+pub use dash::{DashMpd, DashProfile, DashPeriod, DashAdaptationSet, DashRepresentation, SegmentTemplate};
