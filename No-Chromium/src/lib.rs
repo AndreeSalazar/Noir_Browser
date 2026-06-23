@@ -86,6 +86,9 @@ pub mod css {
 pub mod layout {
     pub use crate::parsers::layout::*;
     pub use crate::parsers::flexbox::*;
+    pub use crate::parsers::style_cache::*;  // Firefox Stylo-style sharing cache
+    pub use crate::parsers::rule_tree::*;    // Firefox CSS rule tree
+    pub use crate::parsers::invalidation::*; // Blink-style invalidation
 }
 
 /// Media sub-modules
@@ -126,6 +129,9 @@ pub mod js {
     pub mod interpreter {
         pub use crate::js_engine_v3::Interpreter;
     }
+    pub mod ignition {
+        pub use crate::js_engine_v3::ignition::*;  // V8 Ignition-style bytecode VM
+    }
 }
 
 /// WASM alias
@@ -136,6 +142,19 @@ pub mod wasm {
 /// GPU alias
 pub mod gpu {
     pub use crate::webgpu::*;
+}
+
+/// Browser pipeline components (Chrome/Blink-inspired)
+pub mod pipeline {
+    pub mod paint {
+        pub use crate::app::paint_records::*;  // Chrome Blink paint records
+    }
+    pub mod layers {
+        pub use crate::app::layer_tree::*;     // Chrome compositor layers
+    }
+    pub mod navigation {
+        pub use crate::app::navigation_pipeline::*;  // Chrome navigation flow
+    }
 }
 
 /// Security sub-modules

@@ -20,6 +20,7 @@ pub mod timer;
 pub mod fetch;
 pub mod promise;
 pub mod builtins;
+pub mod ignition;       // V8 Ignition-style bytecode VM
 
 pub use value::JsValue;
 pub use env::Env;

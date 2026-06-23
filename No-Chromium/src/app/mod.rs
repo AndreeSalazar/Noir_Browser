@@ -14,6 +14,9 @@ pub mod navigation;
 pub mod state;
 pub mod draw;
 pub mod glyphs;
+pub mod paint_records;       // Chrome Blink paint records
+pub mod layer_tree;          // Chrome compositor layers
+pub mod navigation_pipeline; // Chrome navigation flow state machine
 
 pub use config::AppConfig;
 pub use context::AppContext;
