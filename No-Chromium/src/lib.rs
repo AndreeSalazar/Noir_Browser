@@ -9,6 +9,7 @@ pub mod network;
 pub mod parsers;
 pub mod renderer_trait;
 pub mod security;
+pub mod storage;
 pub mod utils;
 pub mod wasm_v2;
 pub mod webgpu;
