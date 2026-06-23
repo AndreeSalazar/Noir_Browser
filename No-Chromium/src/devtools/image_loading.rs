@@ -108,14 +108,16 @@ impl ImageLoader {
         let top = scroll_y;
         let bottom = scroll_y + self.viewport_h as i32;
         let mut triggered = 0;
-        for img in &mut self.images {
-            if img.lazy && img.state == ImageState::Pending {
-                // Simulación: en Y no tenemos posición real; usamos orden como heurística
-                let img_top = self.images.iter().position(|i| i.src == img.src).unwrap_or(0) as i32 * 300;
-                if img_top >= top && img_top <= bottom {
-                    img.state = ImageState::Loading;
-                    triggered += 1;
-                    if triggered >= self.max_concurrent { break; }
+        let n = self.images.len();
+        for idx in 0..n {
+            let img_top = idx as i32 * 300;
+            if img_top >= top && img_top <= bottom {
+                if let Some(img) = self.images.get_mut(idx) {
+                    if img.lazy && img.state == ImageState::Pending {
+                        img.state = ImageState::Loading;
+                        triggered += 1;
+                        if triggered >= self.max_concurrent { break; }
+                    }
                 }
             }
         }

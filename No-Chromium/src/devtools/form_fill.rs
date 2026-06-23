@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::{Deserialize, Serialize};
+
 use crate::storage::path::StoragePaths;
 
 #[derive(Debug, Clone)]
@@ -15,7 +17,7 @@ pub struct FormField {
     pub value: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilledField {
     pub domain: String,
     pub field_name: String,
@@ -108,7 +110,8 @@ impl FormFillManager {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         let entries = self.entries.lock().unwrap();
-        let json = serde_json::to_string_pretty(&*entries)
+        let list: Vec<&FilledField> = entries.values().collect();
+        let json = serde_json::to_string_pretty(&list)
             .map_err(|e| e.to_string())?;
         std::fs::write(&self.file_path, json).map_err(|e| e.to_string())?;
         Ok(())
@@ -121,9 +124,13 @@ impl FormFillManager {
         }
         let content = std::fs::read_to_string(&self.file_path)
             .map_err(|e| e.to_string())?;
-        let loaded: HashMap<(String, String), FilledField> = serde_json::from_str(&content)
+        let loaded: Vec<FilledField> = serde_json::from_str(&content)
             .map_err(|e| e.to_string())?;
-        *self.entries.lock().unwrap() = loaded;
+        let mut map = HashMap::new();
+        for field in loaded {
+            map.insert((field.domain.clone(), field.field_name.clone()), field);
+        }
+        *self.entries.lock().unwrap() = map;
         Ok(())
     }
 }
