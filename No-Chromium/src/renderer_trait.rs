@@ -1,5 +1,9 @@
 //! Renderer Trait - Abstracción de rendering
-//! Permite cambiar entre CPU (softbuffer) y GPU (Vulkan) sin cambiar app/
+//!
+//! Permite cambiar entre backends sin cambiar la app.
+//! Backends actuales: softbuffer (CPU) y wgpu (GPU vía WebGPU).
+
+#![allow(dead_code)]
 
 pub trait Renderer {
     type Buffer;
@@ -98,7 +102,6 @@ impl Renderer for CpuRenderer {
     }
 
     fn draw_text(&mut self, x: i32, y: i32, text: &str, color: u32, scale: f32) -> Result<(), Self::Error> {
-        // Placeholder - would use actual text rendering
         let _ = (x, y, text, color, scale);
         Ok(())
     }
@@ -110,33 +113,6 @@ impl Renderer for CpuRenderer {
 
     fn get_buffer(&mut self) -> &mut Self::Buffer {
         &mut self.buffer
-    }
-}
-
-/// GPU Backend placeholder (Vulkan)
-pub struct GpuBackend {
-    pub initialized: bool,
-}
-
-impl GpuBackend {
-    pub fn new() -> Self {
-        Self { initialized: false }
-    }
-}
-
-impl Default for GpuBackend {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Factory function to create the appropriate backend
-pub fn create_backend(use_gpu: bool) -> Box<dyn Backend<Buffer = Vec<u32>, Error = String>> {
-    if use_gpu {
-        // Would return Vulkan backend
-        Box::new(CpuBackendWrapper::new())
-    } else {
-        Box::new(CpuBackendWrapper::new())
     }
 }
 
@@ -176,6 +152,13 @@ impl Backend for CpuBackendWrapper {
         self.height = height;
         Ok(())
     }
+}
+
+/// Crea el backend apropiado
+/// Actualmente solo CPU está implementado, GPU vía WebGPU está en desarrollo
+pub fn create_backend(use_gpu: bool) -> Box<dyn Backend<Buffer = Vec<u32>, Error = String>> {
+    let _ = use_gpu; // GPU backend pendiente
+    Box::new(CpuBackendWrapper::new())
 }
 
 #[cfg(test)]
