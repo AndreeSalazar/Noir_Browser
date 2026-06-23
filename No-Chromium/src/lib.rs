@@ -11,7 +11,7 @@ pub mod renderer_trait;
 pub mod security;
 pub mod storage;
 pub mod utils;
-pub mod wasm_v2;
+pub mod wasm_host;
 pub mod webgpu;
 
 pub use app::AppConfig;
