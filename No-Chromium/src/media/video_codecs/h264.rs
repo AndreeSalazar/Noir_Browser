@@ -261,9 +261,9 @@ impl Default for H264Decoder {
 }
 
 pub struct H264StreamParser {
-    decoder: H264Decoder,
-    keyframe_interval: u32,
-    last_keyframe_at: u32,
+    pub decoder: H264Decoder,
+    pub keyframe_interval: u32,
+    pub last_keyframe_at: u32,
 }
 
 impl H264StreamParser {

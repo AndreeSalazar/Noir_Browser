@@ -121,6 +121,21 @@ pub struct MediaSource {
     pub network_bandwidth: u32, // kbps
 }
 
+impl Clone for MediaSource {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            state: self.state,
+            duration: self.duration,
+            source_buffers: self.source_buffers.clone(),
+            active_quality_levels: self.active_quality_levels.clone(),
+            current_quality: self.current_quality,
+            auto_switch_quality: self.auto_switch_quality,
+            network_bandwidth: self.network_bandwidth,
+        }
+    }
+}
+
 impl MediaSource {
     pub fn new(id: u32, duration: Duration) -> Self {
         Self {

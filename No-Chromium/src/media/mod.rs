@@ -7,6 +7,7 @@ pub mod video_codecs;
 pub mod frame;
 pub mod video_texture;
 pub mod audio_playback;
+pub mod pipeline;
 
 pub use image_support::{
     get_cached_image, draw_image_to_buffer, fetch_image, take_image_dirty,
@@ -19,3 +20,4 @@ pub use video_codecs::{H264Decoder, H264StreamParser, NalUnit, NalUnitType, SpsI
 pub use frame::{YuvFrame, RgbConverter, FrameDecimator, ColorSpace};
 pub use video_texture::{VideoTexture, VideoTextureManager, VideoTextureFormat, VideoTextureDescriptor, TextureUsage};
 pub use audio_playback::{Waveform, SampleFormat, AudioConfig, ToneGenerator, AudioBuffer, AudioMixer};
+pub use pipeline::{MediaPipeline, PipelineState, PipelineStats, DecodedFrame};
