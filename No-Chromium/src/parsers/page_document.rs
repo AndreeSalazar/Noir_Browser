@@ -194,6 +194,11 @@ impl PageDocument {
                     attributes,
                     children,
                 } => {
+                    // Skip content of script, style, noscript, template tags
+                    if matches!(tag, HtmlTag::Script | HtmlTag::Style | HtmlTag::Noscript)
+                        || matches!(tag, HtmlTag::Custom(name) if name == "template") {
+                        continue;
+                    }
                     match tag {
                         HtmlTag::Title => {
                             self.title = self.collect_text(children);
@@ -526,8 +531,12 @@ impl PageDocument {
                         HtmlTag::Body | HtmlTag::Html => {
                             self.extract_from_nodes(children, indent, ancestors, current_href.clone());
                         }
-                        HtmlTag::Custom(ref name) if name == "head" || name == "meta" || name == "link" => {
-                            // Skip head metadata
+                        HtmlTag::Custom(ref name) if name == "head" => {
+                            // Recurse into head to find <title> but skip meta/link
+                            self.extract_from_nodes(children, indent, ancestors, current_href.clone());
+                        }
+                        HtmlTag::Custom(ref name) if name == "meta" || name == "link" => {
+                            // Skip meta/link metadata
                         }
                         HtmlTag::Custom(ref name) if name == "script" || name == "noscript" => {
                             // Skip scripts (already skipped in dom_tree but just in case)

@@ -3,6 +3,7 @@
 pub mod app;
 pub mod bootstrap;
 pub mod bridge;
+pub mod features;
 pub mod js_engine_v3;
 pub mod media;
 pub mod network;
