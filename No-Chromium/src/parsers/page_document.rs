@@ -316,8 +316,14 @@ impl PageDocument {
                         HtmlTag::Li => {
                             let text = self.collect_text(children);
                             if !text.is_empty() {
+                                // Detect ordered list parent
+                                let marker = if attributes.get("value").is_some() {
+                                    format!("{}.", attributes.get("value").unwrap())
+                                } else {
+                                    "•".to_string()
+                                };
                                 self.text_blocks.push(TextBlock {
-                                    text: format!("  * {}", text),
+                                    text: format!("  {} {}", marker, text),
                                     tag: "li".into(),
                                     font_size: 14.0,
                                     bold: false,
@@ -472,11 +478,46 @@ impl PageDocument {
                             let placeholder = attributes.get("placeholder").cloned().unwrap_or_default();
                             let value = attributes.get("value").cloned().unwrap_or_default();
                             let name = attributes.get("name").cloned().unwrap_or_default();
-                            let label_text = if let Some(_for_id) = attributes.get("id") {
-                                format!("{}: [{}]", name, value.is_empty().then(|| placeholder.as_str()).unwrap_or(value.as_str()))
-                            } else {
-                                format!("[{}]", value.is_empty().then(|| placeholder.as_str()).unwrap_or(value.as_str()))
+                            let checked = attributes.contains_key("checked");
+                            // Render different input types with appropriate symbols
+                            let label_text = match input_type.as_str() {
+                                "checkbox" => {
+                                    let mark = if checked { "[X]" } else { "[ ]" };
+                                    let lbl = if !name.is_empty() { format!(" {} ", name) } else { String::new() };
+                                    format!("{}{}", mark, lbl)
+                                }
+                                "radio" => {
+                                    let mark = if checked { "(O)" } else { "( )" };
+                                    let lbl = if !name.is_empty() { format!(" {} ", name) } else { String::new() };
+                                    format!("{}{}", mark, lbl)
+                                }
+                                "submit" | "button" => {
+                                    format!("[ {} ]", if value.is_empty() { "Submit" } else { &value })
+                                }
+                                "hidden" => String::new(),
+                                "file" => format!("[ Choose File ] (no file)"),
+                                _ => {
+                                    let disp = if !value.is_empty() {
+                                        value.as_str()
+                                    } else if !placeholder.is_empty() {
+                                        placeholder.as_str()
+                                    } else {
+                                        ""
+                                    };
+                                    if let Some(_for_id) = attributes.get("id") {
+                                        if !name.is_empty() {
+                                            format!("{}: [{}]", name, disp)
+                                        } else {
+                                            format!("[{}]", disp)
+                                        }
+                                    } else {
+                                        format!("[{}]", disp)
+                                    }
+                                }
                             };
+                            if label_text.is_empty() {
+                                continue;
+                            }
                             self.text_blocks.push(TextBlock {
                                 text: label_text,
                                 tag: "input".into(),
@@ -495,7 +536,15 @@ impl PageDocument {
                         }
                         HtmlTag::Button => {
                             let text = self.collect_text(children);
-                            let btn_text = if text.is_empty() { "Button".into() } else { text };
+                            // Use aria-label if no text content
+                            let btn_text = if text.is_empty() {
+                                attributes.get("aria-label")
+                                    .or_else(|| attributes.get("title"))
+                                    .cloned()
+                                    .unwrap_or_else(|| "Button".into())
+                            } else {
+                                text
+                            };
                             self.text_blocks.push(TextBlock {
                                 text: format!("[ {} ]", btn_text),
                                 tag: "button".into(),
