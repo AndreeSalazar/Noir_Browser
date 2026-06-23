@@ -14,8 +14,8 @@ pub const NAV_BAR_HEIGHT: u32 = 44;
 pub const TOOLBAR_HEIGHT: u32 = TITLE_BAR_HEIGHT + TAB_BAR_HEIGHT + NAV_BAR_HEIGHT;
 pub const TAB_WIDTH: u32 = 200;
 pub const TAB_SPACING: i32 = 4;
-pub const NAV_BTN_SIZE: u32 = 34;
-pub const NAV_BTN_SPACING: i32 = 6;
+pub const NAV_BTN_SIZE: u32 = 36;
+pub const NAV_BTN_SPACING: i32 = 10;
 pub const NAV_START_X: i32 = 8;
 
 // === COLORS ===
@@ -367,6 +367,8 @@ fn render_layout_blocks(
                 if !block.visible { continue; }
 
                 let screen_block_y = block.y - scroll_y + content_y as f32;
+                let content_top = content_y;
+                let content_bottom = content_y + content_h;
 
                 if screen_block_y + block.h < content_y as f32 - 10.0 {
                     continue;
@@ -412,16 +414,15 @@ fn render_layout_blocks(
                 }
 
                 if block.is_link {
-                    let underline_y = screen_block_y as i32 + block.h as i32 - 1;
-                    draw_rect(
-                        buf,
-                        stride,
-                        block.x as i32,
-                        underline_y,
-                        block.w as i32,
-                        1,
-                        0xFF6699FF,
-                    );
+                    // Subtle indicator: small dot before text (Brave-style)
+                    let dot_x = block.x as i32 - 8;
+                    let dot_y = screen_block_y as i32 + (block.h as i32) / 2 - 1;
+                    if dot_x >= 0 && dot_x < screen_w && dot_y >= content_top && dot_y < content_bottom {
+                        let idx = (dot_y as usize) * stride + (dot_x as usize);
+                        if idx < buf.len() {
+                            buf[idx] = 0xFF8CB4FF;
+                        }
+                    }
                 }
 
                 let color_u32 = rgba_to_u32(block.color[0], block.color[1], block.color[2], block.color[3]);
@@ -545,28 +546,45 @@ fn render_layout_blocks(
                 draw_rect(buf, stride, vx, vy, 1, vh, 0xFF2A2A35);
                 draw_rect(buf, stride, vx + vw - 1, vy, 1, vh, 0xFF2A2A35);
 
-                // Centered play button (circular, red like YouTube)
-                let btn_size = 60;
-                let btn_x = vx + (vw - btn_size) / 2;
-                let btn_y = vy + (vh - btn_size) / 2;
-                // Red filled circle (approximation as square with rounded edges)
-                draw_rect(buf, stride, btn_x + 8, btn_y, btn_size - 16, btn_size, 0xCCFF0000);
-                draw_rect(buf, stride, btn_x + 4, btn_y + 4, btn_size - 8, btn_size - 8, 0xCCFF0000);
-                draw_rect(buf, stride, btn_x, btn_y + 8, btn_size, btn_size - 16, 0xCCFF0000);
-                draw_rect(buf, stride, btn_x + 2, btn_y + 4, 4, btn_size - 8, 0xCCFF0000);
-                draw_rect(buf, stride, btn_x + btn_size - 6, btn_y + 4, 4, btn_size - 8, 0xCCFF0000);
-                draw_rect(buf, stride, btn_x + 4, btn_y + 2, 4, btn_size - 4, 0xCCFF0000);
-                draw_rect(buf, stride, btn_x + btn_size - 8, btn_y + 2, 4, btn_size - 4, 0xCCFF0000);
+                // Centered play button (real circle, red like YouTube)
+                let btn_size = 56;
+                let btn_cx = vx + vw / 2;
+                let btn_cy = vy + vh / 2;
+                let btn_r = btn_size / 2;
+                // Draw filled circle pixel by pixel
+                for dy in -btn_r..=btn_r {
+                    for dx in -btn_r..=btn_r {
+                        if dx * dx + dy * dy <= btn_r * btn_r {
+                            let px = btn_cx + dx;
+                            let py = btn_cy + dy;
+                            if px >= 0 && px < screen_w && py >= content_top && py < content_bottom {
+                                let idx = (py as usize) * stride + (px as usize);
+                                if idx < buf.len() {
+                                    // Blend red over background
+                                    buf[idx] = 0xCCFF0000;
+                                }
+                            }
+                        }
+                    }
+                }
                 // White triangle play icon
-                let tri_w = 18;
-                let tri_h = 22;
-                let tri_x = btn_x + btn_size / 2 + 2;
-                let tri_y = btn_y + (btn_size - tri_h) / 2;
+                let tri_w = 16;
+                let tri_h = 18;
+                let tri_cx = btn_cx + 3;
+                let tri_cy = btn_cy;
                 for row in 0..tri_h {
                     let progress = row as f32 / tri_h as f32;
-                    let width_at_row = (tri_w as f32 * (1.0 - progress * 0.3)).max(4.0) as i32;
-                    let x_start = tri_x - ((tri_w - width_at_row) / 2) - 4;
-                    draw_rect(buf, stride, x_start, tri_y + row, width_at_row, 1, 0xFFFFFFFF);
+                    let half_w = (tri_w as f32 * progress) as i32;
+                    let py = tri_cy - tri_h / 2 + row;
+                    for dx in -half_w..=half_w {
+                        let px = tri_cx + dx;
+                        if px >= 0 && px < screen_w && py >= content_top && py < content_bottom {
+                            let idx = (py as usize) * stride + (px as usize);
+                            if idx < buf.len() {
+                                buf[idx] = 0xFFFFFFFF;
+                            }
+                        }
+                    }
                 }
 
                 // Video label (top-left)
@@ -581,25 +599,81 @@ fn render_layout_blocks(
                 };
                 draw_text_noir(buf, stride, screen_w, vx + 10, vy + 10, label, 0xFFCCCCCC, 0.9);
 
-                // Bottom controls bar (semi-transparent)
-                if vid.controls {
-                    let ctrl_h = 32;
+                // Bottom controls bar (semi-transparent) - only if wide enough
+                if vid.controls && vw > 200 {
+                    let ctrl_h = 28;
                     let ctrl_y = vy + vh - ctrl_h;
-                    draw_rect(buf, stride, vx, ctrl_y, vw, ctrl_h, 0xDD000000);
-                    // Play/pause button
-                    draw_rect(buf, stride, vx + 8, ctrl_y + 8, 14, 16, 0xFFFFFFFF);
+                    draw_rect(buf, stride, vx, ctrl_y, vw, ctrl_h, 0xDD101018);
+                    // Top border
+                    draw_rect(buf, stride, vx, ctrl_y, vw, 1, 0xFF2A2A35);
+
+                    // Layout: [play] [time] .... [progress ........] [vol] [fs]
+                    let margin = 8;
+                    let play_x = vx + margin;
+                    let play_y = ctrl_y + 8;
+                    let play_size = 12;
+
+                    // Play triangle
+                    for row in 0..play_size {
+                        let half_w = (row as f32 * 0.5) as i32;
+                        for dx in 0..=half_w {
+                            let px = play_x + dx + 2;
+                            let py = play_y + row;
+                            if py < content_bottom {
+                                let idx = (py as usize) * stride + (px as usize);
+                                if idx < buf.len() {
+                                    buf[idx] = 0xFFE0E0E0;
+                                }
+                            }
+                        }
+                    }
+
                     // Time display
-                    draw_text_noir(buf, stride, screen_w, vx + 30, ctrl_y + 12, "0:00 / 0:00", 0xFFEEEEEE, 0.7);
-                    // Progress bar
-                    let prog_x = vx + 100;
-                    let prog_w = vw - 200;
-                    let prog_y = ctrl_y + 17;
-                    draw_rect(buf, stride, prog_x, prog_y, prog_w, 4, 0xFF444444);
-                    draw_rect(buf, stride, prog_x, prog_y, 20, 4, 0xFFFF0000);
-                    // Volume icon
-                    draw_rect(buf, stride, vx + vw - 80, ctrl_y + 8, 16, 14, 0xFFAAAAAA);
-                    // Fullscreen icon
-                    draw_rect(buf, stride, vx + vw - 40, ctrl_y + 8, 16, 14, 0xFFAAAAAA);
+                    let time_x = play_x + 22;
+                    draw_text_noir(buf, stride, screen_w, time_x, ctrl_y + 10, "0:00 / 0:00", 0xFFCCCCCC, 0.7);
+
+                    // Volume + Fullscreen (right side)
+                    let fs_size = 12;
+                    let fs_x = vx + vw - margin - fs_size;
+                    let fs_y = ctrl_y + 8;
+                    // Fullscreen icon (4 corners)
+                    draw_rect(buf, stride, fs_x, fs_y, 4, 1, 0xFFAAAAAA);
+                    draw_rect(buf, stride, fs_x, fs_y, 1, 4, 0xFFAAAAAA);
+                    draw_rect(buf, stride, fs_x + fs_size - 4, fs_y, 4, 1, 0xFFAAAAAA);
+                    draw_rect(buf, stride, fs_x + fs_size - 1, fs_y, 1, 4, 0xFFAAAAAA);
+                    draw_rect(buf, stride, fs_x, fs_y + fs_size - 1, 4, 1, 0xFFAAAAAA);
+                    draw_rect(buf, stride, fs_x, fs_y + fs_size - 4, 1, 4, 0xFFAAAAAA);
+                    draw_rect(buf, stride, fs_x + fs_size - 4, fs_y + fs_size - 1, 4, 1, 0xFFAAAAAA);
+                    draw_rect(buf, stride, fs_x + fs_size - 1, fs_y + fs_size - 4, 1, 4, 0xFFAAAAAA);
+
+                    // Volume icon (left of fullscreen)
+                    let vol_size = 12;
+                    let vol_x = fs_x - margin - vol_size;
+                    let vol_y = ctrl_y + 8;
+                    draw_rect(buf, stride, vol_x, vol_y + 4, 3, 4, 0xFFAAAAAA);
+                    draw_rect(buf, stride, vol_x + 3, vol_y + 3, 2, 6, 0xFFAAAAAA);
+                    // Sound waves
+                    for wave in 0..3 {
+                        let wx = vol_x + 6 + wave * 2;
+                        let wh = 4 + wave * 2;
+                        let wy = vol_y + 6 - wh / 2;
+                        draw_rect(buf, stride, wx, wy, 1, wh, 0xFFAAAAAA);
+                    }
+
+                    // Progress bar (between time and volume)
+                    let prog_x = time_x + 70;
+                    let prog_right = vol_x - margin;
+                    let prog_y = ctrl_y + 13;
+                    let prog_w = (prog_right - prog_x).max(20);
+                    if prog_w > 20 {
+                        draw_rect(buf, stride, prog_x, prog_y, prog_w, 3, 0xFF333340);
+                        // Red played portion
+                        let played = prog_w / 4;
+                        draw_rect(buf, stride, prog_x, prog_y, played, 3, 0xFFCC0000);
+                        // Played dot
+                        let dot_x = prog_x + played - 4;
+                        draw_rect(buf, stride, dot_x, prog_y - 1, 8, 5, 0xFFCC0000);
+                    }
                 }
             }
         }

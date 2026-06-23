@@ -443,7 +443,7 @@ fn apply_css_to_block(block: &TextBlock, css: &CssCascade) -> StyledBlock {
         }
         "a" => {
             if decls.font_size.is_none() { styled.font_size = 14.0; }
-            if decls.color.is_none() { styled.color = [0.4, 0.6, 1.0, 1.0]; }
+            if decls.color.is_none() { styled.color = [0.55, 0.75, 1.0, 1.0]; }
             if decls.margin_bottom.is_none() { styled.margin_bottom = 2.0; }
         }
         "b" => {
