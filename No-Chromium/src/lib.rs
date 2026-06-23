@@ -92,6 +92,7 @@ pub mod layout {
     pub use crate::parsers::invalidation::*; // Blink-style invalidation
     pub use crate::parsers::flexbox_v2::*;   // FASE C1: Flexbox v2
     pub use crate::parsers::css_grid_v2::*;  // FASE C2: CSS Grid v2
+    pub use crate::parsers::position_v2::*;  // FASE C3: Position
 }
 
 /// Media sub-modules

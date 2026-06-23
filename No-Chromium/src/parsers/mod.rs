@@ -14,6 +14,7 @@ pub mod webidl_bridge;
 pub mod flexbox;
 pub mod flexbox_v2;
 pub mod css_grid_v2;
+pub mod position_v2;
 pub mod style_cache;     // Firefox Stylo-style sharing cache
 pub mod rule_tree;       // Firefox CSS rule tree
 pub mod invalidation;    // Blink-style invalidation
