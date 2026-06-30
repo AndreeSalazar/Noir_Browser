@@ -34,10 +34,28 @@ fn test_resolve_url_google_search() {
 }
 
 #[test]
+fn test_resolve_url_default_search_uses_duckduckgo_html() {
+    let result = resolve_url("hola mundo");
+    assert_eq!(result, "https://html.duckduckgo.com/html/?q=hola%20mundo");
+}
+
+#[test]
 fn test_resolve_url_youtube_prefix() {
     let result = resolve_url("yt rust tutorial");
     assert!(result.contains("youtube.com"));
-    assert!(result.contains("rust+tutorial"));
+    assert!(result.contains("rust%20tutorial"));
+}
+
+#[test]
+fn test_resolve_url_youtube_prefix_without_query_opens_home() {
+    let result = resolve_url("yt");
+    assert_eq!(result, "https://www.youtube.com/");
+}
+
+#[test]
+fn test_resolve_url_duckduckgo_prefix_uses_html_endpoint() {
+    let result = resolve_url("ddg rust browser");
+    assert_eq!(result, "https://html.duckduckgo.com/html/?q=rust%20browser");
 }
 
 #[test]

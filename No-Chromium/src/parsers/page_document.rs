@@ -82,6 +82,7 @@ impl PageDocument {
         let nodes = parse_html(html);
         doc.dom_nodes = nodes.clone();
         doc.extract_from_nodes(&nodes, 0, &mut Vec::new(), None);
+        crate::parsers::youtube_extract::enhance_page_document(&mut doc, html);
         doc
     }
 

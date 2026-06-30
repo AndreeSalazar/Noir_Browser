@@ -567,17 +567,17 @@ fn render_layout_blocks(
                         }
                     }
                 }
-                // White triangle play icon
-                let tri_w = 16;
-                let tri_h = 18;
-                let tri_cx = btn_cx + 3;
+                // White right-facing play icon. Keep it crisp and symmetric;
+                // the previous row-based triangle looked like a pyramid.
+                let tri_w = 18;
+                let tri_h = 22;
+                let tri_left = btn_cx - 5;
                 let tri_cy = btn_cy;
-                for row in 0..tri_h {
-                    let progress = row as f32 / tri_h as f32;
-                    let half_w = (tri_w as f32 * progress) as i32;
-                    let py = tri_cy - tri_h / 2 + row;
-                    for dx in -half_w..=half_w {
-                        let px = tri_cx + dx;
+                for x in 0..tri_w {
+                    let half_h = ((x + 1) as f32 / tri_w as f32 * (tri_h as f32 / 2.0)) as i32;
+                    for y in -half_h..=half_h {
+                        let px = tri_left + x;
+                        let py = tri_cy + y;
                         if px >= 0 && px < screen_w && py >= content_top && py < content_bottom {
                             let idx = (py as usize) * stride + (px as usize);
                             if idx < buf.len() {
@@ -588,8 +588,10 @@ fn render_layout_blocks(
                 }
 
                 // Video label (top-left)
-                let label = if vid.src.contains("youtube") {
-                    "YouTube Video"
+                let label = if let Some(title) = &vid.title {
+                    if title.trim().is_empty() { "Video" } else { title.as_str() }
+                } else if vid.src.contains("youtube") {
+                    "YouTube Lite Video"
                 } else if vid.src.contains("vimeo") {
                     "Vimeo Video"
                 } else if vid.src.contains(".mp4") {
@@ -597,6 +599,7 @@ fn render_layout_blocks(
                 } else {
                     "Video"
                 };
+                let label = if label.len() > 72 { &label[..72] } else { label };
                 draw_text_noir(buf, stride, screen_w, vx + 10, vy + 10, label, 0xFFCCCCCC, 0.9);
 
                 // Bottom controls bar (semi-transparent) - only if wide enough

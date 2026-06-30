@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use super::context::AppContext;
 use crate::network::fetch::HttpFetcher;
-use crate::network::url_resolver::resolve as resolve_url_rfc3986;
+use crate::network::url_resolver::url_encode;
 use crate::parsers::page_document::PageDocument;
 
 /// Resuelve una URL a su forma completa
@@ -44,20 +44,24 @@ fn resolve_search_query(input: &str) -> String {
     let lower = input.to_lowercase();
     let parts: Vec<&str> = lower.splitn(2, ' ').collect();
     let query = if parts.len() > 1 { parts[1] } else { "" };
+    let encoded_query = url_encode(query);
+    let encoded_input = url_encode(input);
 
     match parts[0] {
-        "yt" | "youtube" => format!("https://www.youtube.com/results?search_query={}", query.replace(' ', "+")),
-        "gg" | "google" => format!("https://www.google.com/search?q={}", query.replace(' ', "+")),
-        "gh" | "github" => format!("https://github.com/search?q={}", query.replace(' ', "+")),
-        "ddg" | "duckduckgo" | "duck" => format!("https://duckduckgo.com/?q={}", query.replace(' ', "+")),
-        "wiki" | "wikipedia" => format!("https://en.wikipedia.org/wiki/Special:Search?search={}", query.replace(' ', "+")),
-        "reddit" => format!("https://www.reddit.com/search/?q={}", query.replace(' ', "+")),
-        "so" | "stackoverflow" => format!("https://stackoverflow.com/search?q={}", query.replace(' ', "+")),
-        "mdn" => format!("https://developer.mozilla.org/en-US/search?q={}", query.replace(' ', "+")),
-        "crates" => format!("https://crates.io/search?q={}", query.replace(' ', "+")),
-        "docs" | "docsrs" => format!("https://docs.rs/releases/search?query={}", query.replace(' ', "+")),
-        "npm" => format!("https://www.npmjs.com/search?q={}", query.replace(' ', "+")),
-        _ => format!("https://duckduckgo.com/?q={}", input.replace(' ', "+")),
+        "yt" | "youtube" if query.trim().is_empty() => "https://www.youtube.com/".to_string(),
+        "yt" | "youtube" => format!("https://www.youtube.com/results?search_query={}", encoded_query),
+        "gg" | "google" => format!("https://www.google.com/search?q={}", encoded_query),
+        "gh" | "github" => format!("https://github.com/search?q={}", encoded_query),
+        "ddg" | "duckduckgo" | "duck" if query.trim().is_empty() => "https://html.duckduckgo.com/html/".to_string(),
+        "ddg" | "duckduckgo" | "duck" => format!("https://html.duckduckgo.com/html/?q={}", encoded_query),
+        "wiki" | "wikipedia" => format!("https://en.wikipedia.org/wiki/Special:Search?search={}", encoded_query),
+        "reddit" => format!("https://www.reddit.com/search/?q={}", encoded_query),
+        "so" | "stackoverflow" => format!("https://stackoverflow.com/search?q={}", encoded_query),
+        "mdn" => format!("https://developer.mozilla.org/en-US/search?q={}", encoded_query),
+        "crates" => format!("https://crates.io/search?q={}", encoded_query),
+        "docs" | "docsrs" => format!("https://docs.rs/releases/search?query={}", encoded_query),
+        "npm" => format!("https://www.npmjs.com/search?q={}", encoded_query),
+        _ => format!("https://html.duckduckgo.com/html/?q={}", encoded_input),
     }
 }
 

@@ -135,6 +135,26 @@ fn test_youtube_typical_structure() {
 }
 
 #[test]
+fn test_youtube_initial_data_extraction() {
+    let html = r#"
+        <html><body><script>
+        var ytInitialData = {"contents":{"videoRenderer":{
+            "videoId":"abc123",
+            "thumbnail":{"thumbnails":[{"url":"https://i.ytimg.com/vi/abc123/hqdefault.jpg"}]},
+            "title":{"runs":[{"text":"Noir loads YouTube"}]},
+            "ownerText":{"runs":[{"text":"Noir Dev"}]},
+            "lengthText":{"simpleText":"3:20"}
+        }}};
+        </script></body></html>
+    "#;
+    let doc = PageDocument::from_html("https://www.youtube.com/results?search_query=noir", html);
+    assert!(doc.links.iter().any(|link| link.href == "https://www.youtube.com/watch?v=abc123"));
+    assert!(doc.image_blocks.iter().any(|img| img.src.contains("ytimg.com/vi/abc123")));
+    assert!(doc.text_blocks.iter().any(|block| block.text == "Noir loads YouTube"));
+    assert!(doc.video_blocks.iter().any(|video| video.src.contains("watch?v=abc123")));
+}
+
+#[test]
 fn test_video_with_poster() {
     let html = r#"
         <html><body>
